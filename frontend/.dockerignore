@@ -1,0 +1,24 @@
+# Git
+.git
+.gitignore
+
+# Dependencies (reinstalled in Docker)
+node_modules
+
+# Build outputs
+dist
+build
+.vite
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Misc
+*.log
+*.tmp
+.DS_Store
+coverage
+.nyc_output

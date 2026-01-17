@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.config import settings
 
@@ -543,6 +543,25 @@ async def task_manager_background_task():
             await asyncio.sleep(10)
 
 
+async def run_migrations():
+    """Run database migrations to add new columns to existing tables."""
+    async with AsyncSessionLocal() as db:
+        # Check and add workspace_dir column to projects table
+        try:
+            result = await db.execute(text("PRAGMA table_info(projects)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if "workspace_dir" not in columns:
+                print("Adding workspace_dir column to projects table...")
+                await db.execute(text(
+                    "ALTER TABLE projects ADD COLUMN workspace_dir VARCHAR(255)"
+                ))
+                await db.commit()
+                print("Migration complete: added workspace_dir column")
+        except Exception as e:
+            print(f"Migration check error (may be normal on first run): {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
@@ -550,6 +569,9 @@ async def lifespan(app: FastAPI):
     
     # Initialize database
     await init_db()
+    
+    # Run migrations for existing databases
+    await run_migrations()
 
     # Initialize services with database session factory
     am_module.agent_manager = am_module.AgentManager(

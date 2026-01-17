@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { X, MapPin, Briefcase, Code, Shield, Heart, Coffee, MessageSquare, Terminal } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { X, MapPin, Briefcase, Code, Shield, Heart, Coffee, MessageSquare, Terminal, Camera, Trash2, Loader2 } from 'lucide-react';
 import { Avatar, Button } from '@/components/common';
 import { ActivityTrace } from './ActivityTrace';
 import { AgentLogViewer } from './AgentLogViewer';
+import { useUpdateAgentProfileImage, useRemoveAgentProfileImage } from '@/hooks/useApi';
 import type { Agent, ActivityLog } from '@/types';
 
 interface ProfileModalProps {
@@ -26,8 +27,46 @@ const roleLabels = {
 
 export function ProfileModal({ agent, activities = [], onClose, onSendMessage }: ProfileModalProps) {
   const [showLogs, setShowLogs] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const updateImage = useUpdateAgentProfileImage();
+  const removeImage = useRemoveAgentProfileImage();
+  
   const persona = agent.persona;
   const Icon = roleIcons[agent.role] || Briefcase;
+  
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Image must be less than 2MB');
+      return;
+    }
+    
+    // Convert to base64 and upload
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      updateImage.mutate({
+        agentId: agent.id,
+        imageData: result,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+  
+  const handleRemoveImage = () => {
+    if (confirm('Remove profile image? Agent will show initials instead.')) {
+      removeImage.mutate(agent.id);
+    }
+  };
 
   // If showing logs, render the log viewer instead
   if (showLogs) {
@@ -45,13 +84,45 @@ export function ProfileModal({ agent, activities = [], onClose, onSendMessage }:
           >
             <X className="w-5 h-5" />
           </button>
-          <div className="absolute -bottom-16 left-6">
+          <div className="absolute -bottom-16 left-6 group">
             <Avatar
               name={agent.name}
               src={agent.profile_image_url}
               size="2xl"
               status={agent.status}
               className="ring-4 ring-white"
+            />
+            {/* Image upload overlay */}
+            <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/50 rounded-md opacity-0 group-hover:opacity-100 transition-opacity">
+              {updateImage.isPending || removeImage.isPending ? (
+                <Loader2 className="w-6 h-6 text-white animate-spin" />
+              ) : (
+                <>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                    title="Upload new image"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  {agent.profile_image_url && (
+                    <button
+                      onClick={handleRemoveImage}
+                      className="p-2 bg-white/20 hover:bg-red-500/50 rounded-full text-white transition-colors"
+                      title="Remove image"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
             />
           </div>
         </div>

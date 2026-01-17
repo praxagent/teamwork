@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button, Card, CardContent } from '@/components/common';
-import { Settings, Box, Terminal, FolderGit, Globe, Layers, ImageIcon, Zap, Hand } from 'lucide-react';
+import { Settings, Box, Terminal, FolderGit, Globe, Layers, ImageIcon, Zap, Hand, AlertCircle } from 'lucide-react';
+import { useSystemCapabilities } from '@/hooks/useApi';
 
 interface ConfigOptionsProps {
   onSubmit: (config: ConfigValues) => void;
@@ -85,6 +86,8 @@ export function ConfigOptions({
   projectDescription = '',
   onProjectDetailsChange,
 }: ConfigOptionsProps) {
+  const { data: capabilities } = useSystemCapabilities();
+  
   const [config, setConfig] = useState<ConfigValues>({
     runtime_mode: 'subprocess',
     workspace_type: 'local_git',
@@ -94,6 +97,13 @@ export function ConfigOptions({
   
   const [name, setName] = useState(projectName);
   const [description, setDescription] = useState(projectDescription);
+  
+  // Auto-disable image generation if OpenAI is not configured
+  useEffect(() => {
+    if (capabilities && !capabilities.image_generation_available) {
+      setConfig(prev => ({ ...prev, generate_images: false }));
+    }
+  }, [capabilities]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +112,8 @@ export function ConfigOptions({
     }
     onSubmit(config);
   };
+  
+  const imageGenDisabled = capabilities && !capabilities.image_generation_available;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -240,21 +252,36 @@ export function ConfigOptions({
           <h2 className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-3">
             Profile Images
           </h2>
+          {imageGenDisabled && (
+            <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg mb-3">
+              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-yellow-800">OpenAI API key not configured</p>
+                <p className="text-yellow-700">
+                  Add OPENAI_API_KEY to your .env file to enable AI-generated profile images.
+                  You can still upload custom images for each agent later.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="space-y-3">
             <OptionCard
-              selected={config.generate_images}
-              onClick={() => setConfig({ ...config, generate_images: true })}
+              selected={config.generate_images && !imageGenDisabled}
+              onClick={() => !imageGenDisabled && setConfig({ ...config, generate_images: true })}
               icon={ImageIcon}
               title="Generate AI Profile Images"
-              description="Create unique profile pictures for each team member using AI."
-              badge="Recommended"
+              description={imageGenDisabled 
+                ? "Unavailable - OpenAI API key required" 
+                : "Create unique profile pictures for each team member using AI."}
+              badge={imageGenDisabled ? undefined : "Recommended"}
             />
             <OptionCard
-              selected={!config.generate_images}
+              selected={!config.generate_images || imageGenDisabled}
               onClick={() => setConfig({ ...config, generate_images: false })}
               icon={Users}
               title="Use Initials Avatars"
-              description="Simple colored avatars with initials. Faster setup, no API needed."
+              description="Simple colored avatars with initials. You can upload custom images later."
+              badge={imageGenDisabled ? "Selected" : undefined}
             />
           </div>
         </div>

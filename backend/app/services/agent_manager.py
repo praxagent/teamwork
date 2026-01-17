@@ -313,6 +313,7 @@ class AgentManager:
         workspace_dir: Path,
         session_id: str | None = None,
         allowed_tools: list[str] | None = None,
+        model: str | None = None,
     ) -> tuple[str, str | None]:
         """
         Invoke Claude Code CLI to process a prompt.
@@ -338,6 +339,11 @@ You write clean, well-documented code. When creating files:
 
         # Build command
         cmd = ["claude", "-p", prompt]
+        
+        # Add model selection if specified
+        if model:
+            cmd.extend(["--model", model])
+            print(f">>> Using model: {model}", flush=True)
         
         # Add system prompt
         cmd.extend(["--append-system-prompt", system_prompt])
@@ -545,6 +551,81 @@ You write clean, well-documented code. When creating files:
         
         return "\n".join(formatted)
 
+    def _select_model_for_task(self, task, project_config: dict) -> str | None:
+        """
+        Select the appropriate Claude model based on task complexity and project config.
+        
+        Model selection modes:
+        - "auto": PM decides based on task complexity
+        - "opus", "sonnet", "haiku": Fixed model for all tasks
+        - "hybrid": User can override per task, defaults to auto
+        
+        Returns model name or None (to use Claude Code default).
+        """
+        model_mode = project_config.get("model_mode", "auto")
+        
+        # If a specific model is set on the task, use that (hybrid mode override)
+        task_model = None
+        if hasattr(task, 'config') and task.config:
+            task_model = task.config.get("model")
+        if task_model:
+            print(f">>> Task-specific model override: {task_model}", flush=True)
+            return task_model
+        
+        # Fixed model modes
+        if model_mode == "opus":
+            return "claude-sonnet-4-20250514"  # Opus when available, fallback to Sonnet
+        elif model_mode == "sonnet":
+            return "claude-sonnet-4-20250514"
+        elif model_mode == "haiku":
+            return "claude-haiku-3-5-20241022"
+        
+        # Auto mode: determine based on task complexity
+        if model_mode in ("auto", "hybrid"):
+            complexity = "moderate"
+            if hasattr(task, 'config') and task.config:
+                complexity = task.config.get("complexity", "moderate")
+            
+            # Also check task description for complexity hints
+            desc_lower = (task.description or "").lower()
+            title_lower = (task.title or "").lower()
+            
+            # High complexity indicators
+            high_complexity_keywords = [
+                "architecture", "refactor", "redesign", "security", "authentication",
+                "database schema", "api design", "complex", "critical", "integration",
+                "migrate", "optimize performance", "algorithm"
+            ]
+            
+            # Low complexity indicators
+            low_complexity_keywords = [
+                "fix typo", "update text", "change color", "simple", "minor",
+                "readme", "documentation", "comment", "rename", "small change"
+            ]
+            
+            for kw in high_complexity_keywords:
+                if kw in desc_lower or kw in title_lower:
+                    complexity = "complex"
+                    break
+            
+            for kw in low_complexity_keywords:
+                if kw in desc_lower or kw in title_lower:
+                    complexity = "simple"
+                    break
+            
+            # Map complexity to model
+            if complexity == "complex":
+                print(f">>> Auto-selected model: Sonnet (complex task)", flush=True)
+                return "claude-sonnet-4-20250514"
+            elif complexity == "simple":
+                print(f">>> Auto-selected model: Haiku (simple task)", flush=True)
+                return "claude-haiku-3-5-20241022"
+            else:
+                print(f">>> Auto-selected model: Sonnet (moderate task)", flush=True)
+                return "claude-sonnet-4-20250514"
+        
+        return None  # Use Claude Code default
+
     async def execute_task(
         self,
         agent_id: str,
@@ -665,6 +746,15 @@ You write clean, well-documented code. When creating files:
                 self._live_output[agent_id]["output"] += f"Error: {error_msg}\n"
                 return {"success": False, "error": error_msg}
             
+            # Get project config for model selection
+            from app.models import Project
+            project_result = await db.execute(select(Project).where(Project.id == agent.project_id))
+            project = project_result.scalar_one_or_none()
+            project_config = project.config if project else {}
+            
+            # Select model based on task and project config
+            selected_model = self._select_model_for_task(task, project_config)
+            
             # Update live output with task info
             self._live_output[agent_id]["output"] += f"Task: {task.title}\n"
             self._live_output[agent_id]["output"] += f"Agent: {agent.name}\n"
@@ -775,9 +865,11 @@ When done, provide a summary of what you created."""
             # Update live output before invoking
             self._live_output[agent_id]["output"] += "\n--- Starting Claude Code ---\n"
             self._live_output[agent_id]["output"] += f"Prompt length: {len(prompt)} chars\n"
+            if selected_model:
+                self._live_output[agent_id]["output"] += f"Model: {selected_model}\n"
             self._live_output[agent_id]["status"] = "invoking"
             self._live_output[agent_id]["last_update"] = datetime.utcnow().isoformat()
-            print(f">>> Invoking Claude Code for agent {agent.name}, task: {task.title}", flush=True)
+            print(f">>> Invoking Claude Code for agent {agent.name}, task: {task.title}, model: {selected_model}", flush=True)
 
             # Invoke Claude Code
             workspace_dir = agent_process.workspace_dir or (self._workspace_path / agent.project_id)
@@ -788,6 +880,7 @@ When done, provide a summary of what you created."""
                     workspace_dir,
                     session_id=agent_process.session_id,
                     allowed_tools=["Read", "Edit", "Write", "Bash(git:*)", "Bash(npm:*)", "Bash(pip:*)", "Bash(ls:*)", "Bash(mkdir:*)"],
+                    model=selected_model,
                 )
             except Exception as e:
                 error_msg = f"Claude Code invocation failed: {str(e)}"

@@ -4,10 +4,13 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models import get_db
+from app.utils.workspace import get_project_workspace_path
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
 
@@ -158,9 +161,12 @@ def build_file_tree(path: Path, relative_base: Path, max_depth: int = 5, current
 
 
 @router.get("/{project_id}/files", response_model=FilesResponse)
-async def list_workspace_files(project_id: str) -> FilesResponse:
+async def list_workspace_files(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FilesResponse:
     """List all files in the project workspace."""
-    workspace_path = settings.workspace_path / project_id
+    workspace_path = await get_project_workspace_path(project_id, db)
     
     if not workspace_path.exists():
         # Create workspace if it doesn't exist
@@ -179,16 +185,17 @@ async def list_workspace_files(project_id: str) -> FilesResponse:
 async def get_file_content(
     project_id: str,
     path: str = Query(..., description="Relative path to file"),
+    db: AsyncSession = Depends(get_db),
 ) -> FileContentResponse:
     """Get content of a specific file."""
-    workspace_path = settings.workspace_path / project_id
+    workspace_path = await get_project_workspace_path(project_id, db)
     file_path = workspace_path / path
     
     # Security: ensure path is within workspace
     try:
         file_path = file_path.resolve()
-        workspace_path = workspace_path.resolve()
-        if not str(file_path).startswith(str(workspace_path)):
+        workspace_resolved = workspace_path.resolve()
+        if not str(file_path).startswith(str(workspace_resolved)):
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception:
         raise HTTPException(status_code=403, detail="Invalid path")
@@ -218,11 +225,15 @@ async def get_file_content(
 
 
 @router.get("/{project_id}/git-log")
-async def get_git_log(project_id: str, limit: int = 20) -> dict:
+async def get_git_log(
+    project_id: str,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     """Get git commit history for the workspace."""
     import subprocess
     
-    workspace_path = settings.workspace_path / project_id
+    workspace_path = await get_project_workspace_path(project_id, db)
     
     if not workspace_path.exists():
         return {"commits": [], "error": "Workspace not found"}
@@ -290,235 +301,238 @@ class TaskDiffResponse(BaseModel):
 
 
 @router.get("/{project_id}/task/{task_id}/diff", response_model=TaskDiffResponse)
-async def get_task_diff(project_id: str, task_id: str) -> TaskDiffResponse:
+async def get_task_diff(
+    project_id: str,
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> TaskDiffResponse:
     """
     Get the code changes (diff) for a completed task.
     Shows all file changes between when the task started and completed.
     """
     import subprocess
     from sqlalchemy import select
-    from app.models import Task, get_db, AsyncSessionLocal
+    from app.models import Task
     
-    workspace_path = settings.workspace_path / project_id
+    workspace_path = await get_project_workspace_path(project_id, db)
     
     # Get task from database
-    async with AsyncSessionLocal() as db:
-        task_result = await db.execute(
-            select(Task).where(Task.id == task_id)
+    task_result = await db.execute(
+        select(Task).where(Task.id == task_id)
+    )
+    task = task_result.scalar_one_or_none()
+    
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Get latest commit if task doesn't have end_commit
+    start_commit = task.start_commit
+    end_commit = task.end_commit
+    
+    if not workspace_path.exists():
+        return TaskDiffResponse(
+            task_id=task_id,
+            task_title=task.title,
+            start_commit=start_commit,
+            end_commit=end_commit,
+            files_changed=0,
+            total_additions=0,
+            total_deletions=0,
+            files=[],
+            commits=[],
+            error="Workspace not found"
         )
-        task = task_result.scalar_one_or_none()
-        
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
-        
-        # Get latest commit if task doesn't have end_commit
-        start_commit = task.start_commit
-        end_commit = task.end_commit
-        
-        if not workspace_path.exists():
-            return TaskDiffResponse(
-                task_id=task_id,
-                task_title=task.title,
-                start_commit=start_commit,
-                end_commit=end_commit,
-                files_changed=0,
-                total_additions=0,
-                total_deletions=0,
-                files=[],
-                commits=[],
-                error="Workspace not found"
-            )
-        
-        git_dir = workspace_path / ".git"
-        if not git_dir.exists():
-            return TaskDiffResponse(
-                task_id=task_id,
-                task_title=task.title,
-                start_commit=start_commit,
-                end_commit=end_commit,
-                files_changed=0,
-                total_additions=0,
-                total_deletions=0,
-                files=[],
-                commits=[],
-                error="Not a git repository"
-            )
-        
-        # If no commits recorded, try to show all changes
-        if not start_commit and not end_commit:
-            # Show diff from initial commit to HEAD
-            try:
-                result = subprocess.run(
-                    ["git", "rev-list", "--max-parents=0", "HEAD"],
-                    cwd=workspace_path,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    start_commit = result.stdout.strip().split('\n')[0]
-                    end_commit = "HEAD"
-            except Exception:
-                pass
-        
-        if not start_commit:
-            return TaskDiffResponse(
-                task_id=task_id,
-                task_title=task.title,
-                start_commit=None,
-                end_commit=None,
-                files_changed=0,
-                total_additions=0,
-                total_deletions=0,
-                files=[],
-                commits=[],
-                error="No commits recorded for this task"
-            )
-        
+    
+    git_dir = workspace_path / ".git"
+    if not git_dir.exists():
+        return TaskDiffResponse(
+            task_id=task_id,
+            task_title=task.title,
+            start_commit=start_commit,
+            end_commit=end_commit,
+            files_changed=0,
+            total_additions=0,
+            total_deletions=0,
+            files=[],
+            commits=[],
+            error="Not a git repository"
+        )
+    
+    # If no commits recorded, try to show all changes
+    if not start_commit and not end_commit:
+        # Show diff from initial commit to HEAD
         try:
-            # Get list of commits between start and end
-            commit_range = f"{start_commit}..{end_commit or 'HEAD'}"
-            
-            # Get commits in range
-            commits_result = subprocess.run(
-                ["git", "log", commit_range, "--pretty=format:%H|%an|%at|%s"],
+            result = subprocess.run(
+                ["git", "rev-list", "--max-parents=0", "HEAD"],
                 cwd=workspace_path,
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            
-            commits = []
-            if commits_result.returncode == 0:
-                for line in commits_result.stdout.strip().split('\n'):
-                    if not line:
+            if result.returncode == 0 and result.stdout.strip():
+                start_commit = result.stdout.strip().split('\n')[0]
+                end_commit = "HEAD"
+        except Exception:
+            pass
+    
+    if not start_commit:
+        return TaskDiffResponse(
+            task_id=task_id,
+            task_title=task.title,
+            start_commit=None,
+            end_commit=None,
+            files_changed=0,
+            total_additions=0,
+            total_deletions=0,
+            files=[],
+            commits=[],
+            error="No commits recorded for this task"
+        )
+    
+    try:
+        # Get list of commits between start and end
+        commit_range = f"{start_commit}..{end_commit or 'HEAD'}"
+        
+        # Get commits in range
+        commits_result = subprocess.run(
+            ["git", "log", commit_range, "--pretty=format:%H|%an|%at|%s"],
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        
+        commits = []
+        if commits_result.returncode == 0:
+            for line in commits_result.stdout.strip().split('\n'):
+                if not line:
+                    continue
+                parts = line.split('|', 3)
+                if len(parts) >= 4:
+                    commits.append({
+                        "hash": parts[0][:8],
+                        "author": parts[1],
+                        "timestamp": int(parts[2]),
+                        "message": parts[3],
+                    })
+        
+        # Get file stats
+        stat_result = subprocess.run(
+            ["git", "diff", "--stat", "--numstat", commit_range],
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        
+        # Parse numstat for accurate counts
+        file_stats = {}
+        if stat_result.returncode == 0:
+            for line in stat_result.stdout.strip().split('\n'):
+                parts = line.split('\t')
+                if len(parts) >= 3:
+                    try:
+                        additions = int(parts[0]) if parts[0] != '-' else 0
+                        deletions = int(parts[1]) if parts[1] != '-' else 0
+                        file_path = parts[2]
+                        file_stats[file_path] = {
+                            "additions": additions,
+                            "deletions": deletions,
+                        }
+                    except ValueError:
                         continue
-                    parts = line.split('|', 3)
-                    if len(parts) >= 4:
-                        commits.append({
-                            "hash": parts[0][:8],
-                            "author": parts[1],
-                            "timestamp": int(parts[2]),
-                            "message": parts[3],
-                        })
+        
+        # Get actual diffs
+        diff_result = subprocess.run(
+            ["git", "diff", commit_range, "--no-color"],
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        
+        # Parse diff output into per-file diffs
+        files = []
+        current_file = None
+        current_diff_lines = []
+        total_additions = 0
+        total_deletions = 0
+        
+        if diff_result.returncode == 0:
+            for line in diff_result.stdout.split('\n'):
+                if line.startswith('diff --git'):
+                    # Save previous file
+                    if current_file:
+                        stats = file_stats.get(current_file, {"additions": 0, "deletions": 0})
+                        files.append(FileDiff(
+                            path=current_file,
+                            status="modified",
+                            additions=stats["additions"],
+                            deletions=stats["deletions"],
+                            diff='\n'.join(current_diff_lines),
+                        ))
+                        total_additions += stats["additions"]
+                        total_deletions += stats["deletions"]
+                    
+                    # Start new file
+                    parts = line.split(' b/')
+                    if len(parts) >= 2:
+                        current_file = parts[1]
+                    current_diff_lines = [line]
+                else:
+                    current_diff_lines.append(line)
             
-            # Get file stats
-            stat_result = subprocess.run(
-                ["git", "diff", "--stat", "--numstat", commit_range],
-                cwd=workspace_path,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            
-            # Parse numstat for accurate counts
-            file_stats = {}
-            if stat_result.returncode == 0:
-                for line in stat_result.stdout.strip().split('\n'):
-                    parts = line.split('\t')
-                    if len(parts) >= 3:
-                        try:
-                            additions = int(parts[0]) if parts[0] != '-' else 0
-                            deletions = int(parts[1]) if parts[1] != '-' else 0
-                            file_path = parts[2]
-                            file_stats[file_path] = {
-                                "additions": additions,
-                                "deletions": deletions,
-                            }
-                        except ValueError:
-                            continue
-            
-            # Get actual diffs
-            diff_result = subprocess.run(
-                ["git", "diff", commit_range, "--no-color"],
-                cwd=workspace_path,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            
-            # Parse diff output into per-file diffs
-            files = []
-            current_file = None
-            current_diff_lines = []
-            total_additions = 0
-            total_deletions = 0
-            
-            if diff_result.returncode == 0:
-                for line in diff_result.stdout.split('\n'):
-                    if line.startswith('diff --git'):
-                        # Save previous file
-                        if current_file:
-                            stats = file_stats.get(current_file, {"additions": 0, "deletions": 0})
-                            files.append(FileDiff(
-                                path=current_file,
-                                status="modified",
-                                additions=stats["additions"],
-                                deletions=stats["deletions"],
-                                diff='\n'.join(current_diff_lines),
-                            ))
-                            total_additions += stats["additions"]
-                            total_deletions += stats["deletions"]
-                        
-                        # Start new file
-                        parts = line.split(' b/')
-                        if len(parts) >= 2:
-                            current_file = parts[1]
-                        current_diff_lines = [line]
-                    else:
-                        current_diff_lines.append(line)
-                
-                # Don't forget the last file
-                if current_file:
-                    stats = file_stats.get(current_file, {"additions": 0, "deletions": 0})
-                    files.append(FileDiff(
-                        path=current_file,
-                        status="modified",
-                        additions=stats["additions"],
-                        deletions=stats["deletions"],
-                        diff='\n'.join(current_diff_lines),
-                    ))
-                    total_additions += stats["additions"]
-                    total_deletions += stats["deletions"]
-            
-            return TaskDiffResponse(
-                task_id=task_id,
-                task_title=task.title,
-                start_commit=start_commit[:8] if start_commit else None,
-                end_commit=(end_commit[:8] if end_commit and end_commit != "HEAD" else end_commit) if end_commit else None,
-                files_changed=len(files),
-                total_additions=total_additions,
-                total_deletions=total_deletions,
-                files=files,
-                commits=commits,
-            )
-            
-        except subprocess.TimeoutExpired:
-            return TaskDiffResponse(
-                task_id=task_id,
-                task_title=task.title,
-                start_commit=start_commit,
-                end_commit=end_commit,
-                files_changed=0,
-                total_additions=0,
-                total_deletions=0,
-                files=[],
-                commits=[],
-                error="Git command timed out"
-            )
-        except Exception as e:
-            return TaskDiffResponse(
-                task_id=task_id,
-                task_title=task.title,
-                start_commit=start_commit,
-                end_commit=end_commit,
-                files_changed=0,
-                total_additions=0,
-                total_deletions=0,
-                files=[],
-                commits=[],
-                error=str(e)
-            )
+            # Don't forget the last file
+            if current_file:
+                stats = file_stats.get(current_file, {"additions": 0, "deletions": 0})
+                files.append(FileDiff(
+                    path=current_file,
+                    status="modified",
+                    additions=stats["additions"],
+                    deletions=stats["deletions"],
+                    diff='\n'.join(current_diff_lines),
+                ))
+                total_additions += stats["additions"]
+                total_deletions += stats["deletions"]
+        
+        return TaskDiffResponse(
+            task_id=task_id,
+            task_title=task.title,
+            start_commit=start_commit[:8] if start_commit else None,
+            end_commit=(end_commit[:8] if end_commit and end_commit != "HEAD" else end_commit) if end_commit else None,
+            files_changed=len(files),
+            total_additions=total_additions,
+            total_deletions=total_deletions,
+            files=files,
+            commits=commits,
+        )
+        
+    except subprocess.TimeoutExpired:
+        return TaskDiffResponse(
+            task_id=task_id,
+            task_title=task.title,
+            start_commit=start_commit,
+            end_commit=end_commit,
+            files_changed=0,
+            total_additions=0,
+            total_deletions=0,
+            files=[],
+            commits=[],
+            error="Git command timed out"
+        )
+    except Exception as e:
+        return TaskDiffResponse(
+            task_id=task_id,
+            task_title=task.title,
+            start_commit=start_commit,
+            end_commit=end_commit,
+            files_changed=0,
+            total_additions=0,
+            total_deletions=0,
+            files=[],
+            commits=[],
+            error=str(e)
+        )
 
 
 class TestAppResponse(BaseModel):

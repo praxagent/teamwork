@@ -92,6 +92,7 @@ export function useUpdateProjectConfig() {
       auto_execute_tasks?: boolean;
       runtime_mode?: string;
       workspace_type?: string;
+      model_mode?: string;  // auto, sonnet, haiku, hybrid
     }) => {
       const { projectId, ...config } = data;
       return fetchJson<Project>(`/projects/${projectId}/config`, {
@@ -694,5 +695,62 @@ export function useAgentLiveOutput(agentId: string | null, enabled: boolean = tr
     enabled: !!agentId && enabled,
     refetchInterval: 1000, // Poll every 1 second when enabled for more responsive updates
     staleTime: 500,
+  });
+}
+
+// System Capabilities
+export interface SystemCapabilities {
+  image_generation_available: boolean;
+  claude_code_available: boolean;
+  anthropic_configured: boolean;
+  openai_configured: boolean;
+}
+
+export function useSystemCapabilities() {
+  return useQuery({
+    queryKey: ['system-capabilities'],
+    queryFn: () => fetchJson<SystemCapabilities>('/onboarding/capabilities'),
+    staleTime: 60000, // Cache for 1 minute
+  });
+}
+
+// Update Agent Profile Image
+export function useUpdateAgentProfileImage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      agentId: string;
+      imageData: string;  // Base64 data (can include data URL prefix)
+      imageType?: string;
+    }) => {
+      return fetchJson<Agent>(`/agents/${data.agentId}/profile-image`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          image_data: data.imageData,
+          image_type: data.imageType,
+        }),
+      });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agent', variables.agentId] });
+    },
+  });
+}
+
+export function useRemoveAgentProfileImage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (agentId: string) => {
+      return fetchJson<Agent>(`/agents/${agentId}/profile-image`, {
+        method: 'DELETE',
+      });
+    },
+    onSuccess: (_, agentId) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
+    },
   });
 }

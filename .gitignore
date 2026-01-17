@@ -58,8 +58,16 @@ Thumbs.db
 coverage/
 .nyc_output/
 
-# Workspace directories
+# Workspace directories (generated code)
 workspace/
+backend/workspace/
+
+# Data directories (database)
+data/
+backend/data/
+
+# Backups
+backups/
 
 # Misc
 *.log

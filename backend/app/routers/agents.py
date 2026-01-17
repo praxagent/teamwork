@@ -191,6 +191,82 @@ async def update_agent_status(
     return agent_to_response(agent)
 
 
+class UpdateProfileImageRequest(BaseModel):
+    """Request to update agent profile image."""
+    image_data: str  # Base64 encoded image data (with or without data URL prefix)
+    image_type: str | None = None  # Optional: professional, vacation, hobby, pet, artistic
+
+
+@router.patch("/{agent_id}/profile-image", response_model=AgentResponse)
+async def update_agent_profile_image(
+    agent_id: str,
+    request: UpdateProfileImageRequest,
+    db: AsyncSession = Depends(get_db),
+) -> AgentResponse:
+    """Update an agent's profile image manually."""
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = result.scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Parse the image data
+    image_data = request.image_data
+    
+    # Remove data URL prefix if present
+    if image_data.startswith("data:"):
+        # Format: data:image/png;base64,XXXX
+        try:
+            image_data = image_data.split(",", 1)[1]
+        except IndexError:
+            raise HTTPException(status_code=400, detail="Invalid image data format")
+    
+    # Decode base64
+    try:
+        image_bytes = base64.b64decode(image_data)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 image data")
+    
+    # Update agent
+    agent.profile_image = image_bytes
+    if request.image_type:
+        agent.profile_image_type = request.image_type
+    
+    await db.commit()
+    await db.refresh(agent)
+
+    # Broadcast update
+    await manager.broadcast_to_project(
+        agent.project_id,
+        WebSocketEvent(
+            type=EventType.AGENT_STATUS,
+            data={"agent_id": agent_id, "status": agent.status, "name": agent.name, "profile_updated": True},
+        ),
+    )
+
+    return agent_to_response(agent)
+
+
+@router.delete("/{agent_id}/profile-image", response_model=AgentResponse)
+async def remove_agent_profile_image(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> AgentResponse:
+    """Remove an agent's profile image (revert to initials avatar)."""
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = result.scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.profile_image = None
+    
+    await db.commit()
+    await db.refresh(agent)
+
+    return agent_to_response(agent)
+
+
 @router.get("/{agent_id}/activity", response_model=list[ActivityLogResponse])
 async def get_agent_activity(
     agent_id: str,

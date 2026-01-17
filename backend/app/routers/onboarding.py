@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import Project, Agent, Channel, Task, get_db
 from app.services.project_analyzer import ProjectAnalyzer
 from app.services.personality_generator import PersonalityGenerator
@@ -20,6 +21,30 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+
+class SystemCapabilities(BaseModel):
+    """System capabilities check response."""
+    image_generation_available: bool
+    claude_code_available: bool
+    anthropic_configured: bool
+    openai_configured: bool
+
+
+@router.get("/capabilities", response_model=SystemCapabilities)
+async def get_system_capabilities() -> SystemCapabilities:
+    """
+    Check what system capabilities are available.
+    Used by frontend to conditionally show features.
+    """
+    import shutil
+    
+    return SystemCapabilities(
+        image_generation_available=bool(settings.openai_api_key),
+        claude_code_available=shutil.which("claude") is not None,
+        anthropic_configured=bool(settings.anthropic_api_key),
+        openai_configured=bool(settings.openai_api_key),
+    )
 
 
 class AppDescriptionRequest(BaseModel):
@@ -66,6 +91,7 @@ class ConfigOptions(BaseModel):
     runtime_mode: str = "subprocess"  # subprocess or docker
     workspace_type: str = "local_git"  # local, local_git, browser, hybrid
     auto_execute_tasks: bool = True  # auto-execute tasks when created
+    workspace_naming: str = "named"  # 'named' (app_name_uuid) or 'uuid_only'
 
 
 class FinalizeRequest(BaseModel):
@@ -423,9 +449,15 @@ async def finalize_project(
         "runtime_mode": request.config.runtime_mode,
         "workspace_type": request.config.workspace_type,
         "auto_execute_tasks": request.config.auto_execute_tasks,
+        "workspace_naming": request.config.workspace_naming,
         "status": "generating",
     }
     project.status = "generating"
+    
+    # Set workspace directory name based on naming preference
+    project.workspace_dir = project.get_workspace_dir_name()
+    logger.info(f"[Onboarding] Set workspace_dir to: {project.workspace_dir}")
+    
     await db.flush()
 
     # Get team suggestions from session

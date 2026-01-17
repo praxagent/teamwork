@@ -1,5 +1,4 @@
-# Backend Dockerfile for the Virtual Dev Team Simulator
-
+# Backend Dockerfile
 FROM python:3.11-slim
 
 # Install system dependencies
@@ -8,34 +7,36 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
+# Install uv for fast package management
 RUN pip install uv
 
-# Create app user
-RUN useradd -m -s /bin/bash app
-USER app
-
-# Set working directory
+# Create app directory
 WORKDIR /app
 
-# Copy dependency files
-COPY --chown=app:app pyproject.toml ./
+# Copy dependency files first (for better caching)
+COPY pyproject.toml ./
 
 # Install dependencies
-RUN uv venv && uv pip install -e .
+RUN uv pip install --system -e .
 
 # Copy application code
-COPY --chown=app:app app/ ./app/
+COPY app/ ./app/
 
-# Create workspace directory
-RUN mkdir -p /app/workspace
+# Create directories for data and workspace
+RUN mkdir -p /app/data /workspace
+
+# Create non-root user and set permissions
+RUN useradd -m -s /bin/bash appuser \
+    && chown -R appuser:appuser /app /workspace
+
+USER appuser
 
 # Expose port
 EXPOSE 8000
 
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV WORKSPACE_PATH=/app/workspace
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
