@@ -1183,7 +1183,7 @@ Start with something like "🎉 @CEO" to get their attention."""
     ) -> list[Task]:
         """
         Use AI to break down a high-level goal into specific tasks,
-        create them, and optionally assign to available developers.
+        create them, and optionally assign to available developers and QA.
         """
         client = self._get_client()
 
@@ -1195,6 +1195,15 @@ Start with something like "🎉 @CEO" to get their attention."""
         )
         developers = devs_result.scalars().all()
         dev_names = [d.name for d in developers]
+        
+        # Get available QA engineers
+        qa_result = await db.execute(
+            select(Agent)
+            .where(Agent.project_id == project_id)
+            .where(Agent.role == "qa")
+        )
+        qa_engineers = qa_result.scalars().all()
+        qa_names = [q.name for q in qa_engineers]
 
         # Get project info
         project_result = await db.execute(
@@ -1202,22 +1211,32 @@ Start with something like "🎉 @CEO" to get their attention."""
         )
         project = project_result.scalar_one_or_none()
 
-        prompt = f"""You are a Product Manager breaking down a goal into specific, actionable development tasks.
+        prompt = f"""You are a Product Manager breaking down a goal into specific, actionable tasks.
 
 Project: {project.name if project else 'Unknown'}
 Goal: {goal}
 
 Available developers: {', '.join(dev_names) if dev_names else 'None assigned yet'}
+Available QA engineers: {', '.join(qa_names) if qa_names else 'None assigned yet'}
 
-Break this goal into 2-5 specific, actionable tasks. Each task should be:
+Break this goal into 3-7 specific, actionable tasks. IMPORTANT:
+- Include BOTH development tasks AND testing tasks
+- For every major feature, include a corresponding test task
+- Test tasks should include: writing unit tests, integration tests, and manual testing
+- Assign development tasks to developers
+- Assign testing/QA tasks to QA engineers
+
+Each task should be:
 - Clear and specific
-- Achievable by one developer
+- Achievable by one person
 - Have a descriptive title (max 100 chars)
 - Have a brief description of what needs to be done
+- Specify the task_type: "development" or "testing"
 
 Return your response as a JSON array of tasks:
 [
-  {{"title": "Task title", "description": "What needs to be done", "priority": 1-5, "suggested_assignee": "Developer Name or null"}}
+  {{"title": "Implement user login", "description": "Create login form and authentication logic", "priority": 5, "task_type": "development", "suggested_assignee": "Developer Name"}},
+  {{"title": "Write unit tests for authentication", "description": "Create comprehensive unit tests for login, logout, and session management", "priority": 4, "task_type": "testing", "suggested_assignee": "QA Engineer Name"}}
 ]
 
 Only return the JSON array, no other text."""
@@ -1225,7 +1244,7 @@ Only return the JSON array, no other text."""
         try:
             response = await client.messages.create(
                 model="claude-sonnet-4-20250514",
-                max_tokens=1000,
+                max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
             )
 
@@ -1240,18 +1259,24 @@ Only return the JSON array, no other text."""
             tasks_data = json.loads(response_text)
             created_tasks = []
 
-            dev_by_name = {d.name.lower(): d for d in developers}
-            # Also map by first name
+            # Build lookup maps for both developers and QA
+            agent_by_name = {}
             for d in developers:
-                dev_by_name[d.name.split()[0].lower()] = d
+                agent_by_name[d.name.lower()] = d
+                agent_by_name[d.name.split()[0].lower()] = d
+            for q in qa_engineers:
+                agent_by_name[q.name.lower()] = q
+                agent_by_name[q.name.split()[0].lower()] = q
 
             for task_data in tasks_data:
                 # Find suggested assignee
                 assignee_id = None
+                assigned_agent = None
                 if auto_assign and task_data.get("suggested_assignee"):
                     suggested = task_data["suggested_assignee"].lower()
-                    if suggested in dev_by_name:
-                        assignee_id = dev_by_name[suggested].id
+                    if suggested in agent_by_name:
+                        assigned_agent = agent_by_name[suggested]
+                        assignee_id = assigned_agent.id
 
                 task = await self.create_task(
                     db=db,
@@ -1263,16 +1288,16 @@ Only return the JSON array, no other text."""
                 )
                 created_tasks.append(task)
 
-                # Notify assigned developer
-                if assignee_id:
-                    agent = dev_by_name.get(task_data["suggested_assignee"].lower())
-                    if agent:
-                        await self.assign_task_to_agent(db, task, agent, pm)
+                # Notify assigned agent (developer or QA)
+                if assigned_agent:
+                    await self.assign_task_to_agent(db, task, assigned_agent, pm)
 
             return created_tasks
 
         except Exception as e:
             print(f"Error breaking down tasks: {e}")
+            import traceback
+            traceback.print_exc()
             return []
 
     async def pm_creates_work(

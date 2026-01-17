@@ -367,8 +367,50 @@ Return ONLY valid JSON, no explanation."""
 
         role_descriptions = {
             "pm": "Product Manager responsible for project vision, requirements, and team coordination",
-            "developer": "Software Developer responsible for implementing features and writing quality code",
-            "qa": "QA Engineer responsible for testing, quality assurance, and bug identification",
+            "developer": "Software Developer responsible for implementing features, writing quality code, AND writing comprehensive unit tests",
+            "qa": "QA Engineer responsible for writing tests, quality assurance, test automation, and ensuring code coverage",
+        }
+        
+        # Role-specific responsibilities
+        role_responsibilities = {
+            "pm": """- Define project requirements and acceptance criteria
+- Coordinate between team members
+- Track progress and manage blockers
+- Ensure quality standards are met
+- Review completed work against requirements""",
+            "developer": """- Implement features according to specifications
+- Write clean, maintainable, well-documented code
+- ALWAYS write unit tests for new code (this is mandatory)
+- Aim for 80%+ test coverage on new functionality
+- Use appropriate testing frameworks (pytest, jest, vitest, etc.)
+- Include tests for edge cases and error handling
+- Participate in code reviews""",
+            "qa": """- Write comprehensive unit tests for all components
+- Create integration tests for feature workflows
+- Design test plans and test cases
+- Automate testing wherever possible
+- Use testing frameworks: pytest, jest, vitest, playwright, etc.
+- Ensure edge cases and error scenarios are covered
+- Report and track bugs with clear reproduction steps
+- Verify fixes and perform regression testing
+- Aim for high code coverage (80%+)
+- Review code for testability and quality issues""",
+        }
+        
+        # Role-specific guidelines
+        role_guidelines = {
+            "pm": """- Break down large features into testable tasks
+- Ensure every development task has corresponding test requirements
+- Review test coverage before marking features complete""",
+            "developer": """- Never submit code without tests
+- Write tests BEFORE or ALONGSIDE implementation (TDD encouraged)
+- Run tests locally before committing
+- Fix failing tests immediately""",
+            "qa": """- Start writing tests as soon as requirements are available
+- Create tests that can be automated and run in CI
+- Prioritize testing critical user paths first
+- Document test coverage and gaps
+- Collaborate with developers on testability""",
         }
 
         return f"""# {persona['name']}'s Technical Profile
@@ -385,14 +427,18 @@ Return ONLY valid JSON, no explanation."""
 - Code Style: {work_style.get('code_style', 'Clean and maintainable')}
 
 ## Responsibilities
-- Collaborate with team members on assigned tasks
-- Communicate progress and blockers in team channels
-- Maintain code quality and follow project standards
-- Participate in code reviews and discussions
+{role_responsibilities.get(role, '- Collaborate with team members')}
+
+## Testing Requirements (CRITICAL)
+- ALL code must have tests
+- Tests are not optional - they are mandatory
+- No feature is complete without test coverage
+- Use appropriate testing frameworks for the project
 
 ## Working Guidelines
 - Pick up tasks from the team queue
 - Post updates to the appropriate team channel
 - Ask for help when blocked
 - Review and provide feedback on teammates' work
+{role_guidelines.get(role, '')}
 """

@@ -29,6 +29,7 @@ from app.routers import (
     onboarding_router,
     projects_router,
     tasks_router,
+    terminal_router,
     workspace_router,
 )
 from app.services import agent_manager as am_module
@@ -543,6 +544,27 @@ async def task_manager_background_task():
             await asyncio.sleep(10)
 
 
+def check_api_keys():
+    """Check that required API keys are configured."""
+    print(f"[Config] Project root: {settings.workspace_path.parent}")
+    print(f"[Config] Workspace path: {settings.workspace_path}")
+    print(f"[Config] Database URL: {settings.database_url}")
+    
+    if settings.anthropic_api_key:
+        # Mask the key for security
+        masked = settings.anthropic_api_key[:8] + "..." + settings.anthropic_api_key[-4:]
+        print(f"[Config] Anthropic API key: {masked}")
+    else:
+        print("[WARNING] ANTHROPIC_API_KEY is not set! Agents will not work.")
+        print("[WARNING] Add ANTHROPIC_API_KEY to your .env file at the project root.")
+    
+    if settings.openai_api_key:
+        masked = settings.openai_api_key[:8] + "..." + settings.openai_api_key[-4:]
+        print(f"[Config] OpenAI API key: {masked}")
+    else:
+        print("[Config] OpenAI API key: Not configured (profile images disabled)")
+
+
 async def run_migrations():
     """Run database migrations to add new columns to existing tables."""
     async with AsyncSessionLocal() as db:
@@ -569,6 +591,9 @@ async def lifespan(app: FastAPI):
     
     # Initialize database
     await init_db()
+    
+    # Check API keys are configured
+    check_api_keys()
     
     # Run migrations for existing databases
     await run_migrations()
@@ -632,6 +657,7 @@ app.include_router(messages_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(onboarding_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
+app.include_router(terminal_router, prefix="/api")
 
 
 @app.get("/")

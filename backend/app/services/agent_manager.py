@@ -801,6 +801,41 @@ approach or rejected a previous suggestion, follow their guidance.
 
 """
             
+            # Determine if this is a QA task or development task
+            is_qa_task = agent.role == "qa" or any(kw in task.title.lower() for kw in ["test", "qa", "quality", "verify", "validate"])
+            
+            if is_qa_task:
+                testing_instructions = """
+## Testing Instructions (QA Task)
+
+You are working on a TESTING task. Your primary responsibilities:
+
+1. **Write comprehensive unit tests** for the relevant code
+2. **Write integration tests** if applicable
+3. **Use appropriate testing frameworks** (pytest for Python, jest/vitest for JavaScript/TypeScript)
+4. **Test edge cases and error handling**
+5. **Aim for high code coverage** (80%+)
+6. **Document test cases** and what they verify
+
+Structure your tests properly:
+- Create test files in appropriate locations (tests/, __tests__/, *.test.ts, etc.)
+- Use descriptive test names that explain what's being tested
+- Include setup/teardown as needed
+- Mock external dependencies appropriately"""
+            else:
+                testing_instructions = """
+## Testing Requirements (MANDATORY)
+
+Your implementation MUST include tests. This is NOT optional.
+
+1. **Write unit tests** for all new functions/components
+2. **Use appropriate testing frameworks** (pytest for Python, jest/vitest for JavaScript/TypeScript)
+3. **Test the happy path AND error cases**
+4. **Aim for 80%+ coverage** on new code
+5. Create test files alongside your implementation
+
+A task is NOT complete without tests. Do not skip this step."""
+            
             prompt = f"""You have been assigned the following task:
 
 **Task:** {task.title}
@@ -810,12 +845,13 @@ approach or rejected a previous suggestion, follow their guidance.
 ## Instructions
 
 Please implement this task. Create any necessary files, write the code, and commit your changes.
+{testing_instructions}
 
 IMPORTANT: If the chat history shows the CEO/User gave specific instructions, corrections,
 or rejected certain approaches - follow their guidance exactly. The user's preferences
 take priority over your own implementation ideas.
 
-When done, provide a summary of what you created."""
+When done, provide a summary of what you created, INCLUDING the tests you wrote."""
 
             # Broadcast status
             await ws_manager.broadcast_to_project(

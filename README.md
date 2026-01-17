@@ -4,6 +4,14 @@
 
 A web application where AI agents simulate a software development team. Describe your application idea and the system generates a virtual team with a Product Manager, developers, and QA engineers. Each agent has a distinct persona and collaborates through a Slack-like interface to build your project.
 
+> **⚠️ Important: API Keys & Costs**
+>
+> This application requires your own API keys:
+> - **Anthropic API Key** (required) - Powers the AI agents via Claude
+> - **OpenAI API Key** (optional) - For AI-generated profile images
+>
+> **Use at your own risk.** Running AI agents can consume significant API credits, especially for complex projects or extended sessions. Monitor your API usage dashboards and set spending limits. The authors are not responsible for any charges incurred.
+
 ## Features
 
 - Onboarding wizard with AI-driven clarifying questions
@@ -16,6 +24,7 @@ A web application where AI agents simulate a software development team. Describe
 - Execution logs for tasks and agents
 - Code diff viewer for completed tasks
 - Pause/Resume kill switch for all agents
+- **Executive Access** - Run Claude Code or terminal sessions directly in the browser
 
 ## Screenshots
 
@@ -38,6 +47,12 @@ A web application where AI agents simulate a software development team. Describe
 | File Viewer | Work Logs |
 |---|---|
 | ![Files](assets/example_file_viewer.png) | ![Logs](assets/example_work_log.png) |
+
+### Executive Access
+
+![Executive Access](assets/executive_access.png)
+
+Launch Claude Code or terminal sessions directly in your browser. Choose between Local mode (uses your Claude subscription) or Docker mode (sandboxed container using API credits).
 
 ### Projects
 
@@ -276,6 +291,51 @@ Located in the Kanban board toolbar:
 - **Pause**: Immediately stop all running agents. Work in progress is saved.
 - **Resume**: Allow agents to continue. Restart tasks from the task board.
 
+## Executive Access (In-Browser Terminal)
+
+Access Claude Code or a terminal directly from the main navigation. Click the **Sparkles** icon (✨) in the header to open Executive Access, or use the **Claude Code** button in the Files view.
+
+### Two Modes
+
+| Mode | Claude Code | Terminal Access | Best For |
+|------|-------------|-----------------|----------|
+| **Local** | Uses your Claude subscription via local CLI | Direct system access | Personal use with existing Claude subscription |
+| **Docker** | Uses `ANTHROPIC_API_KEY` (API credits) | Sandboxed container | Isolated environment, API-based billing |
+
+### Local Mode
+- Requires [Claude Code CLI](https://code.claude.com/docs/en/quickstart) installed locally
+- Uses your Claude subscription (Pro/Max/Teams/Enterprise)
+- **Warning**: Has direct access to your system - use with caution
+
+### Docker Mode
+- Runs in a Docker container with Claude Code pre-installed
+- Uses your `ANTHROPIC_API_KEY` (billed as API usage, not subscription)
+- Sandboxed - cannot access files outside the workspace
+- **Warning**: Consumes API credits - monitor your usage
+
+### Skip Docker Setup (Recommended)
+
+By default, Docker mode requires Claude Code setup each session (for security, credentials aren't persisted). To skip this, export your local Claude config:
+
+```bash
+# On your local machine, after doing Claude Code setup once:
+cat ~/.claude.json | base64
+
+# Copy the output and add to your .env file:
+CLAUDE_CONFIG_BASE64=<paste the base64 string here>
+```
+
+This injects your config into Docker containers ephemerally (not persisted to disk).
+
+### Installation
+
+For **Local Mode**, install Claude Code CLI:
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+For **Docker Mode**, ensure Docker is installed and running.
+
 ## Model Selection
 
 Control which Claude model your agents use. Configure in Project Settings:
@@ -443,6 +503,25 @@ Reset the database (warning: deletes all data):
 ```bash
 rm -rf data/vteam.db*
 ```
+
+### Start completely fresh
+To wipe everything and start over (instead of deleting projects one by one in the UI):
+
+```bash
+# Stop the server first
+# Then delete database and all generated code:
+rm -rf data/vteam.db* workspace/*
+
+# Or use the Makefile shortcut:
+make reset-db
+rm -rf workspace/*
+```
+
+This removes:
+- All projects, agents, tasks, and chat history (database)
+- All generated code (workspace folder)
+
+The folders will be recreated automatically when you restart the server.
 
 ### Docker container won't start
 Check logs:

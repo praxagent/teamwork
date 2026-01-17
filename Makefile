@@ -1,7 +1,7 @@
 # TeamWork Makefile
 # Convenience commands for development and deployment
 
-.PHONY: help dev docker-up docker-down docker-build docker-logs clean
+.PHONY: help dev docker-up docker-down docker-build docker-logs clean reset-db reset-all install
 
 help:
 	@echo "TeamWork - Available Commands"
@@ -19,7 +19,8 @@ help:
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean          Remove generated files and caches"
-	@echo "  make reset-db       Delete the database and start fresh"
+	@echo "  make reset-db       Delete the database only"
+	@echo "  make reset-all      Delete database AND all generated code (full reset)"
 	@echo ""
 
 # Docker commands
@@ -69,6 +70,11 @@ clean:
 reset-db:
 	rm -f data/vteam.db* backend/data/vteam.db*
 	@echo "Database deleted. It will be recreated on next startup."
+
+reset-all:
+	rm -f data/vteam.db* backend/data/vteam.db*
+	rm -rf workspace/*
+	@echo "Database and workspace deleted. Everything will be recreated on next startup."
 
 # Install dependencies
 install:

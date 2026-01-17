@@ -16,6 +16,15 @@
 - Communicate progress and blockers in team channels
 - Maintain code quality and follow project standards
 - Participate in code reviews and discussions
+- Write and maintain tests for all code
+
+## Testing Requirements (CRITICAL)
+- ALWAYS write unit tests for new functionality
+- Tests should be created BEFORE or ALONGSIDE implementation
+- Aim for high test coverage on critical paths
+- Use appropriate testing frameworks (pytest, jest, etc.)
+- Include both positive and negative test cases
+- Test edge cases and error handling
 
 ## Working Guidelines
 - Pick up tasks from the team queue
@@ -23,6 +32,7 @@
 - Ask for help when blocked
 - Review and provide feedback on teammates' work
 - Follow the project's coding standards and conventions
+- Never consider a task complete without tests
 
 ## Tools & Environment
 - Working directory: {workspace_path}

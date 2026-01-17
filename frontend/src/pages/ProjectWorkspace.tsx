@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Code, ListTodo, Settings, ChevronLeft } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Sparkles } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -8,7 +8,7 @@ import {
   ThreadView,
 } from '@/components/chat';
 import { ProfileModal } from '@/components/profiles';
-import { FileBrowser, TaskBoard, SettingsPanel } from '@/components/workspace';
+import { FileBrowser, TaskBoard, SettingsPanel, ClaudePanel } from '@/components/workspace';
 import {
   useProject,
   useAgents,
@@ -32,6 +32,9 @@ export function ProjectWorkspace() {
   const [showTaskPanel, setShowTaskPanel] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showClaudePanel, setShowClaudePanel] = useState(false);
+  // Track if Claude panel has ever been opened (for persistent mounting)
+  const [claudePanelMounted, setClaudePanelMounted] = useState(false);
 
   // Stores
   const {
@@ -98,10 +101,11 @@ export function ProjectWorkspace() {
   const handleChannelSelect = (channelId: string) => {
     setCurrentChannelId(channelId);
     setActiveThreadId(null);
-    // Close any open panels to show chat view
+    // Close any open panels to show chat view (but keep Claude panel mounted)
     setShowTaskPanel(false);
     setShowFileBrowser(false);
     setShowSettings(false);
+    setShowClaudePanel(false);
   };
 
   const handleSendMessage = (content: string) => {
@@ -160,10 +164,11 @@ export function ProjectWorkspace() {
       });
       setCurrentChannelId(dmChannel.id);
       setActiveThreadId(null);
-      // Close any open panels to show chat view
+      // Close any open panels to show chat view (but keep Claude panel mounted)
       setShowTaskPanel(false);
       setShowFileBrowser(false);
       setShowSettings(false);
+      setShowClaudePanel(false);
     } catch (error) {
       console.error('Failed to open DM:', error);
     }
@@ -193,13 +198,15 @@ export function ProjectWorkspace() {
           setShowSettings(true);
           setShowTaskPanel(false);
           setShowFileBrowser(false);
+          setShowClaudePanel(false);
         }}
         unreadCounts={unreadCounts}
       />
 
       {/* Main content area - shows either Chat, TaskBoard, FileBrowser, or Settings */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header - always visible */}
+        {/* Header - hidden when in Executive Access for maximum terminal space */}
+        {!showClaudePanel && (
         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-white">
           <div className="flex items-center gap-2">
             {/* Back to Projects */}
@@ -220,6 +227,11 @@ export function ProjectWorkspace() {
               <>
                 <Code className="w-5 h-5 text-slack-purple" />
                 <h1 className="font-bold text-lg text-gray-900">Files</h1>
+              </>
+            ) : showClaudePanel ? (
+              <>
+                <Sparkles className="w-5 h-5 text-slack-purple" />
+                <h1 className="font-bold text-lg text-gray-900">Executive Access</h1>
               </>
             ) : showSettings ? (
               <>
@@ -250,11 +262,12 @@ export function ProjectWorkspace() {
           {/* Panel Toggle Buttons */}
           <div className="flex items-center gap-1">
             {/* Back to Chat button when in a panel */}
-            {(showTaskPanel || showFileBrowser || showSettings) && (
+            {(showTaskPanel || showFileBrowser || showClaudePanel || showSettings) && (
               <button
                 onClick={() => {
                   setShowTaskPanel(false);
                   setShowFileBrowser(false);
+                  setShowClaudePanel(false);
                   setShowSettings(false);
                 }}
                 className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded mr-2"
@@ -268,6 +281,7 @@ export function ProjectWorkspace() {
                 setShowTaskPanel(!showTaskPanel);
                 if (!showTaskPanel) {
                   setShowFileBrowser(false);
+                  setShowClaudePanel(false);
                   setShowSettings(false);
                 }
               }}
@@ -283,6 +297,7 @@ export function ProjectWorkspace() {
                 setShowFileBrowser(!showFileBrowser);
                 if (!showFileBrowser) {
                   setShowTaskPanel(false);
+                  setShowClaudePanel(false);
                   setShowSettings(false);
                 }
               }}
@@ -295,10 +310,29 @@ export function ProjectWorkspace() {
             </button>
             <button
               onClick={() => {
+                const willShow = !showClaudePanel;
+                setShowClaudePanel(willShow);
+                if (willShow) {
+                  setClaudePanelMounted(true);
+                  setShowTaskPanel(false);
+                  setShowFileBrowser(false);
+                  setShowSettings(false);
+                }
+              }}
+              className={`p-2 rounded hover:bg-gray-100 transition-colors ${
+                showClaudePanel ? 'bg-slack-purple text-white hover:bg-slack-purple/90' : 'text-gray-600'
+              }`}
+              title="Executive Access"
+            >
+              <Sparkles className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => {
                 setShowSettings(!showSettings);
                 if (!showSettings) {
                   setShowTaskPanel(false);
                   setShowFileBrowser(false);
+                  setShowClaudePanel(false);
                 }
               }}
               className={`p-2 rounded hover:bg-gray-100 transition-colors ${
@@ -310,8 +344,18 @@ export function ProjectWorkspace() {
             </button>
           </div>
         </div>
+        )}
         
         {/* Content area - switches between views */}
+        {/* Claude Panel - rendered separately with CSS visibility for persistence */}
+        {claudePanelMounted && projectId && (
+          <ClaudePanel
+            projectId={projectId}
+            isVisible={showClaudePanel}
+            onBack={() => setShowClaudePanel(false)}
+          />
+        )}
+        
         {showTaskPanel && projectId ? (
           <TaskBoard
             projectId={projectId}
@@ -320,6 +364,11 @@ export function ProjectWorkspace() {
         ) : showFileBrowser && projectId ? (
           <FileBrowser
             projectId={projectId}
+            onOpenClaudePanel={() => {
+              setShowClaudePanel(true);
+              setClaudePanelMounted(true);
+              setShowFileBrowser(false);
+            }}
           />
         ) : showSettings && currentProject ? (
           <div className="flex-1 overflow-y-auto p-4">
@@ -327,7 +376,7 @@ export function ProjectWorkspace() {
               project={currentProject}
             />
           </div>
-        ) : (
+        ) : !showClaudePanel ? (
           <>
             <MessageList
               messages={currentMessages}
@@ -344,11 +393,11 @@ export function ProjectWorkspace() {
               onCodeRequest={handleCodeRequest}
             />
           </>
-        )}
+        ) : null}
       </div>
 
       {/* Thread panel */}
-      {activeThreadId && !showTaskPanel && !showFileBrowser && !showSettings && (
+      {activeThreadId && !showTaskPanel && !showFileBrowser && !showClaudePanel && !showSettings && (
         <ThreadView
           parentMessage={parentMessage}
           replies={threadData?.messages || []}
