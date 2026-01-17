@@ -17,12 +17,92 @@ from app.config import settings
 
 router = APIRouter(prefix="/terminal", tags=["terminal"])
 
+# Custom terminal image name
+TERMINAL_IMAGE = "vteam-terminal:latest"
+TERMINAL_DOCKERFILE = Path(__file__).parent.parent.parent.parent / "docker" / "terminal.Dockerfile"
+
+
+def ensure_terminal_image() -> tuple[bool, str]:
+    """Ensure the custom terminal image is built. Returns (success, message)."""
+    # Check if image exists
+    check = subprocess.run(
+        ["docker", "images", "-q", TERMINAL_IMAGE],
+        capture_output=True,
+        text=True,
+    )
+    
+    if check.stdout.strip():
+        return True, "Image exists"
+    
+    # Build the image
+    if not TERMINAL_DOCKERFILE.exists():
+        # Fall back to official image if Dockerfile not found
+        return False, f"Dockerfile not found: {TERMINAL_DOCKERFILE}"
+    
+    build_result = subprocess.run(
+        [
+            "docker", "build",
+            "-t", TERMINAL_IMAGE,
+            "-f", str(TERMINAL_DOCKERFILE),
+            str(TERMINAL_DOCKERFILE.parent),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    
+    if build_result.returncode == 0:
+        return True, "Image built successfully"
+    else:
+        return False, f"Build failed: {build_result.stderr[:500]}"
+
 
 class TerminalInfo(BaseModel):
     """Information about terminal capabilities."""
     docker_available: bool
     claude_code_available: bool
     runtime_mode: str
+    terminal_image_ready: bool = False
+
+
+class ImageBuildResult(BaseModel):
+    """Result of building the terminal image."""
+    success: bool
+    message: str
+
+
+@router.post("/build-image")
+async def build_terminal_image(force: bool = False) -> ImageBuildResult:
+    """Build the custom terminal image with vim, python, uv, etc."""
+    # Check if image already exists
+    if not force:
+        check = subprocess.run(
+            ["docker", "images", "-q", TERMINAL_IMAGE],
+            capture_output=True,
+            text=True,
+        )
+        if check.stdout.strip():
+            return ImageBuildResult(success=True, message="Image already exists. Use force=true to rebuild.")
+    
+    # Build the image
+    if not TERMINAL_DOCKERFILE.exists():
+        return ImageBuildResult(success=False, message=f"Dockerfile not found: {TERMINAL_DOCKERFILE}")
+    
+    build_result = subprocess.run(
+        [
+            "docker", "build",
+            "-t", TERMINAL_IMAGE,
+            "-f", str(TERMINAL_DOCKERFILE),
+            str(TERMINAL_DOCKERFILE.parent),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,  # 10 minute timeout
+    )
+    
+    if build_result.returncode == 0:
+        return ImageBuildResult(success=True, message="Image built successfully")
+    else:
+        return ImageBuildResult(success=False, message=f"Build failed: {build_result.stderr}")
 
 
 @router.get("/info")
@@ -33,10 +113,21 @@ async def get_terminal_info() -> TerminalInfo:
     docker_available = shutil.which("docker") is not None
     claude_code_available = shutil.which("claude") is not None
     
+    # Check if custom terminal image exists
+    terminal_image_ready = False
+    if docker_available:
+        check = subprocess.run(
+            ["docker", "images", "-q", TERMINAL_IMAGE],
+            capture_output=True,
+            text=True,
+        )
+        terminal_image_ready = bool(check.stdout.strip())
+    
     return TerminalInfo(
         docker_available=docker_available,
         claude_code_available=claude_code_available,
         runtime_mode=settings.default_agent_runtime,
+        terminal_image_ready=terminal_image_ready,
     )
 
 
@@ -241,15 +332,21 @@ async def run_docker_terminal(
     container_exists = container_name in check_result.stdout
     container_running = "Up" in check_result.stdout
     
-    # Debug output
-    await websocket.send_text(f"\x1b[90m[Debug] Container check: exists={container_exists}, running={container_running}\x1b[0m\r\n")
-    await websocket.send_text(f"\x1b[90m[Debug] Docker ps output: {check_result.stdout.strip()}\x1b[0m\r\n")
-    
     if not container_exists:
         await websocket.send_text("\x1b[33mStarting Docker container...\x1b[0m\r\n")
-        await websocket.send_text("\x1b[90m(Using official Docker sandbox template)\x1b[0m\r\n")
         
-        # Use the official Docker sandbox template which has Claude pre-installed
+        # Try to use custom image with additional tools (vim, python, uv, etc.)
+        image_ok, image_msg = ensure_terminal_image()
+        if image_ok:
+            image_to_use = TERMINAL_IMAGE
+            await websocket.send_text(f"\x1b[90m(Using custom terminal image with vim, python, uv)\x1b[0m\r\n")
+        else:
+            # Fall back to official image
+            image_to_use = "docker/sandbox-templates:claude-code"
+            await websocket.send_text(f"\x1b[90m(Using official Docker sandbox template)\x1b[0m\r\n")
+            await websocket.send_text(f"\x1b[33mNote: {image_msg}\x1b[0m\r\n")
+        
+        # Start the container
         # Note: No persistent volume for Claude config (security - no API key storage)
         # User will need to complete Claude setup each session
         create_result = subprocess.run(
@@ -259,7 +356,7 @@ async def run_docker_terminal(
                 "-v", f"{workspace_path.absolute()}:/workspace",
                 "-e", f"ANTHROPIC_API_KEY={settings.anthropic_api_key}",
                 "-w", "/workspace",
-                "docker/sandbox-templates:claude-code",
+                image_to_use,
                 "tail", "-f", "/dev/null",
             ],
             capture_output=True,
@@ -407,7 +504,6 @@ async def run_docker_terminal(
                    container_name, "bash"]
     
     await websocket.send_text(f"\x1b[32mConnecting to container {container_name}...\x1b[0m\r\n")
-    await websocket.send_text(f"\x1b[90m[Debug] Command: {' '.join(cmd)}\x1b[0m\r\n")
     
     # Create PTY for docker exec
     master_fd, slave_fd = pty.openpty()
@@ -439,9 +535,8 @@ async def run_docker_terminal(
                     else:
                         await asyncio.sleep(0.01)
                     
-                    exit_code = process.poll()
-                    if exit_code is not None:
-                        await websocket.send_text(f"\r\n\x1b[33m[Container session ended, exit code: {exit_code}]\x1b[0m\r\n")
+                    if process.poll() is not None:
+                        await websocket.send_text("\r\n\x1b[33m[Session ended]\x1b[0m\r\n")
                         break
                 except OSError:
                     break

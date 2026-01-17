@@ -946,7 +946,8 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
             task.status = "completed"
             await db.commit()
             
-            # Log completion with full Claude Code response
+            # Log completion with full execution log and Claude Code response
+            full_execution_log = self._live_output.get(agent_id, {}).get("output", "")
             activity = ActivityLog(
                 agent_id=agent_id,
                 activity_type="task_completed",
@@ -954,7 +955,8 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
                 extra_data={
                     "task_id": task_id,
                     "task_title": task.title,
-                    "response": response,  # Store full response for log viewer
+                    "response": response,  # Claude Code final response
+                    "execution_log": full_execution_log,  # Full session log
                     "start_commit": task.start_commit,
                     "end_commit": task.end_commit,
                 },
@@ -1137,7 +1139,7 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
                 Task.project_id == agent.project_id,
                 Task.assigned_to == agent.id,
                 Task.status == "pending",
-            ).order_by(Task.priority.desc(), Task.created_at)
+            ).order_by(Task.priority.desc(), Task.created_at).limit(1)
         )
         assigned_task = assigned_result.scalar_one_or_none()
         if assigned_task:

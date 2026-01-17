@@ -88,6 +88,7 @@ function LogEntry({ log }: LogEntryProps) {
   const response = log.extra_data?.response as string | undefined;
   const prompt = log.extra_data?.prompt as string | undefined;
   const taskTitle = log.extra_data?.task_title as string | undefined;
+  const executionLog = log.extra_data?.execution_log as string | undefined;
   
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -147,7 +148,16 @@ function LogEntry({ log }: LogEntryProps) {
             </div>
           )}
           
-          {response && (
+          {executionLog && (
+            <div>
+              <h4 className="text-xs font-medium text-gray-600 mb-1">Full Execution Log</h4>
+              <pre className="text-xs bg-gray-900 text-green-400 rounded p-3 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto font-mono">
+                {executionLog}
+              </pre>
+            </div>
+          )}
+          
+          {response && !executionLog && (
             <div>
               <h4 className="text-xs font-medium text-gray-600 mb-1">Claude Code Response</h4>
               <pre className="text-xs bg-gray-900 text-green-400 rounded p-3 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto font-mono">
@@ -156,7 +166,7 @@ function LogEntry({ log }: LogEntryProps) {
             </div>
           )}
           
-          {!prompt && !response && log.extra_data && (
+          {!prompt && !response && !executionLog && log.extra_data && (
             <div>
               <h4 className="text-xs font-medium text-gray-600 mb-1">Details</h4>
               <pre className="text-xs bg-white border border-gray-200 rounded p-2 overflow-x-auto">

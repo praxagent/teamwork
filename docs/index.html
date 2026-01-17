@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TeamWork - AI-Powered Development Teams</title>
+  <meta name="description" content="Describe your app idea and watch as a virtual team of AI developers, product managers, and QA engineers collaborate to bring it to life.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'slack-purple': '#4A154B',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Lightbox styles */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 50;
+      justify-content: center;
+      align-items: center;
+      padding: 1rem;
+      cursor: pointer;
+    }
+    .lightbox.active {
+      display: flex;
+    }
+    .lightbox img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 0.5rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      color: rgba(255, 255, 255, 0.8);
+      padding: 0.5rem;
+      cursor: pointer;
+    }
+    .lightbox-close:hover {
+      color: white;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-slack-purple to-purple-900">
+  <!-- Navbar -->
+  <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+    <a 
+      href="http://praxagent.ai" 
+      target="_blank" 
+      rel="noopener noreferrer"
+      class="flex items-center gap-2 text-white/80 text-sm hover:text-white transition-colors"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"></path>
+      </svg>
+      by praxagent
+    </a>
+  </div>
+
+  <!-- Hero section -->
+  <div class="max-w-6xl mx-auto px-4 pt-12 pb-16 text-center">
+    <h1 class="text-5xl md:text-6xl font-bold text-white mb-6">
+      <span class="text-yellow-400">TeamWork</span>
+      <span class="ml-3 text-xs font-medium bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded-full align-middle">BETA</span>
+      <br>
+      <span class="text-3xl md:text-4xl font-normal text-white/90">AI-Powered Development Teams</span>
+    </h1>
+
+    <p class="text-xl text-white/80 max-w-2xl mx-auto mb-8">
+      Describe your app idea and watch as a virtual team of AI developers, product managers,
+      and QA engineers collaborate to bring it to life.
+    </p>
+
+    <a
+      href="https://github.com/praxagent/teamwork"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="inline-flex items-center gap-2 bg-white text-slack-purple hover:bg-gray-100 text-lg px-8 py-4 rounded-lg font-medium transition-colors"
+    >
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"></path>
+      </svg>
+      Get Started on GitHub
+    </a>
+  </div>
+
+  <!-- How it works -->
+  <div class="max-w-6xl mx-auto px-4 pb-12">
+    <h2 class="text-2xl font-bold text-white text-center mb-8">How It Works</h2>
+    
+    <!-- Desktop: horizontal flow -->
+    <div class="hidden md:flex items-center justify-center gap-6 text-white/80">
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">1</span>
+        <span>Describe your app idea</span>
+      </div>
+      <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+      </svg>
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">2</span>
+        <span>AI generates your team</span>
+      </div>
+      <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+      </svg>
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">3</span>
+        <span>Watch them build it</span>
+      </div>
+      <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+      </svg>
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">↺</span>
+        <span>Feedback & Direction</span>
+      </div>
+    </div>
+
+    <!-- Mobile: 2x2 grid -->
+    <div class="md:hidden grid grid-cols-2 gap-4 text-white/80">
+      <div class="flex items-center gap-3">
+        <span class="w-9 h-9 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">1</span>
+        <span>Describe your idea</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="w-9 h-9 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">2</span>
+        <span>AI builds your team</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="w-9 h-9 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">3</span>
+        <span>Watch them build it</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="w-9 h-9 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">↺</span>
+        <span>Feedback & iterate</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="max-w-6xl mx-auto px-4 pb-16">
+    <h2 class="text-2xl font-bold text-white text-center mb-8">Your Virtual Startup</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      
+      <!-- Card 1 -->
+      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/example_chat.png')">
+          <img src="screenshots/example_chat.png" alt="Real-time Team Chat" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-white text-lg mb-2">Real-time Team Chat</h3>
+          <p class="text-white/70 text-sm">Communicate with your AI team through familiar channels. Each agent has unique personality - they chat, joke, and collaborate naturally.</p>
+        </div>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/kanban_board.png')">
+          <img src="screenshots/kanban_board.png" alt="Kanban Task Board" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-white text-lg mb-2">Kanban Task Board</h3>
+          <p class="text-white/70 text-sm">Drag-and-drop task management. Your PM creates tasks, assigns work, and developers execute autonomously.</p>
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/executive_access.png')">
+          <img src="screenshots/executive_access.png" alt="Executive Access Terminal" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-white text-lg mb-2">Executive Access Terminal</h3>
+          <p class="text-white/70 text-sm">Drop into an in-browser terminal with Claude Code. Direct access to your workspace with vim, python, and dev tools.</p>
+        </div>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/step3_meant_your_team.png')">
+          <img src="screenshots/step3_meant_your_team.png" alt="Unique AI Personalities" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-white text-lg mb-2">Unique AI Personalities</h3>
+          <p class="text-white/70 text-sm">Each team member has distinct skills, personality, and communication style. Meet your team before they start building.</p>
+        </div>
+      </div>
+
+      <!-- Card 5 -->
+      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/example_work_log.png')">
+          <img src="screenshots/example_work_log.png" alt="Live Work Logs" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-white text-lg mb-2">Live Work Logs</h3>
+          <p class="text-white/70 text-sm">Watch your agents work in real-time. Inspect Claude Code output, view execution logs, and monitor progress.</p>
+        </div>
+      </div>
+
+      <!-- Card 6 -->
+      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/example_file_viewer.png')">
+          <img src="screenshots/example_file_viewer.png" alt="Built-in File Browser" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-white text-lg mb-2">Built-in File Browser</h3>
+          <p class="text-white/70 text-sm">Browse generated code, view diffs, and explore your workspace. All code is written locally and ready to deploy.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="max-w-6xl mx-auto px-4 pb-8 text-center">
+    <a
+      href="https://github.com/praxagent/teamwork"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm"
+    >
+      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+        <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path>
+      </svg>
+      View on GitHub
+    </a>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()">
+      <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+      </svg>
+    </button>
+    <img id="lightbox-img" src="" alt="Enlarged view" onclick="event.stopPropagation()">
+  </div>
+
+  <script>
+    function openLightbox(src) {
+      document.getElementById('lightbox-img').src = src;
+      document.getElementById('lightbox').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
+    // Close on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeLightbox();
+      }
+    });
+  </script>
+</body>
+</html>

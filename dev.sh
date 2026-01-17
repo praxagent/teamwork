@@ -190,6 +190,51 @@ setup_directories() {
     log_success "Directories ready"
 }
 
+# Build Docker terminal image (for Executive Access)
+setup_terminal_image() {
+    log_header "Setting up Docker Terminal Image"
+    
+    # Check if Docker is available
+    if ! command -v docker &>/dev/null; then
+        log_warn "Docker not found - skipping terminal image build"
+        log_info "Executive Access Docker mode will not be available"
+        return 0
+    fi
+    
+    # Check if Docker daemon is running
+    if ! docker info &>/dev/null 2>&1; then
+        log_warn "Docker daemon not running - skipping terminal image build"
+        log_info "Start Docker Desktop to enable Executive Access Docker mode"
+        return 0
+    fi
+    
+    local IMAGE_NAME="vteam-terminal:latest"
+    local DOCKERFILE="$SCRIPT_DIR/docker/terminal.Dockerfile"
+    
+    # Check if image already exists
+    if docker images -q "$IMAGE_NAME" 2>/dev/null | grep -q .; then
+        log_success "Terminal image already built ($IMAGE_NAME)"
+        return 0
+    fi
+    
+    # Check if Dockerfile exists
+    if [[ ! -f "$DOCKERFILE" ]]; then
+        log_warn "Terminal Dockerfile not found: $DOCKERFILE"
+        return 0
+    fi
+    
+    log_info "Building terminal image with vim, python, uv, etc..."
+    log_info "This may take a few minutes on first run..."
+    
+    if docker build -t "$IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR/docker" 2>&1 | while IFS= read -r line; do
+        echo -e "${CYAN}[docker]${NC} $line"
+    done; then
+        log_success "Terminal image built successfully"
+    else
+        log_warn "Terminal image build failed - falling back to official image"
+    fi
+}
+
 # Start backend
 start_backend() {
     cd "$SCRIPT_DIR/backend"
@@ -257,6 +302,7 @@ main() {
     setup_directories
     setup_backend
     setup_frontend
+    setup_terminal_image
     
     log_header "Starting Servers"
     

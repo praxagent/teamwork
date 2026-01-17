@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  # Build the terminal image for Executive Access (one-shot init)
+  terminal-image-builder:
+    image: docker:24-cli
+    container_name: teamwork-terminal-builder
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker:/docker:ro
+    command: >
+      sh -c "
+        if docker images -q vteam-terminal:latest | grep -q .; then
+          echo 'Terminal image already exists';
+        else
+          echo 'Building terminal image...';
+          docker build -t vteam-terminal:latest -f /docker/terminal.Dockerfile /docker;
+        fi
+      "
+    restart: "no"
+
   # Backend API
   backend:
     build:
@@ -18,8 +36,13 @@ services:
       - ./workspace:/workspace
       # Mount data directory (for SQLite database)
       - ./data:/app/data
+      # Mount Docker socket for Executive Access terminal
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
+    depends_on:
+      terminal-image-builder:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -45,5 +68,9 @@ services:
       timeout: 10s
       retries: 3
 
-# Note: Using bind mounts (./workspace and ./data) instead of named volumes
-# This keeps data on the host filesystem for easy access and backup
+# Notes:
+# - Using bind mounts (./workspace and ./data) instead of named volumes
+#   This keeps data on the host filesystem for easy access and backup
+# - terminal-image-builder runs once to build the vteam-terminal:latest image
+#   with vim, python, uv and other dev tools for Executive Access
+# - Backend has Docker socket mounted to spawn terminal containers
