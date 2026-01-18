@@ -53,7 +53,7 @@ export function Home() {
         <div className="flex flex-wrap items-center justify-center gap-3 mb-8 text-sm">
           <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/90 px-3 py-1.5 rounded-full">
             <Github className="w-4 h-4" />
-            Open Source (MIT)
+            Open Source
           </span>
           <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/90 px-3 py-1.5 rounded-full">
             <Server className="w-4 h-4" />

@@ -47,9 +47,25 @@ function LogEntry({ log }: LogEntryProps) {
         return <CheckCircle className="w-4 h-4 text-green-500" />;
       case 'code_written':
       case 'file_edited':
+      case 'coding_completed':
         return <FileCode className="w-4 h-4 text-purple-500" />;
       case 'chat_response':
+      case 'team_communication':
         return <MessageSquare className="w-4 h-4 text-blue-400" />;
+      case 'task_assigned':
+        return <Play className="w-4 h-4 text-orange-500" />;
+      case 'tasks_created':
+        return <FileCode className="w-4 h-4 text-indigo-500" />;
+      case 'project_kickoff':
+        return <Play className="w-4 h-4 text-green-600" />;
+      case 'status_update':
+        return <Radio className="w-4 h-4 text-yellow-500" />;
+      case 'agent_started':
+        return <Play className="w-4 h-4 text-green-400" />;
+      case 'agent_stopped':
+        return <AlertTriangle className="w-4 h-4 text-gray-400" />;
+      case 'coding_request':
+        return <Terminal className="w-4 h-4 text-cyan-500" />;
       default:
         return <Terminal className="w-4 h-4 text-gray-500" />;
     }
@@ -69,8 +85,32 @@ function LogEntry({ log }: LogEntryProps) {
         return 'Chat Response';
       case 'code_request':
         return 'Code Request';
+      case 'task_assigned':
+        return 'Assigned Task';
+      case 'tasks_created':
+        return 'Created Tasks';
+      case 'project_kickoff':
+        return 'Project Kickoff';
+      case 'status_update':
+        return 'Status Update';
+      case 'team_communication':
+        return 'Team Message';
+      case 'agent_started':
+        return 'Came Online';
+      case 'agent_stopped':
+        return 'Went Offline';
+      case 'coding_request':
+        return 'Coding Request';
+      case 'coding_completed':
+        return 'Coding Completed';
+      case 'project_complete':
+        return 'Project Complete';
       default:
-        return log.activity_type;
+        // Convert snake_case to Title Case
+        return log.activity_type
+          .split('_')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
     }
   };
   

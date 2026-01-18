@@ -512,6 +512,7 @@ async def task_manager_background_task():
                     if unassigned_tasks and available_agents:
                         from app.services.pm_manager import get_pm_manager
                         pm_manager = get_pm_manager(lambda: db)
+                        pm = await pm_manager.get_pm_for_project(db, project.id)
                         
                         for task in unassigned_tasks:
                             if not available_agents:
@@ -521,18 +522,17 @@ async def task_manager_background_task():
                             for agent_id, agent in list(available_agents.items()):
                                 role = (agent.role or "").lower()
                                 if "developer" in role or "engineer" in role:
-                                    task.assigned_to = agent_id
-                                    await db.commit()
+                                    print(f"Auto-assigning task '{task.title}' to {agent.name}")
                                     
-                                    print(f"Auto-assigned task '{task.title}' to {agent.name}")
-                                    
-                                    # Notify via DM
-                                    pm = await pm_manager.get_pm_for_project(db, project.id)
+                                    # Use PM manager's assign method which posts to #general
                                     if pm:
-                                        await pm_manager.dm_developer(
-                                            db, pm, agent,
-                                            f"Hey! I've assigned you a new task: **{task.title}**. Let me know if you have any questions!"
+                                        await pm_manager.assign_task_to_agent(
+                                            db, task, agent, pm, auto_start=True
                                         )
+                                    else:
+                                        # Fallback if no PM found
+                                        task.assigned_to = agent_id
+                                        await db.commit()
                                     
                                     del available_agents[agent_id]
                                     break

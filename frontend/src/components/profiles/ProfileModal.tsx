@@ -19,10 +19,30 @@ const roleIcons = {
   qa: Shield,
 };
 
-const roleLabels = {
+const roleLabels: Record<string, string> = {
   pm: 'Product Manager',
   developer: 'Developer',
   qa: 'QA Engineer',
+};
+
+// Get role label with fallback for unknown roles
+const getRoleLabel = (role: string): string => {
+  const normalized = role?.toLowerCase()?.trim() || '';
+  if (roleLabels[normalized]) return roleLabels[normalized];
+  if (normalized.includes('product') || normalized.includes('pm') || normalized.includes('project manager')) return 'Product Manager';
+  if (normalized.includes('qa') || normalized.includes('quality') || normalized.includes('test')) return 'QA Engineer';
+  if (normalized.includes('dev') || normalized.includes('engineer') || normalized.includes('frontend') || normalized.includes('backend') || normalized.includes('full')) return 'Developer';
+  return role?.charAt(0).toUpperCase() + role?.slice(1) || 'Team Member';
+};
+
+// Get role icon with fallback
+const getRoleIcon = (role: string) => {
+  const normalized = role?.toLowerCase()?.trim() || '';
+  if (roleIcons[normalized as keyof typeof roleIcons]) return roleIcons[normalized as keyof typeof roleIcons];
+  if (normalized.includes('product') || normalized.includes('pm') || normalized.includes('project manager')) return Briefcase;
+  if (normalized.includes('qa') || normalized.includes('quality') || normalized.includes('test')) return Shield;
+  if (normalized.includes('dev') || normalized.includes('engineer')) return Code;
+  return Briefcase;
 };
 
 export function ProfileModal({ agent, activities = [], onClose, onSendMessage }: ProfileModalProps) {
@@ -32,7 +52,7 @@ export function ProfileModal({ agent, activities = [], onClose, onSendMessage }:
   const removeImage = useRemoveAgentProfileImage();
   
   const persona = agent.persona;
-  const Icon = roleIcons[agent.role] || Briefcase;
+  const Icon = getRoleIcon(agent.role);
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -135,7 +155,7 @@ export function ProfileModal({ agent, activities = [], onClose, onSendMessage }:
               <h2 className="text-2xl font-bold text-gray-900">{agent.name}</h2>
               <div className="flex items-center gap-2 text-gray-500 mt-1">
                 <Icon className="w-4 h-4" />
-                <span>{roleLabels[agent.role]}</span>
+                <span>{getRoleLabel(agent.role)}</span>
                 {agent.team && (
                   <>
                     <span className="text-gray-300">|</span>

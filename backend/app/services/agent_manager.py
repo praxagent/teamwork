@@ -1,7 +1,6 @@
 """Agent manager for spawning and managing Claude Code instances."""
 
 import asyncio
-import json
 import os
 import shutil
 import subprocess
@@ -62,6 +61,16 @@ class AgentManager:
         self._workspace_path = settings.workspace_path
         self._live_output: dict[str, dict] = {}  # agent_id -> live Claude Code output
 
+    async def _get_project_workspace(self, db: AsyncSession, project_id: str) -> Path:
+        """Get the correct workspace path for a project."""
+        from app.models import Project
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        project = result.scalar_one_or_none()
+        
+        if project and project.workspace_dir:
+            return self._workspace_path / project.workspace_dir
+        return self._workspace_path / project_id
+
     async def start_agent(
         self,
         agent_id: str,
@@ -90,8 +99,16 @@ class AgentManager:
             if not agent:
                 return False
 
-            # Create workspace directory
-            workspace_dir = self._workspace_path / project_id
+            # Get project to find correct workspace directory
+            from app.models import Project
+            project_result = await db.execute(
+                select(Project).where(Project.id == project_id)
+            )
+            project = project_result.scalar_one_or_none()
+            
+            # Use project's workspace_dir if set, otherwise fall back to project_id
+            workspace_dir_name = project.workspace_dir if project and project.workspace_dir else project_id
+            workspace_dir = self._workspace_path / workspace_dir_name
             workspace_dir.mkdir(parents=True, exist_ok=True)
 
             # Create message queue for this agent
@@ -192,13 +209,8 @@ class AgentManager:
 
         agent_process = self._agents[agent_id]
 
-        if agent_process.process:
-            agent_process.process.terminate()
-            try:
-                agent_process.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                agent_process.process.kill()
-
+        # Note: AgentProcess doesn't hold a persistent process - Claude Code is invoked
+        # on-demand for each task. We just mark it as not running.
         agent_process.is_running = False
 
         # Clean up queue
@@ -337,8 +349,9 @@ You write clean, well-documented code. When creating files:
 - Create proper directory structure
 - Commit your changes with meaningful messages"""
 
-        # Build command
-        cmd = ["claude", "-p", prompt]
+        # Build command - use text output format for streaming visibility
+        # Note: -p (print mode) is for non-interactive output, prompt goes at the end
+        cmd = ["claude", "-p"]
         
         # Add model selection if specified
         if model:
@@ -348,8 +361,9 @@ You write clean, well-documented code. When creating files:
         # Add system prompt
         cmd.extend(["--append-system-prompt", system_prompt])
         
-        # Add output format for parsing
-        cmd.extend(["--output-format", "json"])
+        # Use text output format for readable streaming output
+        # (stream-json outputs JSON objects, text is human-readable)
+        cmd.extend(["--output-format", "text"])
         
         # Resume session if available
         if session_id:
@@ -361,6 +375,9 @@ You write clean, well-documented code. When creating files:
         else:
             # Default: allow read, write, and git operations
             cmd.extend(["--allowedTools", "Read,Edit,Write,Bash(git:*)"])
+        
+        # Add prompt as the final positional argument
+        cmd.append(prompt)
         
         try:
             # Run Claude Code with timeout, streaming output for live logs
@@ -474,14 +491,9 @@ You write clean, well-documented code. When creating files:
                 "started_at": self._live_output[agent.id]["started_at"],
             }
             
-            # Parse JSON output
-            try:
-                result = json.loads(output)
-                response_text = result.get("result", output)
-                new_session_id = result.get("session_id")
-                return (response_text, new_session_id)
-            except json.JSONDecodeError:
-                return (output, None)
+            # Return text output (we use text format, not JSON)
+            # Session ID tracking is handled separately via agent.session_id
+            return (output, None)
                 
         except asyncio.TimeoutError:
             if agent.id in self._live_output:
@@ -774,7 +786,10 @@ You write clean, well-documented code. When creating files:
             task.assigned_to = agent_id
             
             # Record start commit for diff tracking
-            workspace_dir = agent_process.workspace_dir or (self._workspace_path / agent.project_id)
+            if agent_process.workspace_dir:
+                workspace_dir = agent_process.workspace_dir
+            else:
+                workspace_dir = await self._get_project_workspace(db, agent.project_id)
             self._live_output[agent_id]["output"] += f"Workspace: {workspace_dir}\n"
             
             start_commit = await self._get_current_commit(workspace_dir)
@@ -907,8 +922,7 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
             self._live_output[agent_id]["last_update"] = datetime.utcnow().isoformat()
             print(f">>> Invoking Claude Code for agent {agent.name}, task: {task.title}, model: {selected_model}", flush=True)
 
-            # Invoke Claude Code
-            workspace_dir = agent_process.workspace_dir or (self._workspace_path / agent.project_id)
+            # Invoke Claude Code - use the workspace_dir we already computed above
             try:
                 response, new_session_id = await self._invoke_claude_code(
                     agent,
@@ -1265,7 +1279,10 @@ IMPORTANT:
 Implement the request now."""
 
             # Invoke Claude Code
-            workspace_dir = agent_process.workspace_dir or (self._workspace_path / agent.project_id)
+            if agent_process.workspace_dir:
+                workspace_dir = agent_process.workspace_dir
+            else:
+                workspace_dir = await self._get_project_workspace(db, agent.project_id)
             response, new_session_id = await self._invoke_claude_code(
                 agent,
                 prompt,

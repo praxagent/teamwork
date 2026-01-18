@@ -28,6 +28,24 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_header() { echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"; echo -e "${CYAN}  $1${NC}"; echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}\n"; }
 
+# Stop a process and all its children
+stop_process_tree() {
+    local pid=$1
+    local signal=${2:-TERM}
+    
+    # Get all child processes
+    local children
+    children=$(pgrep -P "$pid" 2>/dev/null)
+    
+    # Stop children first (recursively)
+    for child in $children; do
+        stop_process_tree "$child" "$signal"
+    done
+    
+    # Stop the process itself
+    kill -"$signal" "$pid" 2>/dev/null || true
+}
+
 # Cleanup function
 cleanup() {
     echo ""
@@ -35,47 +53,55 @@ cleanup() {
     
     local exit_code=0
     
-    # Kill backend
+    # Stop backend and all its children (uvicorn spawns workers)
     if [[ -n "$BACKEND_PID" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then
         log_info "Stopping backend (PID: $BACKEND_PID)..."
-        kill -TERM "$BACKEND_PID" 2>/dev/null || true
+        stop_process_tree "$BACKEND_PID" TERM
         
-        # Wait for graceful shutdown (max 5 seconds)
+        # Wait for graceful shutdown (max 3 seconds)
         local count=0
-        while kill -0 "$BACKEND_PID" 2>/dev/null && [[ $count -lt 50 ]]; do
+        while kill -0 "$BACKEND_PID" 2>/dev/null && [[ $count -lt 30 ]]; do
             sleep 0.1
             ((count++))
         done
         
-        # Force kill if still running
+        # Force stop if still running
         if kill -0 "$BACKEND_PID" 2>/dev/null; then
             log_warn "Backend didn't stop gracefully, forcing..."
-            kill -9 "$BACKEND_PID" 2>/dev/null || true
+            stop_process_tree "$BACKEND_PID" 9
         fi
         log_success "Backend stopped"
     fi
     
-    # Kill frontend
+    # Stop frontend and all its children (npm/vite spawns workers)
     if [[ -n "$FRONTEND_PID" ]] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
         log_info "Stopping frontend (PID: $FRONTEND_PID)..."
-        kill -TERM "$FRONTEND_PID" 2>/dev/null || true
+        stop_process_tree "$FRONTEND_PID" TERM
         
-        # Wait for graceful shutdown (max 5 seconds)
+        # Wait for graceful shutdown (max 3 seconds)
         local count=0
-        while kill -0 "$FRONTEND_PID" 2>/dev/null && [[ $count -lt 50 ]]; do
+        while kill -0 "$FRONTEND_PID" 2>/dev/null && [[ $count -lt 30 ]]; do
             sleep 0.1
             ((count++))
         done
         
-        # Force kill if still running
+        # Force stop if still running
         if kill -0 "$FRONTEND_PID" 2>/dev/null; then
             log_warn "Frontend didn't stop gracefully, forcing..."
-            kill -9 "$FRONTEND_PID" 2>/dev/null || true
+            stop_process_tree "$FRONTEND_PID" 9
         fi
         log_success "Frontend stopped"
     fi
     
-    # Kill any orphaned child processes
+    # Also stop any uvicorn/vite processes that might have escaped
+    pkill -f "uvicorn app.main:app" 2>/dev/null || true
+    pkill -f "vite.*5173\|vite.*5174" 2>/dev/null || true
+    
+    # Note: Claude Code processes spawned by agents are children of uvicorn,
+    # so they should be stopped when we stop the backend process tree.
+    # We do NOT auto-kill "claude -p" globally as that would kill user's own sessions.
+    
+    # Stop any orphaned child processes from this script
     jobs -p | xargs -r kill 2>/dev/null || true
     
     log_success "Cleanup complete"
@@ -89,9 +115,46 @@ trap 'exit 143' TERM     # kill
 trap 'exit 131' QUIT     # Ctrl+\
 trap 'exit 129' HUP      # Terminal closed
 
+# Stop any leftover processes from previous runs
+cleanup_stale_processes() {
+    local stopped=false
+    
+    # Check for leftover uvicorn
+    if pgrep -f "uvicorn app.main:app" >/dev/null 2>&1; then
+        log_warn "Found leftover backend process, stopping..."
+        pkill -9 -f "uvicorn app.main:app" 2>/dev/null || true
+        stopped=true
+    fi
+    
+    # Check for leftover vite on our ports
+    if lsof -ti:5173 >/dev/null 2>&1; then
+        log_warn "Found process on port 5173, stopping..."
+        lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+        stopped=true
+    fi
+    
+    if lsof -ti:8000 >/dev/null 2>&1; then
+        log_warn "Found process on port 8000, stopping..."
+        lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+        stopped=true
+    fi
+    
+    # Check for Claude Code CLI processes (just warn, don't kill - might be user's own sessions)
+    if pgrep -f "claude -p" >/dev/null 2>&1; then
+        log_warn "Found running Claude Code processes. If these are from a previous dev.sh run, stop them with: pkill -f 'claude -p'"
+    fi
+    
+    if [[ "$stopped" == "true" ]]; then
+        sleep 1  # Give processes time to stop
+    fi
+}
+
 # Check prerequisites
 check_prerequisites() {
     log_header "Checking Prerequisites"
+    
+    # First, clean up any stale processes
+    cleanup_stale_processes
     
     local missing=()
     
@@ -242,11 +305,17 @@ start_backend() {
     log_info "Starting backend server..."
     
     # Activate venv and run uvicorn
+    # Use sed for coloring to get the actual uvicorn PID
     source .venv/bin/activate
-    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 2>&1 | while IFS= read -r line; do
-        echo -e "${BLUE}[backend]${NC} $line"
-    done &
+    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 2>&1 | sed -u "s/^/$(printf "${BLUE}[backend]${NC} ")/" &
     BACKEND_PID=$!
+    
+    # Wait a moment and find the actual uvicorn PID
+    sleep 1
+    UVICORN_PID=$(pgrep -f "uvicorn app.main:app" | head -1)
+    if [[ -n "$UVICORN_PID" ]]; then
+        BACKEND_PID=$UVICORN_PID
+    fi
     
     log_success "Backend started (PID: $BACKEND_PID)"
 }
@@ -257,10 +326,15 @@ start_frontend() {
     
     log_info "Starting frontend dev server..."
     
-    npm run dev 2>&1 | while IFS= read -r line; do
-        echo -e "${GREEN}[frontend]${NC} $line"
-    done &
+    npm run dev 2>&1 | sed -u "s/^/$(printf "${GREEN}[frontend]${NC} ")/" &
     FRONTEND_PID=$!
+    
+    # Wait a moment and find the actual vite/node PID
+    sleep 1
+    VITE_PID=$(lsof -ti:5173 2>/dev/null | head -1)
+    if [[ -n "$VITE_PID" ]]; then
+        FRONTEND_PID=$VITE_PID
+    fi
     
     log_success "Frontend started (PID: $FRONTEND_PID)"
 }

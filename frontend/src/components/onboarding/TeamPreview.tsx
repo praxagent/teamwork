@@ -24,6 +24,28 @@ const roleLabels: Record<string, string> = {
   qa: 'QA Engineer',
 };
 
+// Get role label with fallback for unknown roles
+const getRoleLabel = (role: string): string => {
+  const normalized = role?.toLowerCase()?.trim() || '';
+  if (roleLabels[normalized]) return roleLabels[normalized];
+  // Handle common variations
+  if (normalized.includes('product') || normalized.includes('pm') || normalized.includes('project manager')) return 'Product Manager';
+  if (normalized.includes('qa') || normalized.includes('quality') || normalized.includes('test')) return 'QA Engineer';
+  if (normalized.includes('dev') || normalized.includes('engineer') || normalized.includes('frontend') || normalized.includes('backend') || normalized.includes('full')) return 'Developer';
+  // Fallback to capitalized role
+  return role?.charAt(0).toUpperCase() + role?.slice(1) || 'Team Member';
+};
+
+// Get role icon with fallback
+const getRoleIcon = (role: string): typeof Users => {
+  const normalized = role?.toLowerCase()?.trim() || '';
+  if (roleIcons[normalized]) return roleIcons[normalized];
+  if (normalized.includes('product') || normalized.includes('pm') || normalized.includes('project manager')) return Briefcase;
+  if (normalized.includes('qa') || normalized.includes('quality') || normalized.includes('test')) return Shield;
+  if (normalized.includes('dev') || normalized.includes('engineer')) return Code;
+  return Users;
+};
+
 const profileImageTypeInfo: Record<string, { icon: typeof Camera; label: string; description: string }> = {
   professional: { icon: Camera, label: 'Professional', description: 'Formal headshot' },
   vacation: { icon: Palmtree, label: 'Vacation', description: 'Travel photo' },
@@ -112,7 +134,7 @@ export function TeamPreview({
       {/* Team members grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         {teamMembers.map((member, index) => {
-          const Icon = roleIcons[member.role] || Users;
+          const Icon = getRoleIcon(member.role);
           const isEditing = editingIndex === index;
           const isShuffling = shufflingIndex === index;
           
@@ -185,7 +207,7 @@ export function TeamPreview({
                         />
                         <div className="flex items-center gap-2">
                           <Icon className="w-4 h-4 text-gray-500" />
-                          <span className="text-sm text-gray-500">{roleLabels[member.role]}</span>
+                          <span className="text-sm text-gray-500">{getRoleLabel(member.role)}</span>
                           {member.team && (
                             <>
                               <span className="text-gray-300">|</span>
@@ -238,7 +260,7 @@ export function TeamPreview({
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
                           <Icon className="w-4 h-4" />
-                          <span>{roleLabels[member.role]}</span>
+                          <span>{getRoleLabel(member.role)}</span>
                           {member.team && (
                             <>
                               <span className="text-gray-300">|</span>

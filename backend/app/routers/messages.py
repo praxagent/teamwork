@@ -96,7 +96,8 @@ async def get_agent_real_work_status(db: AsyncSession, agent_id: str, project_id
         ]
     
     # Check workspace for actual files created
-    workspace_path = settings.workspace_path / project_id
+    from app.utils.workspace import get_project_workspace_path
+    workspace_path = await get_project_workspace_path(project_id, db)
     if workspace_path.exists():
         try:
             files = []

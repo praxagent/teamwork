@@ -163,7 +163,8 @@ class PMManager:
 
         # Check workspace for files
         from pathlib import Path
-        workspace_path = settings.workspace_path / project_id
+        from app.utils.workspace import get_project_workspace_path
+        workspace_path = await get_project_workspace_path(project_id, db)
         if workspace_path.exists():
             try:
                 file_count = sum(
@@ -342,6 +343,25 @@ If things aren't moving, STATE what YOU ARE DOING to fix it - don't ask permissi
         await db.flush()
         await db.refresh(message)
         await db.commit()
+
+        # Log PM activity for meaningful updates
+        is_status_update = any(kw in content.lower() for kw in ["status", "update", "progress", "check-in", "completed", "started"])
+        is_assignment = "@" in content and "assigning" in content.lower()
+        
+        if is_status_update or len(content) > 200:
+            activity_type = "status_update" if is_status_update else "team_communication"
+            activity = ActivityLog(
+                agent_id=pm.id,
+                activity_type=activity_type,
+                description=content[:150] + "..." if len(content) > 150 else content,
+                extra_data={
+                    "channel": "general",
+                    "full_message": content,
+                    "message_id": message.id,
+                },
+            )
+            db.add(activity)
+            await db.commit()
 
         # Broadcast
         message_event = WebSocketEvent(
@@ -968,7 +988,8 @@ RULES:
 
         # Check workspace for files
         from pathlib import Path
-        workspace_path = settings.workspace_path / project_id
+        from app.utils.workspace import get_project_workspace_path
+        workspace_path = await get_project_workspace_path(project_id, db)
         if workspace_path.exists():
             try:
                 file_count = sum(
@@ -1101,9 +1122,36 @@ Start with something like "🎉 @CEO" to get their attention."""
             pm: The PM agent doing the assignment
             auto_start: Whether to automatically start task execution
         """
+        # Check if this is the first task assignment for this project (kickoff)
+        assigned_count_result = await db.execute(
+            select(Task).where(
+                Task.project_id == task.project_id,
+                Task.assigned_to.isnot(None)
+            )
+        )
+        is_first_assignment = len(assigned_count_result.scalars().all()) == 0
+        
         task.assigned_to = agent.id
         task.status = "pending"
         await db.commit()
+
+        # Post kickoff message if this is the first assignment
+        if is_first_assignment:
+            kickoff_msg = f"""🚀 **Alright team, let's get started!**
+
+I've reviewed our backlog and I'm ready to start handing out tasks. We've got some exciting work ahead of us!
+
+I'll be assigning tasks based on your skills and availability. Let's build something great together! 💪"""
+            await self.post_update_to_general(db, task.project_id, kickoff_msg, pm, trigger_responses=False)
+            
+            # Log kickoff activity
+            kickoff_activity = ActivityLog(
+                agent_id=pm.id,
+                activity_type="project_kickoff",
+                description="Kicked off the project and started assigning tasks",
+                extra_data={"project_id": task.project_id},
+            )
+            db.add(kickoff_activity)
 
         # Post assignment in #general with @ mention
         general_msg = f"@{agent.name} - I'm assigning you: **{task.title}**\n\n"
@@ -1112,6 +1160,21 @@ Start with something like "🎉 @CEO" to get their attention."""
         general_msg += "Get started on this right away. Let me know if you have blockers!"
         
         await self.post_update_to_general(db, task.project_id, general_msg, pm, trigger_responses=True)
+
+        # Log task assignment activity
+        assignment_activity = ActivityLog(
+            agent_id=pm.id,
+            activity_type="task_assigned",
+            description=f"Assigned '{task.title}' to {agent.name}",
+            extra_data={
+                "task_id": task.id,
+                "task_title": task.title,
+                "assigned_to_id": agent.id,
+                "assigned_to_name": agent.name,
+            },
+        )
+        db.add(assignment_activity)
+        await db.commit()
 
         # DM the agent about their new task
         dm_content = f"Hey {agent.name.split()[0]}! I've assigned you a new task: **{task.title}**"
@@ -1291,6 +1354,21 @@ Only return the JSON array, no other text."""
                 # Notify assigned agent (developer or QA)
                 if assigned_agent:
                     await self.assign_task_to_agent(db, task, assigned_agent, pm)
+
+            # Log task breakdown activity
+            if created_tasks:
+                breakdown_activity = ActivityLog(
+                    agent_id=pm.id,
+                    activity_type="tasks_created",
+                    description=f"Created {len(created_tasks)} tasks from user request",
+                    extra_data={
+                        "task_count": len(created_tasks),
+                        "task_titles": [t.title for t in created_tasks[:10]],
+                        "original_request": work_description[:500] if 'work_description' in dir() else None,
+                    },
+                )
+                db.add(breakdown_activity)
+                await db.commit()
 
             return created_tasks
 

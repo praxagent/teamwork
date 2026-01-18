@@ -1,4 +1,4 @@
-# TeamWork by praxagent
+# TeamWork
 
 ![TeamWork Header](assets/teamwork-header.png)
 
@@ -529,6 +529,30 @@ Check logs:
 docker-compose logs backend
 docker-compose logs frontend
 ```
+
+### Stray processes after stopping dev.sh
+
+If you see "Port 5173 is in use" or old data persists after deleting the database, there may be leftover processes from a previous run. The `dev.sh` script normally cleans these up automatically, but if they escape:
+
+```bash
+# Stop any leftover backend processes
+pkill -f "uvicorn app.main:app"
+
+# Stop any leftover frontend processes
+lsof -ti:5173 | xargs kill -9 2>/dev/null
+lsof -ti:8000 | xargs kill -9 2>/dev/null
+
+# Stop any leftover Claude Code CLI processes (spawned by agents)
+# WARNING: This will also kill any Claude Code sessions you're running manually!
+# Only run this if you're sure you don't have other Claude sessions running.
+pkill -f "claude -p"
+
+# Now you can safely delete data and restart
+rm -rf data workspace
+./dev.sh
+```
+
+**Why this happens**: SQLite keeps database files open via file handles. If you delete the `data/` folder while the backend is still running, the process keeps the data in memory via the open file handle. The data only truly disappears when the process exits.
 
 ## References
 
