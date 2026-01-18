@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/common';
 import { useProjects } from '@/hooks/useApi';
-import { Users, Rocket, ArrowRight, FolderOpen, RotateCcw, X } from 'lucide-react';
+import { Users, Rocket, ArrowRight, FolderOpen, RotateCcw, X, Github, Server, Key } from 'lucide-react';
 
 export function Home() {
   const navigate = useNavigate();
@@ -41,13 +41,29 @@ export function Home() {
           <span className="text-yellow-400">TeamWork</span>
           <span className="ml-3 text-xs font-medium bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded-full align-middle">BETA</span>
           <br />
-          <span className="text-3xl md:text-4xl font-normal text-white/90">AI-Powered Development Teams</span>
+          <span className="text-3xl md:text-4xl font-normal text-white/90">Agentic Virtual Dev Teams</span>
         </h1>
 
-        <p className="text-xl text-white/80 max-w-2xl mx-auto mb-8">
+        <p className="text-xl text-white/80 max-w-2xl mx-auto mb-6">
           Describe your app idea and watch as a virtual team of AI developers, product managers,
           and QA engineers collaborate to bring it to life.
         </p>
+
+        {/* Open Source Badges */}
+        <div className="flex flex-wrap items-center justify-center gap-3 mb-8 text-sm">
+          <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/90 px-3 py-1.5 rounded-full">
+            <Github className="w-4 h-4" />
+            Open Source (MIT)
+          </span>
+          <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/90 px-3 py-1.5 rounded-full">
+            <Server className="w-4 h-4" />
+            Self-Hosted
+          </span>
+          <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/90 px-3 py-1.5 rounded-full">
+            <Key className="w-4 h-4" />
+            Bring Your Own API Key
+          </span>
+        </div>
 
         <Button
           variant="secondary"
