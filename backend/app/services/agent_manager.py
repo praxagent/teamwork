@@ -650,6 +650,7 @@ You write clean, well-documented code. When creating files:
         agent_id: str,
         task_id: str,
         include_chat_context: bool = True,
+        retry_attempt: int = 0,
     ) -> dict[str, Any]:
         """
         Have an agent execute a task using Claude Code.
@@ -658,11 +659,13 @@ You write clean, well-documented code. When creating files:
             agent_id: The agent to execute the task
             task_id: The task to execute
             include_chat_context: Whether to include recent chat history for context
+            retry_attempt: Current retry attempt number (0 = first attempt)
         
         Returns:
             Dict with status and any output
         """
-        print(f">>> execute_task called: agent_id={agent_id}, task_id={task_id}", flush=True)
+        max_retries = settings.max_task_retries
+        print(f">>> execute_task called: agent_id={agent_id}, task_id={task_id}, attempt={retry_attempt + 1}/{max_retries}", flush=True)
         
         # Get existing output to preserve history, or start fresh
         existing_output = ""
@@ -673,7 +676,10 @@ You write clean, well-documented code. When creating files:
             if existing_output and not existing_output.endswith("\n\n"):
                 existing_output += "\n\n"
             existing_output += f"{'='*50}\n"
-            existing_output += f"[{datetime.utcnow().strftime('%H:%M:%S')}] NEW TASK EXECUTION\n"
+            if retry_attempt > 0:
+                existing_output += f"[{datetime.utcnow().strftime('%H:%M:%S')}] RETRY ATTEMPT {retry_attempt + 1}/{max_retries}\n"
+            else:
+                existing_output += f"[{datetime.utcnow().strftime('%H:%M:%S')}] NEW TASK EXECUTION\n"
             existing_output += f"{'='*50}\n"
             started_at = self._live_output[agent_id].get("started_at", started_at)
         
@@ -686,7 +692,30 @@ You write clean, well-documented code. When creating files:
         }
         
         try:
-            return await self._execute_task_inner(agent_id, task_id, include_chat_context)
+            result = await self._execute_task_inner(agent_id, task_id, include_chat_context)
+            
+            # If successful, reset retry count on task
+            if result.get("success"):
+                async with self._db_session_factory() as db:
+                    task_result = await db.execute(select(Task).where(Task.id == task_id))
+                    task = task_result.scalar_one_or_none()
+                    if task:
+                        task.retry_count = 0
+                        task.last_error = None
+                        await db.commit()
+                return result
+            else:
+                # Task execution returned failure (not an exception)
+                error_msg = result.get("error", "Unknown error")
+                # Only retry for certain error types (Claude Code failures, timeouts)
+                if "Claude Code" in error_msg or "timeout" in error_msg.lower() or "invocation failed" in error_msg.lower():
+                    return await self._handle_task_failure(
+                        agent_id, task_id, error_msg, retry_attempt, include_chat_context
+                    )
+                else:
+                    # Non-retryable error (e.g., missing CLI)
+                    return result
+            
         except Exception as e:
             # Global error handler - ensure agent is reset to idle on any failure
             error_msg = f"Unexpected error in execute_task: {str(e)}"
@@ -698,21 +727,71 @@ You write clean, well-documented code. When creating files:
             self._live_output[agent_id]["error"] = error_msg
             self._live_output[agent_id]["output"] = self._live_output[agent_id].get("output", "") + f"\n\nFATAL ERROR: {error_msg}\n"
             
-            # Try to reset agent status
-            try:
-                async with self._db_session_factory() as db:
-                    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
-                    agent = agent_result.scalar_one_or_none()
-                    task_result = await db.execute(select(Task).where(Task.id == task_id))
-                    task = task_result.scalar_one_or_none()
-                    
-                    if agent:
-                        agent.status = "idle"
-                    if task:
-                        task.status = "pending"
+            # Handle retry logic
+            return await self._handle_task_failure(
+                agent_id, task_id, error_msg, retry_attempt, include_chat_context
+            )
+    
+    async def _handle_task_failure(
+        self,
+        agent_id: str,
+        task_id: str,
+        error_msg: str,
+        retry_attempt: int,
+        include_chat_context: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Handle task failure with retry logic.
+        
+        If retries are available, schedules a retry.
+        If max retries reached, moves task back to 'pending' (todo) with error info.
+        """
+        max_retries = settings.max_task_retries
+        retry_delay = settings.task_retry_delay_seconds
+        
+        try:
+            async with self._db_session_factory() as db:
+                agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+                agent = agent_result.scalar_one_or_none()
+                task_result = await db.execute(select(Task).where(Task.id == task_id))
+                task = task_result.scalar_one_or_none()
+                
+                if not task:
+                    return {"success": False, "error": error_msg}
+                
+                # Update retry count and error
+                task.retry_count = retry_attempt + 1
+                task.last_error = error_msg[:1000]  # Truncate long errors
+                
+                # Check if we should retry
+                if retry_attempt + 1 < max_retries:
+                    # Schedule retry
+                    print(f">>> Task {task_id} failed, scheduling retry {retry_attempt + 2}/{max_retries} in {retry_delay}s", flush=True)
+                    task.status = "pending"  # Keep in pending for retry
                     await db.commit()
                     
+                    self._live_output[agent_id]["output"] += f"\n[RETRY] Scheduling retry {retry_attempt + 2}/{max_retries} in {retry_delay} seconds...\n"
+                    
+                    # Schedule retry after delay
+                    asyncio.create_task(
+                        self._retry_task_after_delay(agent_id, task_id, retry_delay, retry_attempt + 1, include_chat_context)
+                    )
+                    
+                    return {"success": False, "error": error_msg, "retrying": True, "retry_attempt": retry_attempt + 1}
+                else:
+                    # Max retries reached - move to pending (todo) permanently
+                    print(f">>> Task {task_id} failed after {max_retries} attempts, moving back to TODO", flush=True)
+                    task.status = "pending"
+                    task.assigned_to = None  # Unassign so PM can reassign
+                    await db.commit()
+                    
+                    self._live_output[agent_id]["output"] += f"\n[FAILED] Max retries ({max_retries}) reached. Task moved back to TODO.\n"
+                    
+                    # Reset agent to idle
                     if agent:
+                        agent.status = "idle"
+                        await db.commit()
+                        
                         await ws_manager.broadcast_to_project(
                             agent.project_id,
                             WebSocketEvent(
@@ -720,10 +799,53 @@ You write clean, well-documented code. When creating files:
                                 data={"agent_id": agent_id, "status": "idle", "name": agent.name},
                             ),
                         )
-            except Exception as cleanup_error:
-                print(f">>> Error during cleanup: {cleanup_error}", flush=True)
-            
+                    
+                    # Broadcast task update
+                    await ws_manager.broadcast_to_project(
+                        task.project_id,
+                        WebSocketEvent(
+                            type=EventType.TASK_UPDATE,
+                            data={
+                                "id": task_id,
+                                "status": "pending",
+                                "assigned_to": None,
+                                "retry_count": task.retry_count,
+                                "last_error": task.last_error,
+                            },
+                        ),
+                    )
+                    
+                    # Log the failure
+                    activity = ActivityLog(
+                        agent_id=agent_id,
+                        activity_type="task_failed",
+                        description=f"Task failed after {max_retries} attempts: {task.title[:50]}",
+                        extra_data={
+                            "task_id": task_id,
+                            "error": error_msg[:500],
+                            "retry_count": task.retry_count,
+                        },
+                    )
+                    db.add(activity)
+                    await db.commit()
+                    
+                    return {"success": False, "error": error_msg, "max_retries_reached": True}
+                    
+        except Exception as cleanup_error:
+            print(f">>> Error during failure handling: {cleanup_error}", flush=True)
             return {"success": False, "error": error_msg}
+    
+    async def _retry_task_after_delay(
+        self,
+        agent_id: str,
+        task_id: str,
+        delay_seconds: int,
+        retry_attempt: int,
+        include_chat_context: bool = True,
+    ) -> None:
+        """Wait for delay then retry the task."""
+        await asyncio.sleep(delay_seconds)
+        await self.execute_task(agent_id, task_id, include_chat_context, retry_attempt)
     
     async def _execute_task_inner(
         self,

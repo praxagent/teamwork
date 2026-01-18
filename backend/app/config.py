@@ -105,6 +105,15 @@ class Settings(BaseSettings):
 
     # Agent Runtime
     default_agent_runtime: Literal["subprocess", "docker"] = "subprocess"
+    
+    # Task Retry Configuration
+    max_task_retries: int = 3  # Maximum retries before moving task back to todo permanently
+    task_retry_delay_seconds: int = 5  # Delay between retries
+    
+    # PM Monitoring Configuration
+    pm_check_interval_seconds: int = 300  # How often PM checks on project (5 minutes)
+    pm_idle_threshold_minutes: int = 30  # How long before an agent is considered idle
+    pm_auto_nudge: bool = True  # Whether PM should automatically nudge idle developers
 
     # CORS - includes Docker default port
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:80"]

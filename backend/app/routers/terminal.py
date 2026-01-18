@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import codecs
 import json
 import os
 import pty
@@ -211,6 +212,8 @@ async def run_local_terminal(
             **os.environ,
             "TERM": "xterm-256color",
             "COLORTERM": "truecolor",
+            "LANG": "en_US.UTF-8",
+            "LC_ALL": "en_US.UTF-8",
         },
         preexec_fn=os.setsid,
     )
@@ -220,9 +223,13 @@ async def run_local_terminal(
     # Set terminal to non-blocking
     os.set_blocking(master_fd, False)
     
+    # UTF-8 decoder that buffers incomplete sequences
+    utf8_decoder = codecs.getincrementaldecoder('utf-8')('replace')
+    
     try:
         # Task to read from PTY and send to WebSocket
         async def read_pty():
+            nonlocal utf8_decoder
             while True:
                 try:
                     # Check if there's data to read
@@ -230,12 +237,19 @@ async def run_local_terminal(
                     if r:
                         data = os.read(master_fd, 4096)
                         if data:
-                            await websocket.send_bytes(data)
+                            # Decode with incremental decoder to handle partial UTF-8 sequences
+                            text = utf8_decoder.decode(data)
+                            if text:
+                                await websocket.send_text(text)
                     else:
                         await asyncio.sleep(0.01)
                     
                     # Check if process is still running
                     if process.poll() is not None:
+                        # Flush any remaining buffered bytes
+                        remaining = utf8_decoder.decode(b'', final=True)
+                        if remaining:
+                            await websocket.send_text(remaining)
                         await websocket.send_text("\r\n\x1b[33m[Process exited]\x1b[0m\r\n")
                         break
                 except OSError:
@@ -265,8 +279,10 @@ async def run_local_terminal(
                             except:
                                 pass
                         else:
-                            os.write(master_fd, text.encode())
+                            # Text input (fallback) - use UTF-8
+                            os.write(master_fd, text.encode('utf-8'))
                     elif "bytes" in data:
+                        # Binary input - write directly (preserves control chars like Ctrl+C)
                         os.write(master_fd, data["bytes"])
                 except WebSocketDisconnect:
                     break
@@ -516,6 +532,8 @@ async def run_docker_terminal(
         env={
             **os.environ,
             "TERM": "xterm-256color",
+            "LANG": "en_US.UTF-8",
+            "LC_ALL": "en_US.UTF-8",
         },
         preexec_fn=os.setsid,
     )
@@ -523,19 +541,30 @@ async def run_docker_terminal(
     os.close(slave_fd)
     os.set_blocking(master_fd, False)
     
+    # UTF-8 decoder that buffers incomplete sequences
+    utf8_decoder = codecs.getincrementaldecoder('utf-8')('replace')
+    
     try:
         async def read_pty():
+            nonlocal utf8_decoder
             while True:
                 try:
                     r, _, _ = select.select([master_fd], [], [], 0.01)
                     if r:
                         data = os.read(master_fd, 4096)
                         if data:
-                            await websocket.send_bytes(data)
+                            # Decode with incremental decoder to handle partial UTF-8 sequences
+                            text = utf8_decoder.decode(data)
+                            if text:
+                                await websocket.send_text(text)
                     else:
                         await asyncio.sleep(0.01)
                     
                     if process.poll() is not None:
+                        # Flush any remaining buffered bytes
+                        remaining = utf8_decoder.decode(b'', final=True)
+                        if remaining:
+                            await websocket.send_text(remaining)
                         await websocket.send_text("\r\n\x1b[33m[Session ended]\x1b[0m\r\n")
                         break
                 except OSError:
@@ -562,8 +591,10 @@ async def run_docker_terminal(
                             except:
                                 pass
                         else:
-                            os.write(master_fd, text.encode())
+                            # Text input (fallback) - use UTF-8
+                            os.write(master_fd, text.encode('utf-8'))
                     elif "bytes" in data:
+                        # Binary input - write directly (preserves control chars like Ctrl+C)
                         os.write(master_fd, data["bytes"])
                 except WebSocketDisconnect:
                     break

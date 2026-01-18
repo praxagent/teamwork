@@ -13,6 +13,10 @@ from app.models import Agent, ActivityLog, Channel, Message, Project, Task
 from app.websocket import manager as ws_manager, WebSocketEvent, EventType
 
 
+# Track active monitoring tasks
+_monitoring_tasks: dict[str, asyncio.Task] = {}
+
+
 class PMManager:
     """
     Manages the Product Manager agent's oversight responsibilities.
@@ -1435,6 +1439,264 @@ Only return the JSON array, no other text."""
         return tasks
 
 
+    async def start_monitoring(self, project_id: str) -> bool:
+        """
+        Start the PM monitoring loop for a project.
+        
+        The PM will periodically:
+        - Check project health
+        - Nudge idle developers
+        - Check for stuck/failed tasks
+        - Reassign tasks that failed max retries
+        - Provide status updates
+        """
+        global _monitoring_tasks
+        
+        if project_id in _monitoring_tasks and not _monitoring_tasks[project_id].done():
+            print(f">>> PM monitoring already running for project {project_id}")
+            return False
+        
+        # Start the monitoring task
+        task = asyncio.create_task(self._monitoring_loop(project_id))
+        _monitoring_tasks[project_id] = task
+        print(f">>> PM monitoring started for project {project_id}")
+        return True
+    
+    async def stop_monitoring(self, project_id: str) -> bool:
+        """Stop the PM monitoring loop for a project."""
+        global _monitoring_tasks
+        
+        if project_id not in _monitoring_tasks:
+            return False
+        
+        task = _monitoring_tasks[project_id]
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        
+        del _monitoring_tasks[project_id]
+        print(f">>> PM monitoring stopped for project {project_id}")
+        return True
+    
+    async def _monitoring_loop(self, project_id: str):
+        """Main PM monitoring loop - runs periodically to manage the project."""
+        check_interval = settings.pm_check_interval_seconds
+        idle_threshold = timedelta(minutes=settings.pm_idle_threshold_minutes)
+        
+        print(f">>> PM monitoring loop starting: check every {check_interval}s, idle threshold {settings.pm_idle_threshold_minutes}m")
+        
+        while True:
+            try:
+                await asyncio.sleep(check_interval)
+                
+                async with self._db_session_factory() as db:
+                    # Get the PM for this project
+                    pm = await self.get_pm_for_project(db, project_id)
+                    if not pm:
+                        print(f">>> No PM found for project {project_id}, stopping monitoring")
+                        break
+                    
+                    # Get project config
+                    project_result = await db.execute(
+                        select(Project).where(Project.id == project_id)
+                    )
+                    project = project_result.scalar_one_or_none()
+                    if not project:
+                        print(f">>> Project {project_id} not found, stopping monitoring")
+                        break
+                    
+                    # Check if auto-management is enabled
+                    config = project.config or {}
+                    if not config.get("pm_auto_manage", True):
+                        continue
+                    
+                    print(f">>> PM check for project {project_id}")
+                    
+                    # 1. Check for failed tasks that need reassignment
+                    await self._handle_failed_tasks(db, project_id, pm)
+                    
+                    # 2. Check for idle developers with tasks
+                    if settings.pm_auto_nudge:
+                        await self._nudge_idle_developers(db, project_id, pm, idle_threshold)
+                    
+                    # 3. Check for unassigned tasks and assign them
+                    await self._auto_assign_unassigned_tasks(db, project_id, pm)
+                    
+                    # 4. Check if all tasks complete
+                    await self._check_completion_and_announce(db, project_id, pm)
+                    
+            except asyncio.CancelledError:
+                print(f">>> PM monitoring cancelled for project {project_id}")
+                break
+            except Exception as e:
+                print(f">>> PM monitoring error for project {project_id}: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue monitoring despite errors
+                await asyncio.sleep(30)
+    
+    async def _handle_failed_tasks(self, db: AsyncSession, project_id: str, pm: Agent):
+        """Check for tasks that failed max retries and need PM attention."""
+        max_retries = settings.max_task_retries
+        
+        # Find tasks that failed and were moved back to pending
+        failed_tasks_result = await db.execute(
+            select(Task).where(
+                Task.project_id == project_id,
+                Task.status == "pending",
+                Task.retry_count >= max_retries,
+                Task.last_error.isnot(None),
+            )
+        )
+        failed_tasks = failed_tasks_result.scalars().all()
+        
+        if not failed_tasks:
+            return
+        
+        print(f">>> PM found {len(failed_tasks)} failed tasks needing attention")
+        
+        for task in failed_tasks:
+            # Post a message about the failure
+            failure_msg = f"⚠️ **Task Failed**: '{task.title}' failed after {task.retry_count} attempts.\n\nError: {task.last_error[:200]}...\n\nI'll reassign this task to another developer."
+            
+            await self.post_update_to_general(db, project_id, failure_msg, pm, trigger_responses=False)
+            
+            # Reset retry count so it can be tried again with a new developer
+            task.retry_count = 0
+            task.last_error = None
+            
+            # Find an available developer to reassign to
+            available_dev = await self._find_available_developer(db, project_id)
+            if available_dev:
+                await self.assign_task_to_agent(db, task, available_dev, pm)
+            
+            await db.commit()
+    
+    async def _nudge_idle_developers(
+        self,
+        db: AsyncSession,
+        project_id: str,
+        pm: Agent,
+        idle_threshold: timedelta,
+    ):
+        """Check for idle developers and have PM nudge them."""
+        cutoff = datetime.utcnow() - idle_threshold
+        
+        # Get developers with assigned in_progress tasks but no recent activity
+        devs_result = await db.execute(
+            select(Agent)
+            .where(Agent.project_id == project_id)
+            .where(Agent.role == "developer")
+        )
+        developers = devs_result.scalars().all()
+        
+        for dev in developers:
+            # Check for in_progress tasks assigned to this dev
+            task_result = await db.execute(
+                select(Task)
+                .where(Task.assigned_to == dev.id)
+                .where(Task.status == "in_progress")
+                .limit(1)
+            )
+            active_task = task_result.scalar_one_or_none()
+            
+            if not active_task:
+                continue
+            
+            # Check for recent activity
+            activity_result = await db.execute(
+                select(ActivityLog)
+                .where(ActivityLog.agent_id == dev.id)
+                .where(ActivityLog.created_at >= cutoff)
+                .limit(1)
+            )
+            has_recent_activity = activity_result.scalar_one_or_none() is not None
+            
+            if not has_recent_activity:
+                # Developer is idle with an active task - nudge them
+                print(f">>> PM nudging idle developer {dev.name}")
+                
+                nudge_msg = f"@{dev.name} - checking in on '{active_task.title}'. How's it going? Need any help?"
+                await self.post_update_to_general(db, project_id, nudge_msg, pm, trigger_responses=True)
+                
+                # Log the nudge
+                activity = ActivityLog(
+                    agent_id=pm.id,
+                    activity_type="developer_nudge",
+                    description=f"Nudged {dev.name} about task: {active_task.title}",
+                    extra_data={"developer_id": dev.id, "task_id": active_task.id},
+                )
+                db.add(activity)
+                await db.commit()
+    
+    async def _auto_assign_unassigned_tasks(self, db: AsyncSession, project_id: str, pm: Agent):
+        """Find unassigned pending tasks and assign them to available developers."""
+        # Get unassigned pending tasks
+        unassigned_result = await db.execute(
+            select(Task)
+            .where(Task.project_id == project_id)
+            .where(Task.assigned_to.is_(None))
+            .where(Task.status == "pending")
+            .order_by(Task.priority.desc())
+            .limit(3)  # Don't assign too many at once
+        )
+        unassigned_tasks = unassigned_result.scalars().all()
+        
+        if not unassigned_tasks:
+            return
+        
+        for task in unassigned_tasks:
+            available_dev = await self._find_available_developer(db, project_id)
+            if available_dev:
+                print(f">>> PM auto-assigning task '{task.title}' to {available_dev.name}")
+                await self.assign_task_to_agent(db, task, available_dev, pm)
+    
+    async def _find_available_developer(self, db: AsyncSession, project_id: str) -> Agent | None:
+        """Find an available developer (idle with no active tasks)."""
+        # Get developers
+        devs_result = await db.execute(
+            select(Agent)
+            .where(Agent.project_id == project_id)
+            .where(Agent.role == "developer")
+            .where(Agent.status == "idle")
+        )
+        developers = devs_result.scalars().all()
+        
+        for dev in developers:
+            # Check if they have any active tasks
+            active_task_result = await db.execute(
+                select(Task)
+                .where(Task.assigned_to == dev.id)
+                .where(Task.status.in_(["pending", "in_progress"]))
+                .limit(1)
+            )
+            if not active_task_result.scalar_one_or_none():
+                return dev
+        
+        return None
+    
+    async def _check_completion_and_announce(self, db: AsyncSession, project_id: str, pm: Agent):
+        """Check if all tasks are complete and announce if so."""
+        # Only check if we haven't already announced
+        activity_result = await db.execute(
+            select(ActivityLog)
+            .where(ActivityLog.agent_id == pm.id)
+            .where(ActivityLog.activity_type == "project_complete")
+            .limit(1)
+        )
+        already_announced = activity_result.scalar_one_or_none() is not None
+        
+        if already_announced:
+            return
+        
+        completion = await self.check_if_work_complete(db, project_id)
+        if completion["ready_for_review"]:
+            await self.announce_completion(db, project_id, pm)
+
+
 # Global instance
 _pm_manager: PMManager | None = None
 
@@ -1444,3 +1706,19 @@ def get_pm_manager(db_session_factory) -> PMManager:
     if _pm_manager is None:
         _pm_manager = PMManager(db_session_factory)
     return _pm_manager
+
+
+def start_pm_monitoring(project_id: str) -> bool:
+    """Start PM monitoring for a project. Call after project is created."""
+    if _pm_manager is None:
+        return False
+    asyncio.create_task(_pm_manager.start_monitoring(project_id))
+    return True
+
+
+def stop_pm_monitoring(project_id: str) -> bool:
+    """Stop PM monitoring for a project."""
+    if _pm_manager is None:
+        return False
+    asyncio.create_task(_pm_manager.stop_monitoring(project_id))
+    return True

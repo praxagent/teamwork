@@ -93,12 +93,14 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
     };
 
     ws.onmessage = (event) => {
-      if (event.data instanceof Blob) {
+      // Backend now sends text (properly decoded UTF-8)
+      if (typeof event.data === 'string') {
+        term.write(event.data);
+      } else if (event.data instanceof Blob) {
+        // Fallback for binary data
         event.data.text().then((text) => {
           term.write(text);
         });
-      } else {
-        term.write(event.data);
       }
     };
 
@@ -113,9 +115,12 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
       }
     };
 
+    // Send input as binary to preserve control characters (Ctrl+C, etc.)
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+        // Convert to Uint8Array to send as binary
+        const encoder = new TextEncoder();
+        ws.send(encoder.encode(data));
       }
     });
 
@@ -146,17 +151,17 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
 
   return (
     <div 
-      className={`flex-1 flex flex-col ${isActive ? '' : 'hidden'}`}
+      className={`flex-1 flex flex-col min-h-0 overflow-hidden ${isActive ? '' : 'hidden'}`}
       onClick={onActivate}
     >
       {error && (
-        <div className="px-4 py-2 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20">
+        <div className="px-4 py-2 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20 flex-shrink-0">
           {error}
         </div>
       )}
       <div 
         ref={terminalRef} 
-        className="flex-1 p-2"
+        className="flex-1 p-2 min-h-0 overflow-hidden"
         style={{ backgroundColor: '#1e1e1e' }}
       />
     </div>
@@ -310,7 +315,7 @@ export function Terminal({ projectId, mode, startClaude = false, onClose }: Term
         </div>
 
         {/* Terminal Tabs Content */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {tabs.map(tab => (
             <TerminalTab
               key={tab.id}

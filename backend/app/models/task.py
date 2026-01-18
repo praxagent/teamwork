@@ -50,6 +50,12 @@ class Task(Base):
     end_commit: Mapped[str | None] = mapped_column(
         String(40), nullable=True
     )  # Git commit hash when task completed
+    retry_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )  # Number of times this task has been retried
+    last_error: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # Last error message if task failed
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )

@@ -663,6 +663,14 @@ Check the task board for our initial backlog. Let me know if you have any questi
     await db.commit()  # Final commit for all data
     logger.info(f"[Onboarding] Project finalized and committed: {project.id}")
 
+    # Start PM monitoring for active project management
+    try:
+        from app.services.pm_manager import start_pm_monitoring
+        start_pm_monitoring(project.id)
+        logger.info(f"[Onboarding] PM monitoring started for project {project.id}")
+    except Exception as e:
+        logger.warning(f"[Onboarding] Failed to start PM monitoring: {e}")
+
     # Clean up session
     del _onboarding_sessions[request.project_id]
 
