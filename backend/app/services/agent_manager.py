@@ -350,7 +350,8 @@ You write clean, well-documented code. When creating files:
 - Commit your changes with meaningful messages"""
 
         # Build command - use text output format for streaming visibility
-        # Note: -p (print mode) is for non-interactive output, prompt goes at the end
+        # Note: -p (print mode) is for non-interactive output
+        # We pass the prompt via stdin for reliability with long prompts
         cmd = ["claude", "-p"]
         
         # Add model selection if specified
@@ -376,24 +377,30 @@ You write clean, well-documented code. When creating files:
             # Default: allow read, write, and git operations
             cmd.extend(["--allowedTools", "Read,Edit,Write,Bash(git:*)"])
         
-        # Add prompt as the final positional argument
-        cmd.append(prompt)
-        
         try:
             # Run Claude Code with timeout, streaming output for live logs
             full_cmd = ' '.join(cmd[:6])
             print(f">>> Running Claude Code: {full_cmd}...", flush=True)
             print(f">>> Working directory: {workspace_dir}", flush=True)
+            print(f">>> Prompt length: {len(prompt)} chars", flush=True)
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 cwd=workspace_dir,
+                stdin=asyncio.subprocess.PIPE,  # Pipe prompt via stdin
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,  # Merge stderr into stdout
                 env={**os.environ, "ANTHROPIC_API_KEY": settings.anthropic_api_key},
             )
             
             print(f">>> Claude Code process started, PID: {process.pid}", flush=True)
+            
+            # Write the prompt to stdin and close it
+            process.stdin.write(prompt.encode("utf-8"))
+            await process.stdin.drain()
+            process.stdin.close()
+            await process.stdin.wait_closed()
+            print(f">>> Prompt sent to Claude Code via stdin", flush=True)
             
             # Preserve any existing output (from preparation phase) and append
             existing_output = ""
