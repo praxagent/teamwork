@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Code, ListTodo, Settings, ChevronLeft, Sparkles } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Sparkles, Terminal } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -8,7 +8,7 @@ import {
   ThreadView,
 } from '@/components/chat';
 import { ProfileModal } from '@/components/profiles';
-import { FileBrowser, TaskBoard, SettingsPanel, ClaudePanel } from '@/components/workspace';
+import { FileBrowser, TaskBoard, SettingsPanel, ClaudePanel, LiveSessionsPanel } from '@/components/workspace';
 import {
   useProject,
   useAgents,
@@ -33,6 +33,7 @@ export function ProjectWorkspace() {
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showClaudePanel, setShowClaudePanel] = useState(false);
+  const [showLiveSessions, setShowLiveSessions] = useState(false);
   // Track if Claude panel has ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(false);
 
@@ -53,12 +54,20 @@ export function ProjectWorkspace() {
     useUIStore();
 
   // API queries
-  const { data: projectData } = useProject(projectId || null);
+  const { data: projectData, error: projectError, isError: isProjectError } = useProject(projectId || null);
   const { data: agentsData } = useAgents(projectId || null);
   const { data: channelsData } = useChannels(projectId || null);
   const { data: messagesData } = useMessages(currentChannelId);
   const { data: threadData } = useThreadMessages(activeThreadId);
   const { data: agentActivityData } = useAgentActivity(selectedAgent?.id || null);
+
+  // Redirect to home if project not found
+  useEffect(() => {
+    if (isProjectError) {
+      console.log('[ProjectWorkspace] Project not found, redirecting to home');
+      navigate('/', { replace: true });
+    }
+  }, [isProjectError, navigate]);
 
   const sendMessage = useSendMessage();
   const getOrCreateDM = useGetOrCreateDMChannel();
@@ -238,6 +247,11 @@ export function ProjectWorkspace() {
                 <Settings className="w-5 h-5 text-slack-purple" />
                 <h1 className="font-bold text-lg text-gray-900">Settings</h1>
               </>
+            ) : showLiveSessions ? (
+              <>
+                <Terminal className="w-5 h-5 text-green-500" />
+                <h1 className="font-bold text-lg text-gray-900">Live Sessions</h1>
+              </>
             ) : currentChannel ? (
               <>
                 <span className="text-gray-500">{currentChannel.type === 'dm' ? '@' : '#'}</span>
@@ -262,13 +276,14 @@ export function ProjectWorkspace() {
           {/* Panel Toggle Buttons */}
           <div className="flex items-center gap-1">
             {/* Back to Chat button when in a panel */}
-            {(showTaskPanel || showFileBrowser || showClaudePanel || showSettings) && (
+            {(showTaskPanel || showFileBrowser || showClaudePanel || showSettings || showLiveSessions) && (
               <button
                 onClick={() => {
                   setShowTaskPanel(false);
                   setShowFileBrowser(false);
                   setShowClaudePanel(false);
                   setShowSettings(false);
+                  setShowLiveSessions(false);
                 }}
                 className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded mr-2"
               >
@@ -283,6 +298,7 @@ export function ProjectWorkspace() {
                   setShowFileBrowser(false);
                   setShowClaudePanel(false);
                   setShowSettings(false);
+                  setShowLiveSessions(false);
                 }
               }}
               className={`p-2 rounded hover:bg-gray-100 transition-colors ${
@@ -299,6 +315,7 @@ export function ProjectWorkspace() {
                   setShowTaskPanel(false);
                   setShowClaudePanel(false);
                   setShowSettings(false);
+                  setShowLiveSessions(false);
                 }
               }}
               className={`p-2 rounded hover:bg-gray-100 transition-colors ${
@@ -317,6 +334,7 @@ export function ProjectWorkspace() {
                   setShowTaskPanel(false);
                   setShowFileBrowser(false);
                   setShowSettings(false);
+                  setShowLiveSessions(false);
                 }
               }}
               className={`p-2 rounded hover:bg-gray-100 transition-colors ${
@@ -333,6 +351,7 @@ export function ProjectWorkspace() {
                   setShowTaskPanel(false);
                   setShowFileBrowser(false);
                   setShowClaudePanel(false);
+                  setShowLiveSessions(false);
                 }
               }}
               className={`p-2 rounded hover:bg-gray-100 transition-colors ${
@@ -341,6 +360,25 @@ export function ProjectWorkspace() {
               title="Settings"
             >
               <Settings className="w-5 h-5" />
+            </button>
+            
+            {/* Live Sessions toggle - shows running Claude Code sessions as full panel */}
+            <button
+              onClick={() => {
+                setShowLiveSessions(!showLiveSessions);
+                if (!showLiveSessions) {
+                  setShowTaskPanel(false);
+                  setShowFileBrowser(false);
+                  setShowClaudePanel(false);
+                  setShowSettings(false);
+                }
+              }}
+              className={`p-2 rounded hover:bg-gray-100 transition-colors ${
+                showLiveSessions ? 'bg-green-600 text-white hover:bg-green-500' : 'text-gray-600'
+              }`}
+              title="Live Sessions - Watch agents work in real-time"
+            >
+              <Terminal className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -356,10 +394,20 @@ export function ProjectWorkspace() {
           />
         )}
         
+        {/* Main content - panel views */}
         {showTaskPanel && projectId ? (
           <TaskBoard
             projectId={projectId}
             agents={agents}
+            onWatchLive={(agentId) => {
+              // Switch to Live Sessions panel when "Watch Live" is clicked
+              setShowTaskPanel(false);
+              setShowFileBrowser(false);
+              setShowSettings(false);
+              setShowClaudePanel(false);
+              setShowLiveSessions(true);
+              // TODO: Could also pass agentId to pre-select that agent's session
+            }}
           />
         ) : showFileBrowser && projectId ? (
           <FileBrowser
@@ -376,8 +424,16 @@ export function ProjectWorkspace() {
               project={currentProject}
             />
           </div>
+        ) : showLiveSessions && projectId ? (
+          <LiveSessionsPanel
+            projectId={projectId}
+            agents={agents}
+            isVisible={true}
+            onClose={() => setShowLiveSessions(false)}
+            fullPage={true}
+          />
         ) : !showClaudePanel ? (
-          <>
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <MessageList
               messages={currentMessages}
               agents={agents}
@@ -392,7 +448,7 @@ export function ProjectWorkspace() {
               onSend={handleSendMessage}
               onCodeRequest={handleCodeRequest}
             />
-          </>
+          </div>
         ) : null}
       </div>
 

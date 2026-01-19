@@ -14,16 +14,18 @@ A web application where AI agents simulate a software development team. Describe
 
 ## Features
 
-- Onboarding wizard with AI-driven clarifying questions
+- **Just Launch!** - Go from idea to working team in seconds with AI-automated setup
+- Onboarding wizard with AI-driven clarifying questions (or skip with Just Launch)
 - Dynamic team generation with unique agent personalities
 - Real-time chat interface with channels and direct messages
 - AI-generated profile images for team members
 - Kanban task board with drag-and-drop
 - Live activity traces showing agent work status
-- Code generation to a local workspace
+- Code generation to a local workspace (mounted in Docker for security)
 - Execution logs for tasks and agents
 - Code diff viewer for completed tasks
 - Pause/Resume kill switch for all agents
+- **Smart terminal detection** - LLM-powered idle detection prevents agents from getting stuck
 - **Executive Access** - Run Claude Code or terminal sessions directly in the browser
 
 ## Screenshots
@@ -52,7 +54,7 @@ A web application where AI agents simulate a software development team. Describe
 
 ![Executive Access](assets/executive_access.png)
 
-Launch Claude Code or terminal sessions directly in your browser. Choose between Local mode (uses your Claude subscription) or Docker mode (sandboxed container using API credits).
+Launch Claude Code or terminal sessions directly in your browser. Agents run in isolated Docker containers for security, with your workspace mounted so you can edit code in your IDE while they work.
 
 ### Projects
 
@@ -64,9 +66,9 @@ The easiest way to run TeamWork is with Docker Compose.
 
 ### Prerequisites
 
-- Docker and Docker Compose
+- Docker and Docker Compose (required for agent execution)
 - Anthropic API key
-- OpenAI API key (for profile image generation)
+- OpenAI API key (optional, for profile image generation)
 
 ### Steps
 
@@ -113,9 +115,14 @@ For development or if you prefer not to use Docker.
 
 - Python 3.11+
 - Node.js 18+
-- Claude Code CLI (`npm install -g @anthropic-ai/claude-code`)
+- Docker (for agent execution in isolated containers)
 - Anthropic API key
 - OpenAI API key (optional, for AI profile images)
+
+**Note**: Agents run in Docker containers for security, even during local development. Build the agent image first:
+```bash
+docker build -t vteam/agent:latest -f docker/agent.Dockerfile .
+```
 
 ### Quick Start (Recommended)
 
@@ -233,25 +240,63 @@ teamwork/
 
 Create a `.env` file in the **project root** (copy from `.env.example`):
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude agents |
-| `OPENAI_API_KEY` | No* | OpenAI API key for AI-generated profile images |
-| `DATABASE_URL` | No | Database URL (default: SQLite) |
-| `WORKSPACE_PATH` | No | Code output directory (default: `./workspace`) |
-| `DEFAULT_AGENT_RUNTIME` | No | `subprocess` or `docker` |
+### Required
 
-*If `OPENAI_API_KEY` is not provided, AI profile image generation is automatically disabled. Agents will use colored initials avatars instead, and you can upload custom images manually.
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude agents |
+
+### Optional - General
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_API_KEY` | - | OpenAI API key for AI-generated profile images* |
+| `DATABASE_URL` | `sqlite:///./vteam.db` | Database URL |
+| `WORKSPACE_PATH` | `./workspace` | Code output directory |
+| `CLAUDE_CONFIG_BASE64` | - | Base64-encoded Claude config for Docker auth (see below) |
+
+*If `OPENAI_API_KEY` is not provided, AI profile image generation is automatically disabled. Agents will use colored initials avatars instead.
+
+### Model Configuration
+
+Override which Claude models are used for different tasks:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MODEL_ONBOARDING` | `claude-haiku-4-5` | Project analysis and team generation |
+| `MODEL_PM` | `claude-sonnet-4-5` | PM interactions and task management |
+| `MODEL_AGENT_SIMPLE` | `claude-haiku-4-5` | Simple tasks and idle detection |
+| `MODEL_AGENT_MODERATE` | `claude-sonnet-4-5` | Moderate complexity tasks |
+| `MODEL_AGENT_COMPLEX` | `claude-opus-4-5` | Complex architecture tasks |
+
+Using dateless versions (e.g., `claude-sonnet-4-5`) automatically points to the latest model.
+
+### PM Monitoring Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PM_CHECK_INTERVAL_SECONDS` | `300` | How often PM checks progress (5 min) |
+| `PM_IDLE_THRESHOLD_MINUTES` | `30` | When to consider a developer idle |
+| `PM_AUTO_NUDGE` | `true` | Auto-nudge idle developers |
+
+### Task Retry Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAX_TASK_RETRIES` | `3` | Max retries before moving task to TODO |
+| `TASK_RETRY_DELAY_SECONDS` | `5` | Delay between retry attempts |
 
 ## Usage
 
 1. Navigate to http://localhost:3000 (Docker) or http://localhost:5173 (local)
 2. Click "Start Building"
 3. Describe your application idea
-4. Answer clarifying questions from the PM
-5. Review and customize the generated team
-6. Configure runtime options
-7. Launch your team and watch them build!
+4. Choose your onboarding path:
+   - **Just Launch!** - AI answers all questions and uses optimal defaults (fastest)
+   - **Create (Interactive)** - Answer refining questions, customize team and config
+5. Watch your team build!
+
+The "Just Launch!" option lets you go from idea to working team in seconds by having AI handle all the setup decisions automatically.
 
 ## Chat Commands
 
@@ -295,62 +340,65 @@ Located in the Kanban board toolbar:
 
 Access Claude Code or a terminal directly from the main navigation. Click the **Sparkles** icon (✨) in the header to open Executive Access, or use the **Claude Code** button in the Files view.
 
-### Two Modes
+### Secure Docker Environment
 
-| Mode | Claude Code | Terminal Access | Best For |
-|------|-------------|-----------------|----------|
-| **Local** | Uses your Claude subscription via local CLI | Direct system access | Personal use with existing Claude subscription |
-| **Docker** | Uses `ANTHROPIC_API_KEY` (API credits) | Sandboxed container | Isolated environment, API-based billing |
+All agents run in isolated Docker containers for security:
+- **Sandboxed execution** - Agents cannot access files outside the workspace
+- **Shared workspace** - Your `./workspace/` folder is mounted so you can edit code in your IDE
+- **No permission prompts** - `--dangerously-skip-permissions` is enabled since the container is isolated
+- Uses your `ANTHROPIC_API_KEY` for Claude API access
 
-### Local Mode
-- Requires [Claude Code CLI](https://code.claude.com/docs/en/quickstart) installed locally
-- Uses your Claude subscription (Pro/Max/Teams/Enterprise)
-- **Warning**: Has direct access to your system - use with caution
+### Smart Terminal Detection
 
-### Docker Mode
-- Runs in a Docker container with Claude Code pre-installed
-- Uses your `ANTHROPIC_API_KEY` (billed as API usage, not subscription)
-- Sandboxed - cannot access files outside the workspace
-- **Warning**: Consumes API credits - monitor your usage
+Agents automatically detect when Claude Code is:
+- **Waiting for input** - Auto-responds to permission prompts and menus
+- **Task completed** - Detects completion patterns and exits cleanly
+- **Stuck** - Uses LLM fallback (Haiku) after 30s idle to analyze and respond
 
-### Skip Docker Setup (Recommended)
+This prevents agents from getting stuck on interactive prompts while keeping API costs minimal.
 
-By default, Docker mode requires Claude Code setup each session (for security, credentials aren't persisted). To skip this, export your local Claude config:
+### Authentication Setup
+
+To use your Claude subscription (Pro/Max/Teams) instead of API credits, export your local Claude config:
 
 ```bash
-# On your local machine, after doing Claude Code setup once:
-cat ~/.claude.json | base64
+# On your local machine, after running 'claude' once to authenticate:
+cat ~/.claude/claude.json | base64
 
 # Copy the output and add to your .env file:
 CLAUDE_CONFIG_BASE64=<paste the base64 string here>
 ```
 
-This injects your config into Docker containers ephemerally (not persisted to disk).
+This injects your config into Docker containers at runtime (not persisted to disk).
 
-### Installation
+### Building the Agent Image
 
-For **Local Mode**, install Claude Code CLI:
+Before using Docker mode, build the agent image:
+
 ```bash
-curl -fsSL https://claude.ai/install.sh | bash
+docker build -t vteam/agent:latest -f docker/agent.Dockerfile .
 ```
 
-For **Docker Mode**, ensure Docker is installed and running.
+If the image isn't available, agents will fall back to local execution with a warning.
 
 ## Model Selection
 
-Control which Claude model your agents use. Configure in Project Settings:
+Control which Claude models your agents use via environment variables:
 
-| Mode | Description |
-|------|-------------|
-| **Auto** (Recommended) | PM selects model based on task complexity. Complex tasks use Sonnet, simple tasks use Haiku |
-| **Sonnet** | Use Claude Sonnet for all tasks - best balance of speed and capability |
-| **Haiku** | Use Claude Haiku for all tasks - fastest and most cost-effective |
-| **Hybrid** | Auto-select by default, but allows per-task overrides |
+| Task Type | Default Model | Env Variable |
+|-----------|---------------|--------------|
+| Onboarding/Analysis | Haiku 4.5 | `MODEL_ONBOARDING` |
+| PM Interactions | Sonnet 4.5 | `MODEL_PM` |
+| Simple Tasks | Haiku 4.5 | `MODEL_AGENT_SIMPLE` |
+| Moderate Tasks | Sonnet 4.5 | `MODEL_AGENT_MODERATE` |
+| Complex Tasks | Opus 4.5 | `MODEL_AGENT_COMPLEX` |
 
-**Complexity Detection:**
-- Complex tasks (architecture, security, database design) → Sonnet
-- Simple tasks (typos, docs, minor fixes) → Haiku
-- Moderate tasks → Sonnet
+The PM automatically assigns task complexity based on the work involved:
+- **Simple**: Typos, docs, minor fixes → Haiku (fast, cheap)
+- **Moderate**: Features, bug fixes → Sonnet (balanced)
+- **Complex**: Architecture, security, databases → Opus (most capable)
+
+Using dateless model names (e.g., `claude-sonnet-4-5`) automatically uses the latest version.
 
 ## Generated Code Location
 
@@ -562,4 +610,4 @@ rm -rf data workspace
 
 ## License
 
-MIT - See [LICENSE](LICENSE) for details.
+GNU AFFERO GENERAL PUBLIC LICENSE - See [LICENSE](LICENSE) for details.

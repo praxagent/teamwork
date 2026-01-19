@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Project, Agent, Channel, Task, get_db
+from app.models import Project, Agent, Channel, Task, Message, get_db
 from app.services.project_analyzer import ProjectAnalyzer
 from app.services.personality_generator import PersonalityGenerator
 from app.services.image_generator import ImageGenerator
@@ -92,6 +92,7 @@ class ConfigOptions(BaseModel):
     workspace_type: str = "local_git"  # local, local_git, browser, hybrid
     auto_execute_tasks: bool = True  # auto-execute tasks when created
     workspace_naming: str = "named"  # 'named' (app_name_uuid) or 'uuid_only'
+    claude_code_mode: str = "terminal"  # 'terminal' (interactive, needs CLAUDE_CONFIG_BASE64) or 'programmatic' (uses stdin/stdout)
 
 
 class FinalizeRequest(BaseModel):
@@ -100,6 +101,7 @@ class FinalizeRequest(BaseModel):
     project_id: str
     config: ConfigOptions
     generate_images: bool = True
+    team_size: int | None = None  # Override team size (2-10)
 
 
 class OnboardingStatus(BaseModel):
@@ -365,6 +367,65 @@ async def shuffle_team_member(
     )
 
 
+class GenerateMoreMembersRequest(BaseModel):
+    """Request to generate additional team members."""
+    project_id: str
+    count: int = 1  # How many new members to generate
+
+
+class GenerateMoreMembersResponse(BaseModel):
+    """Response with newly generated team members."""
+    new_members: list[dict]
+    total_count: int
+
+
+@router.post("/generate-more-members", response_model=GenerateMoreMembersResponse)
+async def generate_more_members(
+    request: GenerateMoreMembersRequest,
+    db: AsyncSession = Depends(get_db),
+) -> GenerateMoreMembersResponse:
+    """
+    Generate additional team members beyond the initial suggestion.
+    This is used when the user increases the team size beyond what was originally generated.
+    """
+    session = _onboarding_sessions.get(request.project_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Onboarding session not found")
+    
+    team_suggestions = session.get("team_suggestions", [])
+    personality_gen = PersonalityGenerator()
+    
+    # Determine what roles to add - prioritize developers
+    new_members = []
+    for i in range(request.count):
+        # Alternate between developer specialties
+        teams = ["Backend", "Frontend", "Full Stack", "DevOps"]
+        team = teams[i % len(teams)]
+        
+        # Generate a new member
+        generated = personality_gen._generate_random_team([team])
+        if generated:
+            member = generated[0]
+            member_dict = member.model_dump()
+            member_dict["role"] = "developer"  # New members are developers
+            member_dict["team"] = team
+            
+            from app.services.personality_generator import TeamMember
+            final_member = TeamMember(**member_dict)
+            team_suggestions.append(final_member)
+            new_members.append(final_member.model_dump())
+    
+    # Update the session
+    session["team_suggestions"] = team_suggestions
+    
+    logger.info(f"[Onboarding] Generated {len(new_members)} additional team members, total: {len(team_suggestions)}")
+    
+    return GenerateMoreMembersResponse(
+        new_members=new_members,
+        total_count=len(team_suggestions),
+    )
+
+
 class UpdateMemberRequest(BaseModel):
     """Request to update a team member."""
     project_id: str
@@ -559,10 +620,16 @@ async def finalize_project(
     for ch in verified_channels:
         logger.info(f"[Onboarding]   Verified channel: {ch.name} (type={ch.type}, id={ch.id})")
 
-    # Limit team size to 5 for faster creation
-    if len(team_suggestions) > 5:
-        logger.info(f"[Onboarding] Limiting team from {len(team_suggestions)} to 5 members")
-        team_suggestions = team_suggestions[:5]
+    # Adjust team size based on user preference
+    desired_size = request.team_size if request.team_size else 5
+    # Clamp to valid range (2-10)
+    desired_size = max(2, min(10, desired_size))
+    
+    if len(team_suggestions) > desired_size:
+        logger.info(f"[Onboarding] Limiting team from {len(team_suggestions)} to {desired_size} members (user requested)")
+        team_suggestions = team_suggestions[:desired_size]
+    elif len(team_suggestions) < desired_size:
+        logger.info(f"[Onboarding] Team has {len(team_suggestions)} members, user requested {desired_size} - using available members")
 
     # Create agents from team suggestions - PARALLELIZED
     import asyncio
@@ -640,18 +707,54 @@ Check the task board for our initial backlog. Let me know if you have any questi
         logger.info(f"[Onboarding] Created welcome message from PM in #general")
 
     # Create initial tasks from breakdown
+    # The breakdown now contains specific, actionable tasks (not vague components)
     breakdown = session.get("breakdown", {})
+    created_tasks = []
     for component in breakdown.get("components", []):
+        # Use the task name directly - it's already a specific task description
+        task_name = component.get("name", "Task")
+        # Don't prefix with "Implement" if it's already a specific task
+        if not any(task_name.lower().startswith(prefix) for prefix in 
+                   ["create", "build", "implement", "set up", "design", "write", "test", "add", "configure"]):
+            task_name = f"Implement {task_name}"
+        
         task = Task(
             project_id=project.id,
-            title=f"Implement {component.get('name', 'Component')}",
+            title=task_name,
             description=component.get("description"),
             team=component.get("team"),
             priority=component.get("priority", 0),
+            config={
+                "task_type": component.get("task_type", "development"),
+                "estimated_complexity": component.get("estimated_complexity", "moderate"),
+                "dependencies": component.get("dependencies", []),
+            },
         )
         db.add(task)
-
+        created_tasks.append(task)
+    
+    logger.info(f"[Onboarding] Created {len(created_tasks)} initial tasks")
     await db.flush()
+    
+    # Broadcast task creation via WebSocket so frontend updates immediately
+    from app.websocket import manager as ws_manager, WebSocketEvent, EventType
+    for task in created_tasks:
+        await ws_manager.broadcast_to_project(
+            project.id,
+            WebSocketEvent(
+                type=EventType.TASK_NEW,
+                data={
+                    "id": str(task.id),
+                    "title": task.title,
+                    "description": task.description,
+                    "status": task.status,
+                    "priority": task.priority,
+                    "team": task.team,
+                    "project_id": str(project.id),
+                },
+            ),
+        )
+    logger.info(f"[Onboarding] Broadcast {len(created_tasks)} task creation events")
 
     # Update project status to active
     project.status = "active"

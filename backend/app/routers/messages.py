@@ -378,7 +378,7 @@ Respond as {agent.name}. Reference ONLY the work shown in your actual work statu
 
     try:
         response = await client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=settings.model_pm,
             max_tokens=500,
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
@@ -1417,7 +1417,7 @@ Write a brief, honest message about what went wrong and what needs to be fixed.
 Be specific about the error. Keep it concise (2-4 sentences)."""
 
         response = await client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=settings.model_pm,
             max_tokens=400,
             system=f"""You are {pm.name}, the PM. Report test results honestly and helpfully.
 {pm.soul_prompt or ''}""",

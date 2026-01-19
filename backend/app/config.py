@@ -103,8 +103,9 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
-    # Agent Runtime
-    default_agent_runtime: Literal["subprocess", "docker"] = "subprocess"
+    # Agent Runtime - Docker is recommended for security (agents run in isolated containers)
+    # 'subprocess' is deprecated but still accepted for backward compatibility
+    default_agent_runtime: Literal["docker", "subprocess"] = "docker"
     
     # Task Retry Configuration
     max_task_retries: int = 3  # Maximum retries before moving task back to todo permanently
@@ -114,6 +115,14 @@ class Settings(BaseSettings):
     pm_check_interval_seconds: int = 300  # How often PM checks on project (5 minutes)
     pm_idle_threshold_minutes: int = 30  # How long before an agent is considered idle
     pm_auto_nudge: bool = True  # Whether PM should automatically nudge idle developers
+    
+    # Model Configuration - override default models
+    # Using dateless versions (e.g. claude-sonnet-4-5) to always use latest
+    model_onboarding: str = "claude-haiku-4-5"  # Fast model for onboarding/analysis
+    model_pm: str = "claude-sonnet-4-5"  # PM interactions
+    model_agent_simple: str = "claude-haiku-4-5"  # Simple agent tasks
+    model_agent_moderate: str = "claude-sonnet-4-5"  # Moderate complexity tasks
+    model_agent_complex: str = "claude-opus-4-5"  # Complex tasks
 
     # CORS - includes Docker default port
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:80"]

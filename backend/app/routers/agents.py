@@ -3,7 +3,7 @@
 import base64
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -613,3 +613,173 @@ async def get_agent_live_output(
         started_at=live_output.get("started_at"),
         error=live_output.get("error"),
     )
+
+
+class LiveSessionsResponse(BaseModel):
+    """Response for all live sessions in a project."""
+    sessions: list[LiveOutputResponse]
+    total_active: int
+
+
+@router.get("/project/{project_id}/live-sessions", response_model=LiveSessionsResponse)
+async def get_project_live_sessions(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> LiveSessionsResponse:
+    """
+    Get all live Claude Code sessions for agents in a project.
+    
+    This allows monitoring all running agent sessions in one place,
+    like switching between terminal tabs.
+    """
+    from app.services.agent_manager import get_agent_manager
+    
+    # Get all agents in this project
+    agents_result = await db.execute(
+        select(Agent).where(Agent.project_id == project_id)
+    )
+    agents = agents_result.scalars().all()
+    
+    agent_manager = get_agent_manager()
+    if not agent_manager:
+        return LiveSessionsResponse(sessions=[], total_active=0)
+    
+    sessions = []
+    for agent in agents:
+        live_output = agent_manager.get_live_output(agent.id)
+        
+        if live_output:
+            status = live_output.get("status", "unknown")
+            # Only include sessions that are active or recently completed
+            if status not in ["idle"]:
+                sessions.append(LiveOutputResponse(
+                    agent_id=agent.id,
+                    agent_name=agent.name,
+                    status=status,
+                    output=live_output.get("output"),
+                    last_update=live_output.get("last_update"),
+                    started_at=live_output.get("started_at"),
+                    error=live_output.get("error"),
+                ))
+        elif agent.status == "working":
+            # Agent marked as working but no live output - include with special status
+            sessions.append(LiveOutputResponse(
+                agent_id=agent.id,
+                agent_name=agent.name,
+                status="initializing",
+                output="Agent is starting up...",
+                last_update=None,
+                started_at=None,
+                error=None,
+            ))
+    
+    # Sort by status (running first, then by last_update)
+    def sort_key(s: LiveOutputResponse) -> tuple:
+        status_order = {
+            "running": 0,
+            "invoking": 1,
+            "preparing": 2,
+            "initializing": 3,
+            "completed": 4,
+            "error": 5,
+            "timeout": 6,
+        }
+        return (status_order.get(s.status, 99), s.last_update or "")
+    
+    sessions.sort(key=sort_key)
+    
+    return LiveSessionsResponse(
+        sessions=sessions,
+        total_active=len([s for s in sessions if s.status in ["running", "invoking", "preparing", "initializing"]]),
+    )
+
+
+@router.websocket("/{agent_id}/terminal")
+async def agent_terminal_websocket(
+    websocket: WebSocket,
+    agent_id: str,
+):
+    """
+    WebSocket endpoint to attach to an agent's terminal session.
+    
+    This allows:
+    - Real-time streaming of Claude Code output
+    - Sending input to take over the session (optional)
+    
+    Send text messages to provide input to the terminal.
+    """
+    from app.services.agent_manager import get_agent_manager
+    
+    await websocket.accept()
+    
+    agent_manager = get_agent_manager()
+    terminal = agent_manager.get_agent_terminal(agent_id)
+    
+    if not terminal:
+        # No active terminal - send current output if available
+        live_output = agent_manager.get_live_output(agent_id)
+        if live_output and live_output.get("output"):
+            await websocket.send_text(live_output["output"])
+            await websocket.send_text("\n[No active terminal session]\n")
+        else:
+            await websocket.send_text("[No active terminal session for this agent]\n")
+        await websocket.close()
+        return
+    
+    # Send existing output buffer
+    if terminal.output_buffer:
+        await websocket.send_text(terminal.output_buffer)
+    
+    # Attach to terminal for live updates
+    agent_manager.attach_websocket_to_terminal(agent_id, websocket)
+    
+    try:
+        # Handle incoming messages (user input for takeover)
+        print(f">>> Terminal WebSocket ready for input from agent {agent_id}", flush=True)
+        while True:
+            try:
+                data = await websocket.receive()
+                
+                if "text" in data:
+                    text = data["text"]
+                    print(f">>> Terminal WS received text: {repr(text[:50]) if len(text) > 50 else repr(text)}", flush=True)
+                    # Send to terminal
+                    agent_manager.send_to_agent_terminal(agent_id, text.encode('utf-8'))
+                elif "bytes" in data:
+                    # Binary input - pass through directly
+                    bytes_data = data["bytes"]
+                    print(f">>> Terminal WS received bytes: {len(bytes_data)} bytes", flush=True)
+                    agent_manager.send_to_agent_terminal(agent_id, bytes_data)
+                elif "type" in data and data["type"] == "websocket.disconnect":
+                    print(f">>> Terminal WebSocket disconnected for agent {agent_id}", flush=True)
+                    break
+                    
+            except Exception as e:
+                print(f">>> Terminal WebSocket error for agent {agent_id}: {e}", flush=True)
+                break
+    finally:
+        agent_manager.detach_websocket_from_terminal(agent_id, websocket)
+        print(f">>> Terminal WebSocket closed for agent {agent_id}", flush=True)
+
+
+@router.post("/{agent_id}/terminal/input")
+async def send_terminal_input(
+    agent_id: str,
+    input_data: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Send input to an agent's terminal (for takeover).
+    
+    This allows interrupting or guiding the agent's Claude Code session.
+    """
+    from app.services.agent_manager import get_agent_manager
+    
+    agent_manager = get_agent_manager()
+    
+    success = agent_manager.send_to_agent_terminal(agent_id, input_data.encode('utf-8'))
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="No active terminal for this agent")
+    
+    return {"success": True, "message": "Input sent to terminal"}

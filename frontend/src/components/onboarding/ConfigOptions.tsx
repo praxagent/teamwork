@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button, Card, CardContent } from '@/components/common';
-import { Settings, Box, Terminal, FolderGit, Globe, Layers, ImageIcon, Zap, Hand, AlertCircle } from 'lucide-react';
+import { Settings, Box, Terminal, FolderGit, Globe, Layers, ImageIcon, Zap, Hand, AlertCircle, MonitorPlay, Code2, Key } from 'lucide-react';
 import { useSystemCapabilities } from '@/hooks/useApi';
 
 interface ConfigOptionsProps {
@@ -10,13 +10,15 @@ interface ConfigOptionsProps {
   projectName?: string;
   projectDescription?: string;
   onProjectDetailsChange?: (name: string, description: string) => void;
+  quickLaunching?: boolean;
 }
 
 export interface ConfigValues {
-  runtime_mode: 'subprocess' | 'docker';
-  workspace_type: 'local' | 'local_git' | 'browser' | 'hybrid';
+  runtime_mode: 'docker';  // Always Docker for security
+  workspace_type: 'local_git' | 'browser' | 'hybrid';
   generate_images: boolean;
   auto_execute_tasks: boolean;
+  claude_code_mode: 'terminal' | 'programmatic';
 }
 
 interface OptionCardProps {
@@ -85,14 +87,38 @@ export function ConfigOptions({
   projectName = '',
   projectDescription = '',
   onProjectDetailsChange,
+  quickLaunching = false,
 }: ConfigOptionsProps) {
   const { data: capabilities } = useSystemCapabilities();
+
+  // Show simplified loading view during quick launch
+  if (quickLaunching) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4 animate-pulse">
+            <Zap className="w-8 h-8 text-blue-600" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Launching Your Team
+          </h1>
+          <p className="text-gray-600">
+            Configuring workspace and starting your virtual team for <span className="font-semibold">{projectName}</span>...
+          </p>
+          <div className="mt-6 flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent" />
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   const [config, setConfig] = useState<ConfigValues>({
-    runtime_mode: 'subprocess',
+    runtime_mode: 'docker',  // Always Docker for security
     workspace_type: 'local_git',
     generate_images: true,
     auto_execute_tasks: true,
+    claude_code_mode: 'terminal',  // Recommended - real terminal experience
   });
   
   const [name, setName] = useState(projectName);
@@ -161,27 +187,17 @@ export function ConfigOptions({
           </div>
         </div>
 
-        {/* Runtime Mode */}
-        <div>
-          <h2 className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-3">
-            Agent Runtime
-          </h2>
-          <div className="space-y-3">
-            <OptionCard
-              selected={config.runtime_mode === 'subprocess'}
-              onClick={() => setConfig({ ...config, runtime_mode: 'subprocess' })}
-              icon={Terminal}
-              title="Local Subprocess"
-              description="Run agents as local processes. Faster startup, direct file system access."
-              badge="Recommended"
-            />
-            <OptionCard
-              selected={config.runtime_mode === 'docker'}
-              onClick={() => setConfig({ ...config, runtime_mode: 'docker' })}
-              icon={Box}
-              title="Docker Containers"
-              description="Run agents in isolated containers. Better security and reproducibility."
-            />
+        {/* Docker Runtime Info */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Box className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div>
+              <h3 className="font-medium text-blue-800">Secure Docker Environment</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Agents run in isolated Docker containers for security. Your workspace is mounted 
+                so you can view and edit code in your IDE while agents work.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -196,15 +212,8 @@ export function ConfigOptions({
               onClick={() => setConfig({ ...config, workspace_type: 'local_git' })}
               icon={FolderGit}
               title="Local Directory with Git"
-              description="Code saved locally with git version control. Open in your IDE."
+              description="Code saved to ./workspace/ with git version control. Open in your IDE while agents work."
               badge="Recommended"
-            />
-            <OptionCard
-              selected={config.workspace_type === 'local'}
-              onClick={() => setConfig({ ...config, workspace_type: 'local' })}
-              icon={Terminal}
-              title="Local Directory"
-              description="Code saved locally without git. Simple setup."
             />
             <OptionCard
               selected={config.workspace_type === 'browser'}
@@ -243,6 +252,48 @@ export function ConfigOptions({
               icon={Hand}
               title="Manual Execution"
               description="Review each task before triggering execution. More control over agent work."
+            />
+          </div>
+        </div>
+
+        {/* Claude Code Mode */}
+        <div>
+          <h2 className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-3">
+            Claude Code Execution
+          </h2>
+          <div className="space-y-3">
+            <OptionCard
+              selected={config.claude_code_mode === 'terminal'}
+              onClick={() => setConfig({ ...config, claude_code_mode: 'terminal' })}
+              icon={MonitorPlay}
+              title="Interactive Terminal Mode"
+              description="Agents run Claude Code in a real terminal you can watch live and take over. Requires CLAUDE_CONFIG_BASE64."
+              badge="Recommended"
+            />
+            {config.claude_code_mode === 'terminal' && (
+              <div className="ml-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Key className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-green-800">CLAUDE_CONFIG_BASE64 Required</p>
+                    <p className="text-green-700 mt-1">
+                      This mode gives you a real terminal experience - watch agents code live and 
+                      take over if needed. To use it, set the <code className="bg-green-100 px-1 rounded">CLAUDE_CONFIG_BASE64</code> environment 
+                      variable with your Claude authentication.
+                    </p>
+                    <p className="text-green-600 mt-2 text-xs">
+                      Run: <code className="bg-green-100 px-1 rounded">cat ~/.claude.json | base64</code> to get this value.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <OptionCard
+              selected={config.claude_code_mode === 'programmatic'}
+              onClick={() => setConfig({ ...config, claude_code_mode: 'programmatic' })}
+              icon={Code2}
+              title="Programmatic Mode"
+              description="Agents use Claude Code via stdin/stdout piping. Simpler setup, uses ANTHROPIC_API_KEY."
             />
           </div>
         </div>

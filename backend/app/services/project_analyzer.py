@@ -42,8 +42,8 @@ class ProjectAnalyzer:
         # Log key presence (not the actual key)
         logger.info(f"[ProjectAnalyzer] Initializing with API key: {api_key[:12]}...{api_key[-4:] if len(api_key) > 16 else ''}")
         self.client = AsyncAnthropic(api_key=api_key, timeout=60.0)  # 60 second timeout
-        # Use a valid model name
-        self.model = "claude-sonnet-4-20250514"
+        # Use configurable model for onboarding (default: Haiku for speed)
+        self.model = settings.model_onboarding
         logger.info(f"[ProjectAnalyzer] Using model: {self.model}")
 
     async def analyze_description(self, description: str) -> dict[str, Any]:
@@ -232,13 +232,13 @@ Return ONLY a JSON array of answer strings (one answer per question, in order), 
         answers: list[str],
     ) -> dict[str, Any]:
         """
-        Create a detailed project breakdown with components and teams.
+        Create a detailed project breakdown with actionable tasks.
         """
         qa_pairs = "\n".join(
             f"Q: {q}\nA: {a}" for q, a in zip(questions, answers)
         )
 
-        prompt = f"""Create a detailed project breakdown for this application.
+        prompt = f"""Create a detailed project breakdown with SPECIFIC, ACTIONABLE TASKS for this application.
 
 Description: {description}
 
@@ -248,16 +248,38 @@ Analysis:
 Clarifications:
 {qa_pairs}
 
-Create a breakdown with:
-1. components: Array of components/features to build, each with:
-   - name: Component name
-   - description: What it does
-   - team: Which team should work on it (Frontend, Backend, Full Stack, etc.)
-   - priority: 1-5 (5 is highest)
-   - estimated_complexity: simple, moderate, complex
-   - dependencies: Array of other component names this depends on
+Create a breakdown with 6-12 SPECIFIC tasks. IMPORTANT RULES:
+- Each task must be concrete and achievable by ONE developer in 1-4 hours
+- Do NOT create vague tasks like "Implement Core Application" - be SPECIFIC
+- Include BOTH development AND testing tasks
+- Testing tasks should be assigned to QA team
+- Order tasks by dependency (things that need to be done first get higher priority)
 
-2. teams: Array of team names needed (typically 2-4 teams)
+Create a breakdown with:
+1. components: Array of SPECIFIC tasks (NOT vague features), each with:
+   - name: Specific task name (e.g., "Create user registration form with email validation", NOT "Implement User Auth")
+   - description: Detailed description of exactly what to build/test (2-3 sentences)
+   - team: "Frontend", "Backend", "Full Stack", or "QA" (use QA for testing tasks)
+   - task_type: "development" or "testing"
+   - priority: 1-5 (5 is highest, things needed first get higher priority)
+   - estimated_complexity: simple, moderate, complex
+   - dependencies: Array of other task names this depends on
+
+EXAMPLE GOOD TASKS:
+- "Set up project structure with React and TypeScript" (priority 5, Frontend)
+- "Create database schema for users and tasks" (priority 5, Backend)  
+- "Build login form with email/password inputs" (priority 4, Frontend)
+- "Implement JWT authentication endpoint" (priority 4, Backend)
+- "Write unit tests for authentication flow" (priority 3, QA)
+- "Create task list component with drag-drop" (priority 3, Frontend)
+- "End-to-end testing of complete user flow" (priority 2, QA)
+
+EXAMPLE BAD TASKS (DO NOT DO THIS):
+- "Implement Core Application" (too vague)
+- "Build the frontend" (too vague)
+- "Handle backend logic" (too vague)
+
+2. teams: Array of team names needed
 
 3. architecture: Brief architecture description
 
@@ -267,26 +289,81 @@ Return ONLY valid JSON, no markdown or explanation."""
 
         response = await self.client.messages.create(
             model=self.model,
-            max_tokens=2000,
+            max_tokens=3000,
             messages=[{"role": "user", "content": prompt}],
         )
 
         try:
             return json.loads(strip_markdown_json(response.content[0].text))
         except json.JSONDecodeError:
-            # Return a basic structure
+            # Return a more useful basic structure with specific tasks
             return {
                 "components": [
                     {
-                        "name": "Core Application",
-                        "description": "Main application functionality",
+                        "name": "Set up project structure and dependencies",
+                        "description": "Initialize the project with proper folder structure, package.json/requirements, and basic configuration files",
                         "team": "Full Stack",
+                        "task_type": "development",
+                        "priority": 5,
+                        "estimated_complexity": "simple",
+                        "dependencies": [],
+                    },
+                    {
+                        "name": "Create database models and schema",
+                        "description": "Design and implement the database schema with all necessary tables and relationships",
+                        "team": "Backend",
+                        "task_type": "development",
                         "priority": 5,
                         "estimated_complexity": "moderate",
                         "dependencies": [],
-                    }
+                    },
+                    {
+                        "name": "Build core API endpoints",
+                        "description": "Implement the main REST API endpoints for CRUD operations",
+                        "team": "Backend",
+                        "task_type": "development",
+                        "priority": 4,
+                        "estimated_complexity": "moderate",
+                        "dependencies": ["Create database models and schema"],
+                    },
+                    {
+                        "name": "Create main UI layout and navigation",
+                        "description": "Build the core layout components including header, sidebar, and navigation structure",
+                        "team": "Frontend",
+                        "task_type": "development",
+                        "priority": 4,
+                        "estimated_complexity": "moderate",
+                        "dependencies": ["Set up project structure and dependencies"],
+                    },
+                    {
+                        "name": "Implement core feature components",
+                        "description": "Build the main feature UI components that users will interact with",
+                        "team": "Frontend",
+                        "task_type": "development",
+                        "priority": 3,
+                        "estimated_complexity": "moderate",
+                        "dependencies": ["Create main UI layout and navigation"],
+                    },
+                    {
+                        "name": "Write unit tests for API endpoints",
+                        "description": "Create comprehensive unit tests for all API endpoints including edge cases",
+                        "team": "QA",
+                        "task_type": "testing",
+                        "priority": 2,
+                        "estimated_complexity": "moderate",
+                        "dependencies": ["Build core API endpoints"],
+                    },
+                    {
+                        "name": "End-to-end testing of complete user flows",
+                        "description": "Test the complete application flow from user perspective, including all main features",
+                        "team": "QA",
+                        "task_type": "testing",
+                        "priority": 1,
+                        "estimated_complexity": "moderate",
+                        "dependencies": ["Implement core feature components"],
+                    },
                 ],
-                "teams": ["Full Stack", "Frontend", "Backend"],
+                "teams": ["Full Stack", "Frontend", "Backend", "QA"],
                 "architecture": "Standard web application architecture",
-                "mvp_scope": "Core functionality",
+                "mvp_scope": "Core functionality with essential features",
             }

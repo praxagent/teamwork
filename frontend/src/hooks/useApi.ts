@@ -310,6 +310,9 @@ export function useTasks(projectId: string | null) {
         `/tasks?project_id=${projectId}&parent_only=false`
       ),
     enabled: !!projectId,
+    staleTime: 2000, // Consider data fresh for 2 seconds (WebSocket handles real-time updates)
+    refetchInterval: 30000, // Poll every 30 seconds as backup (WebSocket is primary)
+    refetchOnMount: true, // Always refetch on mount for fresh data
   });
 }
 
@@ -435,6 +438,16 @@ export function useUpdateMember() {
   });
 }
 
+export function useGenerateMoreMembers() {
+  return useMutation({
+    mutationFn: (data: { project_id: string; count: number }) =>
+      fetchJson<{ new_members: TeamMemberSuggestion[]; total_count: number }>('/onboarding/generate-more-members', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
 export function useFinalizeProject() {
   const queryClient = useQueryClient();
 
@@ -445,8 +458,10 @@ export function useFinalizeProject() {
         runtime_mode: string;
         workspace_type: string;
         auto_execute_tasks?: boolean;
+        claude_code_mode?: 'terminal' | 'programmatic';
       };
       generate_images?: boolean;
+      team_size?: number;
     }) =>
       fetchJson<OnboardingStatus>('/onboarding/finalize', {
         method: 'POST',

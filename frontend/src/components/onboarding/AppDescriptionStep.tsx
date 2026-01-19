@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Button, TextArea } from '@/components/common';
-import { Rocket, Brain, Users, Sparkles } from 'lucide-react';
+import { Rocket, Brain, Users, Sparkles, Zap } from 'lucide-react';
 
 interface AppDescriptionStepProps {
   onSubmit: (description: string) => void;
+  onQuickLaunch?: (description: string) => void;
   loading?: boolean;
+  quickLaunching?: boolean;
 }
 
 const loadingSteps = [
@@ -13,13 +15,14 @@ const loadingSteps = [
   { icon: Users, text: 'Preparing your virtual team...' },
 ];
 
-export function AppDescriptionStep({ onSubmit, loading }: AppDescriptionStepProps) {
+export function AppDescriptionStep({ onSubmit, onQuickLaunch, loading, quickLaunching }: AppDescriptionStepProps) {
   const [description, setDescription] = useState('');
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const isLoading = loading || quickLaunching;
 
   // Cycle through loading steps
   useEffect(() => {
-    if (!loading) {
+    if (!isLoading) {
       setLoadingStepIndex(0);
       return;
     }
@@ -29,7 +32,13 @@ export function AppDescriptionStep({ onSubmit, loading }: AppDescriptionStepProp
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [loading]);
+  }, [isLoading]);
+
+  const handleQuickLaunch = () => {
+    if (description.trim() && onQuickLaunch) {
+      onQuickLaunch(description.trim());
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,16 +64,16 @@ export function AppDescriptionStep({ onSubmit, loading }: AppDescriptionStepProp
         </p>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4 animate-pulse">
             <CurrentLoadingIcon className="w-8 h-8 text-blue-600" />
           </div>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            {loadingSteps[loadingStepIndex].text}
+            {quickLaunching ? 'Launching your team...' : loadingSteps[loadingStepIndex].text}
           </h2>
           <p className="text-gray-500 text-sm">
-            This may take 10-20 seconds...
+            {quickLaunching ? 'Setting up with defaults...' : 'This may take 10-20 seconds...'}
           </p>
           <div className="mt-6 flex justify-center gap-2">
             {loadingSteps.map((_, i) => (
@@ -85,23 +94,43 @@ export function AppDescriptionStep({ onSubmit, loading }: AppDescriptionStepProp
             onChange={(e) => setDescription(e.target.value)}
             rows={8}
             className="text-base"
-            disabled={loading}
+            disabled={isLoading}
           />
 
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-4">
             <Button
               type="submit"
               size="lg"
-              disabled={!description.trim() || loading}
+              variant="secondary"
+              disabled={!description.trim() || isLoading}
               loading={loading}
             >
-              Create My Virtual Team
+              <Users className="w-5 h-5 mr-2" />
+              Create (Interactive)
             </Button>
+            {onQuickLaunch && (
+              <Button
+                type="button"
+                size="lg"
+                disabled={!description.trim() || isLoading}
+                loading={quickLaunching}
+                onClick={handleQuickLaunch}
+              >
+                <Zap className="w-5 h-5 mr-2" />
+                Just Launch!
+              </Button>
+            )}
           </div>
+          
+          <p className="text-center text-sm text-gray-500">
+            <strong>Interactive:</strong> Answer refining questions, customize team size, and configure settings
+            <br />
+            <strong>Just Launch:</strong> Use defaults and start immediately
+          </p>
         </form>
       )}
 
-      {!loading && (
+      {!isLoading && (
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
           <ExampleCard
             title="E-commerce Platform"

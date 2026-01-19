@@ -304,7 +304,7 @@ If things aren't moving, STATE what YOU ARE DOING to fix it - don't ask permissi
 
         try:
             response = await client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=settings.model_pm,
                 max_tokens=600,
                 system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
@@ -344,8 +344,6 @@ If things aren't moving, STATE what YOU ARE DOING to fix it - don't ask permissi
             message_type="chat",
         )
         db.add(message)
-        await db.flush()
-        await db.refresh(message)
         await db.commit()
 
         # Log PM activity for meaningful updates
@@ -537,7 +535,7 @@ Your current work status:
 
                 try:
                     response = await client.messages.create(
-                        model="claude-sonnet-4-20250514",
+                        model=settings.model_pm,
                         max_tokens=200,
                         system=system_prompt,
                         messages=[
@@ -556,8 +554,6 @@ Your current work status:
                     message_type="chat",
                 )
                 db.add(response_message)
-                await db.flush()
-                await db.refresh(response_message)
                 await db.commit()
                 
                 # Broadcast
@@ -676,8 +672,7 @@ Your current work status:
                 dm_participants=developer.id,
             )
             db.add(dm_channel)
-            await db.flush()
-            await db.refresh(dm_channel)
+            await db.flush()  # Need id for message
 
         # Create message
         message = Message(
@@ -687,8 +682,6 @@ Your current work status:
             message_type="chat",
         )
         db.add(message)
-        await db.flush()
-        await db.refresh(message)
         await db.commit()
 
         # Broadcast
@@ -788,7 +781,7 @@ RULES:
 
             try:
                 response = await client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=settings.model_pm,
                     max_tokens=150,
                     system=system_prompt,
                     messages=[
@@ -807,9 +800,7 @@ RULES:
                 message_type="chat",
             )
             db.add(response_message)
-            await db.flush()
-            await db.refresh(response_message)
-            await db.commit()
+            await db.commit()  # Commit instead of flush+refresh
             
             # Broadcast
             message_event = WebSocketEvent(
@@ -841,19 +832,18 @@ RULES:
         db: AsyncSession,
         project_id: str,
     ) -> list[dict]:
-        """Find unassigned tasks and assign them to available developers."""
+        """Find unassigned tasks and assign them to available developers and QA engineers."""
         assignments = []
 
-        # Get unassigned tasks
+        # Get ALL unassigned tasks (not just 5)
         unassigned_result = await db.execute(
             select(Task)
             .where(Task.project_id == project_id)
             .where(Task.assigned_to.is_(None))
             .where(Task.status == "pending")
             .order_by(Task.priority.desc())
-            .limit(5)
         )
-        unassigned_tasks = unassigned_result.scalars().all()
+        unassigned_tasks = list(unassigned_result.scalars().all())
 
         if not unassigned_tasks:
             return assignments
@@ -865,34 +855,104 @@ RULES:
             .where(Agent.role == "developer")
             .where(Agent.status == "idle")
         )
-        available_devs = devs_result.scalars().all()
+        available_devs = list(devs_result.scalars().all())
+        
+        # Get available QA engineers
+        qa_result = await db.execute(
+            select(Agent)
+            .where(Agent.project_id == project_id)
+            .where(Agent.role == "qa")
+            .where(Agent.status == "idle")
+        )
+        available_qa = list(qa_result.scalars().all())
 
         # Filter to those without active tasks
-        truly_available = []
-        for dev in available_devs:
-            active_task_result = await db.execute(
-                select(Task)
-                .where(Task.assigned_to == dev.id)
-                .where(Task.status.in_(["pending", "in_progress"]))
-                .limit(1)
-            )
-            if not active_task_result.scalar_one_or_none():
-                truly_available.append(dev)
+        async def get_truly_available(agents):
+            truly_available = []
+            for agent in agents:
+                active_task_result = await db.execute(
+                    select(Task)
+                    .where(Task.assigned_to == agent.id)
+                    .where(Task.status.in_(["pending", "in_progress"]))
+                    .limit(1)
+                )
+                if not active_task_result.scalar_one_or_none():
+                    truly_available.append(agent)
+            return truly_available
+        
+        truly_available_devs = await get_truly_available(available_devs)
+        truly_available_qa = await get_truly_available(available_qa)
+        
+        # Track assignment indices
+        dev_index = 0
+        qa_index = 0
 
-        # Assign tasks
-        for i, task in enumerate(unassigned_tasks):
-            if i >= len(truly_available):
-                break
-
-            dev = truly_available[i]
-            task.assigned_to = dev.id
-            assignments.append({
-                "task": task.title,
-                "developer": dev.name,
-            })
+        # Assign tasks based on task type (testing tasks to QA, dev tasks to developers)
+        for task in unassigned_tasks:
+            task_config = task.config or {}
+            task_type = task_config.get("task_type", "development")
+            task_team = (task.team or "").lower()
+            
+            assigned_agent = None
+            
+            # QA/testing tasks go to QA engineers
+            if task_type == "testing" or task_team == "qa":
+                if qa_index < len(truly_available_qa):
+                    assigned_agent = truly_available_qa[qa_index]
+                    qa_index += 1
+                elif dev_index < len(truly_available_devs):
+                    # Fallback: If no QA available, assign to developer
+                    assigned_agent = truly_available_devs[dev_index]
+                    dev_index += 1
+            else:
+                # Development tasks go to developers (round-robin)
+                if dev_index < len(truly_available_devs):
+                    assigned_agent = truly_available_devs[dev_index]
+                    dev_index += 1
+                elif qa_index < len(truly_available_qa):
+                    # Fallback: If no devs available, QA can help with simple dev tasks
+                    assigned_agent = truly_available_qa[qa_index]
+                    qa_index += 1
+            
+            if assigned_agent:
+                task.assigned_to = assigned_agent.id
+                assignments.append({
+                    "task": task.title,
+                    "task_id": str(task.id),
+                    "developer": assigned_agent.name,
+                    "developer_id": str(assigned_agent.id),
+                    "project_id": project_id,
+                    "task_type": task_type,
+                })
+            
+            # Wrap around for round-robin if we've used all agents but still have tasks
+            if dev_index >= len(truly_available_devs) and qa_index >= len(truly_available_qa):
+                # Reset to allow multiple tasks per agent if needed
+                # But only if we've assigned at least one task per available agent
+                if assignments:
+                    break  # Stop assigning to avoid overloading
 
         if assignments:
             await db.commit()
+            
+            # Broadcast task updates for all assignments
+            from app.websocket import manager as ws_manager, WebSocketEvent, EventType
+            for assignment in assignments:
+                await ws_manager.broadcast_to_project(
+                    assignment["project_id"],
+                    WebSocketEvent(
+                        type=EventType.TASK_UPDATE,
+                        data={
+                            "task_id": assignment["task_id"],
+                            "status": "pending",
+                            "assigned_to": assignment["developer_id"],
+                            "assigned_to_name": assignment["developer"],
+                            "title": assignment["task"],
+                        },
+                    ),
+                )
+            
+            print(f">>> PM assigned {len(assignments)} tasks: {[a['task'][:30] for a in assignments]}")
 
         return assignments
 
@@ -1059,7 +1119,7 @@ Write a SHORT celebratory message (2-3 sentences) that:
 Start with something like "🎉 @CEO" to get their attention."""
 
         response = await client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=settings.model_pm,
             max_tokens=200,
             system=f"You are {pm.name}, the PM. Write a brief, celebratory completion announcement.",
             messages=[{"role": "user", "content": prompt}],
@@ -1103,8 +1163,6 @@ Start with something like "🎉 @CEO" to get their attention."""
             status="pending",
         )
         db.add(task)
-        await db.flush()
-        await db.refresh(task)
         await db.commit()
         return task
 
@@ -1138,6 +1196,22 @@ Start with something like "🎉 @CEO" to get their attention."""
         task.assigned_to = agent.id
         task.status = "pending"
         await db.commit()
+        
+        # Broadcast task update to all project clients
+        from app.websocket import manager as ws_manager, WebSocketEvent, EventType
+        await ws_manager.broadcast_to_project(
+            task.project_id,
+            WebSocketEvent(
+                type=EventType.TASK_UPDATE,
+                data={
+                    "task_id": str(task.id),
+                    "status": task.status,
+                    "assigned_to": str(agent.id),
+                    "assigned_to_name": agent.name,
+                    "title": task.title,
+                },
+            ),
+        )
 
         # Post kickoff message if this is the first assignment
         if is_first_assignment:
@@ -1310,7 +1384,7 @@ Only return the JSON array, no other text."""
 
         try:
             response = await client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=settings.model_pm,
                 max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -1414,8 +1488,6 @@ Only return the JSON array, no other text."""
             message_type="chat",
         )
         db.add(message)
-        await db.flush()
-        await db.refresh(message)
         await db.commit()
 
         # Broadcast
@@ -1424,7 +1496,7 @@ Only return the JSON array, no other text."""
             WebSocketEvent(
                 type=EventType.MESSAGE_NEW,
                 data={
-                    "id": message.id,
+                    "id": str(message.id),
                     "channel_id": channel_id,
                     "agent_id": pm.id,
                     "agent_name": pm.name,
@@ -1488,9 +1560,17 @@ Only return the JSON array, no other text."""
         
         print(f">>> PM monitoring loop starting: check every {check_interval}s, idle threshold {settings.pm_idle_threshold_minutes}m")
         
+        # Do an immediate first check to assign tasks right away
+        first_check = True
+        
         while True:
             try:
-                await asyncio.sleep(check_interval)
+                # Wait before checks, but skip the wait for the first check
+                if first_check:
+                    await asyncio.sleep(5)  # Small delay to let project finalize
+                    first_check = False
+                else:
+                    await asyncio.sleep(check_interval)
                 
                 async with self._db_session_factory() as db:
                     # Get the PM for this project
@@ -1633,26 +1713,47 @@ Only return the JSON array, no other text."""
                 await db.commit()
     
     async def _auto_assign_unassigned_tasks(self, db: AsyncSession, project_id: str, pm: Agent):
-        """Find unassigned pending tasks and assign them to available developers."""
-        # Get unassigned pending tasks
+        """Find unassigned pending tasks and assign them to available developers and QA."""
+        # Get ALL unassigned pending tasks
         unassigned_result = await db.execute(
             select(Task)
             .where(Task.project_id == project_id)
             .where(Task.assigned_to.is_(None))
             .where(Task.status == "pending")
             .order_by(Task.priority.desc())
-            .limit(3)  # Don't assign too many at once
         )
-        unassigned_tasks = unassigned_result.scalars().all()
+        unassigned_tasks = list(unassigned_result.scalars().all())
         
         if not unassigned_tasks:
             return
         
+        print(f">>> PM found {len(unassigned_tasks)} unassigned tasks")
+        
+        assigned_count = 0
         for task in unassigned_tasks:
-            available_dev = await self._find_available_developer(db, project_id)
-            if available_dev:
-                print(f">>> PM auto-assigning task '{task.title}' to {available_dev.name}")
-                await self.assign_task_to_agent(db, task, available_dev, pm)
+            task_config = task.config or {}
+            task_type = task_config.get("task_type", "development")
+            task_team = (task.team or "").lower()
+            
+            # Find appropriate agent based on task type
+            if task_type == "testing" or task_team == "qa":
+                available_agent = await self._find_available_qa(db, project_id)
+                if not available_agent:
+                    # Fallback to developer if no QA available
+                    available_agent = await self._find_available_developer(db, project_id)
+            else:
+                available_agent = await self._find_available_developer(db, project_id)
+                if not available_agent:
+                    # Fallback to QA for simple dev tasks if no devs available
+                    available_agent = await self._find_available_qa(db, project_id)
+            
+            if available_agent:
+                print(f">>> PM auto-assigning task '{task.title}' to {available_agent.name}")
+                await self.assign_task_to_agent(db, task, available_agent, pm)
+                assigned_count += 1
+        
+        if assigned_count > 0:
+            print(f">>> PM assigned {assigned_count} tasks")
     
     async def _find_available_developer(self, db: AsyncSession, project_id: str) -> Agent | None:
         """Find an available developer (idle with no active tasks)."""
@@ -1675,6 +1776,30 @@ Only return the JSON array, no other text."""
             )
             if not active_task_result.scalar_one_or_none():
                 return dev
+        
+        return None
+    
+    async def _find_available_qa(self, db: AsyncSession, project_id: str) -> Agent | None:
+        """Find an available QA engineer (idle with no active tasks)."""
+        # Get QA engineers
+        qa_result = await db.execute(
+            select(Agent)
+            .where(Agent.project_id == project_id)
+            .where(Agent.role == "qa")
+            .where(Agent.status == "idle")
+        )
+        qa_engineers = qa_result.scalars().all()
+        
+        for qa in qa_engineers:
+            # Check if they have any active tasks
+            active_task_result = await db.execute(
+                select(Task)
+                .where(Task.assigned_to == qa.id)
+                .where(Task.status.in_(["pending", "in_progress"]))
+                .limit(1)
+            )
+            if not active_task_result.scalar_one_or_none():
+                return qa
         
         return None
     

@@ -140,7 +140,7 @@ Keep it SHORT (1-2 sentences max). Be natural and human-like. Don't be overly en
 Generate a single casual message as {agent.name}. Be natural, like a real coworker would post."""
 
                 response = await client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=settings.model_pm,
                     max_tokens=150,
                     system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
@@ -311,7 +311,7 @@ Only mention REAL data from the team status. Don't make things up.
 Be honest - if there are problems, mention them. The CEO wants truth."""
 
                         response = await client.messages.create(
-                            model="claude-sonnet-4-20250514",
+                            model=settings.model_pm,
                             max_tokens=250,
                             system=system_prompt,
                             messages=[{"role": "user", "content": prompt_context}],
@@ -340,7 +340,7 @@ Write a friendly but focused DM asking how things are going and if they need hel
 Keep it short (1-2 sentences). Be supportive, not accusatory."""
                             
                             dm_response = await client.messages.create(
-                                model="claude-sonnet-4-20250514",
+                                model=settings.model_pm,
                                 max_tokens=100,
                                 system=f"You are {pm.name}, the PM. Write a brief, friendly check-in DM.",
                                 messages=[{"role": "user", "content": dm_prompt}],

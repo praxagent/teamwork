@@ -10,6 +10,7 @@ interface ClarifyingQuestionsProps {
   onAutoAnswer?: () => Promise<string[]>;
   loading?: boolean;
   autoAnswerLoading?: boolean;
+  quickLaunching?: boolean;
 }
 
 export function ClarifyingQuestions({
@@ -20,6 +21,7 @@ export function ClarifyingQuestions({
   onAutoAnswer,
   loading,
   autoAnswerLoading,
+  quickLaunching,
 }: ClarifyingQuestionsProps) {
   const [answers, setAnswers] = useState<string[]>(questions.map(() => ''));
 
@@ -43,6 +45,28 @@ export function ClarifyingQuestions({
 
   const allAnswered = answers.every((a) => a.trim().length > 0);
   const isLoading = loading || autoAnswerLoading;
+
+  // Show simplified loading view during quick launch
+  if (quickLaunching) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4 animate-pulse">
+            <Sparkles className="w-8 h-8 text-green-600" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Answering Questions
+          </h1>
+          <p className="text-gray-600">
+            AI is answering the refining questions for <span className="font-semibold">{projectName}</span>...
+          </p>
+          <div className="mt-6 flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-green-500 border-t-transparent" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto">
