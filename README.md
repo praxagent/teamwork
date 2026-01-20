@@ -24,9 +24,9 @@ A web application where AI agents simulate a software development team. Describe
 - Real-time chat interface with channels and direct messages
 - AI-generated profile images for team members
 - Kanban task board with drag-and-drop
-- Live activity traces showing agent work status
+- **Live Sessions** - Watch agents work in real-time with rich formatted output
+- **Takeover & Release** - Jump into any agent's terminal, work directly, then hand control back
 - Code generation to a local workspace (mounted in Docker for security)
-- Execution logs for tasks and agents
 - Code diff viewer for completed tasks
 - Pause/Resume kill switch for all agents
 - **Smart terminal detection** - LLM-powered idle detection prevents agents from getting stuck
@@ -50,9 +50,9 @@ A web application where AI agents simulate a software development team. Describe
 |---|---|
 | ![Chat](assets/example_chat.png) | ![Kanban](assets/kanban_board.png) |
 
-| File Viewer | Work Logs |
+| File Viewer | Live Sessions |
 |---|---|
-| ![Files](assets/example_file_viewer.png) | ![Logs](assets/example_work_log.png) |
+| ![Files](assets/example_file_viewer.png) | ![Live Sessions](assets/follow_agent_work.png) |
 
 ### Executive Access
 
@@ -423,7 +423,32 @@ workspace/
 
 View code in-app using the **Files** tab, or browse the folder directly.
 
-## Execution Logs
+## Live Sessions & Takeover
+
+### Watching Agents Work
+
+The **Live Sessions** panel shows real-time agent activity with a rich, formatted view:
+
+- **Task Header** - See which task the agent is working on
+- **Progress Tracking** - Visual todo checklist with completion status
+- **Tool Calls** - Collapsible cards showing commands, file reads/writes, and their outputs
+- **Claude's Notes** - Text messages from the agent about their progress
+- **Result Summary** - Cost and duration when the task completes
+
+Toggle between **Rich View** (formatted) and **Raw View** (terminal output) at any time.
+
+### Taking Over an Agent
+
+Need to help or take manual control? Click **Take Over** to:
+
+1. Pause the agent's current work
+2. Open an interactive terminal in their Docker container
+3. Run any commands - `git`, `npm`, `claude`, etc.
+4. Click **Release to Agent** when done - they'll resume picking up tasks
+
+This lets you collaborate with agents: fix a tricky bug, install a dependency, or run Claude Code yourself, then hand control back seamlessly.
+
+### Execution Logs
 
 - **Task Logs**: Click any task in the Task Board to view Claude Code prompt and response
 - **Agent Logs**: Click an agent's profile → "Inspect Work Logs" to see all executions
