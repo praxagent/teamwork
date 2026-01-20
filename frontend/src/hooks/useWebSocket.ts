@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { WebSocketEvent } from '@/types';
 import { useProjectStore, useMessageStore, useUIStore } from '@/stores';
 
@@ -110,6 +111,7 @@ class WebSocketManager {
 const wsManager = new WebSocketManager();
 
 export function useWebSocket() {
+  const queryClient = useQueryClient();
   const updateAgent = useProjectStore((state) => state.updateAgent);
   const addChannel = useProjectStore((state) => state.addChannel);
   const updateTask = useProjectStore((state) => state.updateTask);
@@ -170,11 +172,21 @@ export function useWebSocket() {
 
         case 'task:update': {
           updateTask(event.data as any);
+          // Invalidate React Query cache for immediate UI update
+          const projectId = event.data.project_id;
+          if (projectId) {
+            queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+          }
           break;
         }
 
         case 'task:new': {
           addTask(event.data as any);
+          // Invalidate React Query cache for immediate UI update
+          const projectId = event.data.project_id;
+          if (projectId) {
+            queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+          }
           break;
         }
       }
@@ -183,7 +195,7 @@ export function useWebSocket() {
     return () => {
       removeHandler();
     };
-  }, [updateAgent, addChannel, updateTask, addTask, addMessage, setAgentTyping]);
+  }, [queryClient, updateAgent, addChannel, updateTask, addTask, addMessage, setAgentTyping]);
 
   const subscribeToProject = useCallback((projectId: string) => {
     wsManager.subscribeToProject(projectId);

@@ -47,7 +47,7 @@ class PersonalityGenerator:
 
     def __init__(self) -> None:
         self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-        self.model = "claude-sonnet-4-20250514"
+        self.model = settings.model_onboarding  # Configurable via .env
 
         # Name pools for diverse random team generation
         self.first_names = [
@@ -148,10 +148,10 @@ class PersonalityGenerator:
 Teams needed: {', '.join(teams)}
 Components: {json.dumps(components, indent=2)}
 
-Generate 4-8 team members. Include:
+Generate EXACTLY 4 team members. Include:
 - 1 Product Manager
-- 2-4 Developers (mix of frontend/backend/full-stack based on needs)
-- 1-2 QA Engineers
+- 2 Developers (mix of frontend/backend/full-stack based on needs)
+- 1 QA Engineer
 
 For each person, provide:
 - name: A realistic first and last name (diverse backgrounds)
@@ -163,7 +163,7 @@ For each person, provide:
 Make personalities varied and interesting - some outgoing, some introverted,
 different communication styles, varied interests.
 
-Return ONLY a JSON array of team members, no explanation."""
+Return ONLY a JSON array of exactly 4 team members, no explanation."""
 
         response = await self.client.messages.create(
             model=self.model,
@@ -208,8 +208,8 @@ Return ONLY a JSON array of team members, no explanation."""
             profile_image_type=random.choice(image_types),
         ))
         
-        # Developers (2-3)
-        dev_count = random.randint(2, 3)
+        # Developers (2 for a team of 4)
+        dev_count = 2
         dev_teams = teams if teams else ["Full Stack"]
         for i in range(dev_count):
             team = dev_teams[i % len(dev_teams)] if dev_teams else "Full Stack"

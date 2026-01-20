@@ -1,9 +1,12 @@
 """Main FastAPI application for the Virtual Dev Team Simulator."""
 
 import asyncio
+import glob
 import json
 import logging
+import os
 import random
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 
@@ -140,7 +143,7 @@ Keep it SHORT (1-2 sentences max). Be natural and human-like. Don't be overly en
 Generate a single casual message as {agent.name}. Be natural, like a real coworker would post."""
 
                 response = await client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=settings.model_pm,
                     max_tokens=150,
                     system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
@@ -311,7 +314,7 @@ Only mention REAL data from the team status. Don't make things up.
 Be honest - if there are problems, mention them. The CEO wants truth."""
 
                         response = await client.messages.create(
-                            model="claude-sonnet-4-20250514",
+                            model=settings.model_pm,
                             max_tokens=250,
                             system=system_prompt,
                             messages=[{"role": "user", "content": prompt_context}],
@@ -340,7 +343,7 @@ Write a friendly but focused DM asking how things are going and if they need hel
 Keep it short (1-2 sentences). Be supportive, not accusatory."""
                             
                             dm_response = await client.messages.create(
-                                model="claude-sonnet-4-20250514",
+                                model=settings.model_pm,
                                 max_tokens=100,
                                 system=f"You are {pm.name}, the PM. Write a brief, friendly check-in DM.",
                                 messages=[{"role": "user", "content": dm_prompt}],
@@ -550,19 +553,30 @@ def check_api_keys():
     print(f"[Config] Workspace path: {settings.workspace_path}")
     print(f"[Config] Database URL: {settings.database_url}")
     
-    if settings.anthropic_api_key:
-        # Mask the key for security
-        masked = settings.anthropic_api_key[:8] + "..." + settings.anthropic_api_key[-4:]
-        print(f"[Config] Anthropic API key: {masked}")
+    key = settings.anthropic_api_key_clean
+    if key:
+        # Validate format
+        if key.startswith("sk-ant-"):
+            masked = key[:12] + "..." + key[-4:]
+            print(f"[Config] Anthropic API key: {masked} (valid format, len={len(key)})")
+        else:
+            print(f"[ERROR] ANTHROPIC_API_KEY has invalid format!")
+            print(f"[ERROR] Key should start with 'sk-ant-', got: {key[:15]}...")
+            print(f"[ERROR] Get your API key from: https://console.anthropic.com/")
     else:
-        print("[WARNING] ANTHROPIC_API_KEY is not set! Agents will not work.")
-        print("[WARNING] Add ANTHROPIC_API_KEY to your .env file at the project root.")
+        print("[ERROR] ANTHROPIC_API_KEY is not set! Agents will not work.")
+        print("[ERROR] Add ANTHROPIC_API_KEY=sk-ant-... to your .env file")
     
     if settings.openai_api_key:
         masked = settings.openai_api_key[:8] + "..." + settings.openai_api_key[-4:]
         print(f"[Config] OpenAI API key: {masked}")
     else:
         print("[Config] OpenAI API key: Not configured (profile images disabled)")
+    
+    if settings.claude_config_base64:
+        print(f"[Config] CLAUDE_CONFIG_BASE64: Set ({len(settings.claude_config_base64)} chars)")
+    else:
+        print("[Config] CLAUDE_CONFIG_BASE64: Not set (will use ANTHROPIC_API_KEY for auth)")
 
 
 async def run_migrations():
@@ -618,6 +632,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Signal shutdown and cleanup
+    print(">>> Application shutting down, cleaning up...", flush=True)
     _shutdown_event.set()
     for task in [_random_chat_task, _pm_checkin_task, _task_manager_task]:
         if task:
@@ -627,10 +642,40 @@ async def lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 pass
     
-    # Stop all running agents
+    # Stop all running agents and close all terminals
     if am_module.agent_manager:
+        # First, force-close all terminals (kills claude processes)
+        count = am_module.agent_manager.cleanup_all_terminals()
+        print(f">>> Closed {count} agent terminals", flush=True)
+        
+        # Then properly stop agents
         for agent_id in am_module.agent_manager.get_all_running_agents():
             await am_module.agent_manager.stop_agent(agent_id)
+    
+    # Clean up Docker containers created for terminals
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", "name=vteam-terminal-", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+        )
+        containers = result.stdout.strip().split('\n')
+        containers = [c for c in containers if c]
+        if containers:
+            print(f">>> Stopping {len(containers)} terminal containers...", flush=True)
+            subprocess.run(["docker", "rm", "-f"] + containers, capture_output=True)
+            print(f">>> Removed terminal containers: {containers}", flush=True)
+    except Exception as e:
+        print(f">>> Docker cleanup error (non-critical): {e}", flush=True)
+    
+    # Clean up temp config files
+    for f in glob.glob("/tmp/claude_config_*.json"):
+        try:
+            os.remove(f)
+        except:
+            pass
+    
+    print(">>> Cleanup complete", flush=True)
 
 
 app = FastAPI(

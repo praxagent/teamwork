@@ -21,7 +21,7 @@ interface ProjectState {
   // Tasks
   tasks: Task[];
   setTasks: (tasks: Task[]) => void;
-  updateTask: (task: Task) => void;
+  updateTask: (taskUpdate: Partial<Task> & { id?: string; task_id?: string }) => void;
   addTask: (task: Task) => void;
 
   // Reset
@@ -57,10 +57,18 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setCurrentChannelId: (id) => set({ currentChannelId: id }),
 
   setTasks: (tasks) => set({ tasks }),
-  updateTask: (task) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) => (t.id === task.id ? task : t)),
-    })),
+  updateTask: (taskUpdate) =>
+    set((state) => {
+      // Handle both 'id' and 'task_id' since backend may send either
+      const taskId = taskUpdate.id || taskUpdate.task_id;
+      if (!taskId) return state;
+      
+      return {
+        tasks: state.tasks.map((t) =>
+          t.id === taskId ? { ...t, ...taskUpdate, id: taskId } : t
+        ),
+      };
+    }),
   addTask: (task) =>
     set((state) => ({
       tasks: [...state.tasks, task],

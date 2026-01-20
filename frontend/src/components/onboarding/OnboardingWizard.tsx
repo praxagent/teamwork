@@ -13,6 +13,7 @@ import {
   useShuffleMember,
   useUpdateMember,
   useUpdateProject,
+  useGenerateMoreMembers,
 } from '@/hooks/useApi';
 import type { TeamMemberSuggestion } from '@/types';
 
@@ -23,10 +24,13 @@ interface OnboardingState {
   projectName: string;
   projectDescription: string;
   questions: string[];
-  teamMembers: TeamMemberSuggestion[];
+  teamMembers: TeamMemberSuggestion[];        // Currently visible team
+  allGeneratedMembers: TeamMemberSuggestion[]; // All members ever generated (for restore on slider up)
   teams: string[];
   error: string | null;
   statusMessage: string | null;
+  recommendedTeamSize: number;
+  desiredTeamSize: number;
 }
 
 export function OnboardingWizard() {
@@ -38,9 +42,12 @@ export function OnboardingWizard() {
     projectDescription: '',
     questions: [],
     teamMembers: [],
+    allGeneratedMembers: [],
     teams: [],
     error: null,
     statusMessage: null,
+    recommendedTeamSize: 5,
+    desiredTeamSize: 5,
   });
 
   const startOnboarding = useStartOnboarding();
@@ -50,6 +57,8 @@ export function OnboardingWizard() {
   const shuffleMember = useShuffleMember();
   const updateMember = useUpdateMember();
   const updateProject = useUpdateProject();
+  const generateMoreMembers = useGenerateMoreMembers();
+  const [quickLaunching, setQuickLaunching] = useState(false);
 
   const clearError = () => {
     setState(s => ({ ...s, error: null }));
@@ -84,6 +93,87 @@ export function OnboardingWizard() {
     }
   };
 
+  // Quick launch - skip all interactive steps and use defaults
+  // Visually progresses through each step for better UX
+  const handleQuickLaunch = async (description: string) => {
+    setQuickLaunching(true);
+    
+    try {
+      // Step 1: Start onboarding (stay on description step)
+      setState(s => ({ ...s, error: null, statusMessage: 'Analyzing your project...' }));
+      console.log('[Onboarding] Quick launch - starting analysis...');
+      
+      const startResult = await startOnboarding.mutateAsync(description);
+      const projectId = startResult.initial_analysis.project_id;
+      console.log('[Onboarding] Quick launch - project created:', projectId);
+      
+      // Move to Step 2: Questions (auto-answering)
+      setState(s => ({ 
+        ...s, 
+        projectId,
+        projectName: startResult.initial_analysis.suggested_name,
+        projectDescription: description,
+        questions: startResult.questions,
+        statusMessage: 'AI is answering refining questions...' 
+      }));
+      setStep('questions');
+      
+      const answersResult = await autoAnswerQuestions.mutateAsync(projectId);
+      console.log('[Onboarding] Quick launch - questions answered');
+      
+      // Move to Step 3: Team (generating)
+      setState(s => ({ ...s, statusMessage: 'Generating your virtual team...' }));
+      setStep('team');
+      
+      const teamResult = await submitAnswers.mutateAsync({
+        project_id: projectId,
+        answers: answersResult.answers,
+      });
+      console.log('[Onboarding] Quick launch - team generated:', teamResult.suggested_team_members.length, 'members');
+      
+      // Update state with team info
+      setState(s => ({ 
+        ...s, 
+        teamMembers: teamResult.suggested_team_members,
+        allGeneratedMembers: teamResult.suggested_team_members,
+        teams: teamResult.teams,
+        recommendedTeamSize: teamResult.suggested_team_members.length,
+        desiredTeamSize: teamResult.suggested_team_members.length,
+        statusMessage: 'Configuring and launching...' 
+      }));
+      
+      // Move to Step 4: Config (finalizing)
+      setStep('config');
+      
+      await finalizeProject.mutateAsync({
+        project_id: projectId,
+        config: {
+          runtime_mode: 'docker',  // Always Docker for security
+          workspace_type: 'local_git',  // Code saved locally with git
+          auto_execute_tasks: true,
+          claude_code_mode: 'terminal',
+        },
+        generate_images: true,
+        team_size: teamResult.suggested_team_members.length,
+      });
+      console.log('[Onboarding] Quick launch - project finalized!');
+      
+      // Navigate to the project
+      navigate(`/project/${projectId}`);
+      
+    } catch (error) {
+      console.error('[Onboarding] Quick launch failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setState(s => ({ 
+        ...s, 
+        error: `Quick launch failed: ${errorMessage}`,
+        statusMessage: null,
+      }));
+    } finally {
+      setQuickLaunching(false);
+    }
+  };
+
   const handleQuestionsSubmit = async (answers: string[]) => {
     if (!state.projectId) return;
 
@@ -97,12 +187,16 @@ export function OnboardingWizard() {
       });
       console.log('[Onboarding] Team generated:', result);
       
+      const teamSize = result.suggested_team_members.length;
       setState({
         ...state,
         teamMembers: result.suggested_team_members,
+        allGeneratedMembers: result.suggested_team_members,
         teams: result.teams,
         error: null,
         statusMessage: null,
+        recommendedTeamSize: teamSize,
+        desiredTeamSize: teamSize,
       });
       setStep('team');
     } catch (error) {
@@ -162,8 +256,10 @@ export function OnboardingWizard() {
           runtime_mode: config.runtime_mode,
           workspace_type: config.workspace_type,
           auto_execute_tasks: config.auto_execute_tasks,
+          claude_code_mode: config.claude_code_mode,
         },
         generate_images: config.generate_images,
+        team_size: state.desiredTeamSize,
       });
       console.log('[Onboarding] Project finalized, navigating...');
       
@@ -210,15 +306,101 @@ export function OnboardingWizard() {
         member_index: index,
       });
       
-      // Update local state
+      // Update local state - both visible and all generated
       const newMembers = [...state.teamMembers];
+      const newAllMembers = [...state.allGeneratedMembers];
       newMembers[index] = newMember;
-      setState(s => ({ ...s, teamMembers: newMembers }));
+      newAllMembers[index] = newMember;
+      setState(s => ({ ...s, teamMembers: newMembers, allGeneratedMembers: newAllMembers }));
       
       return newMember;
     } catch (error) {
       console.error('[Onboarding] Failed to shuffle member:', error);
       return null;
+    }
+  };
+
+  // Smart team size adjustment - keeps members in memory
+  const handleTeamSizeChange = (newSize: number) => {
+    setState(s => {
+      const currentAllMembers = s.allGeneratedMembers;
+      
+      if (newSize <= currentAllMembers.length) {
+        // Reducing: intelligently select which members to keep
+        // Priority: PM first, then QA, then developers
+        const sortedMembers = [...currentAllMembers].map((m, i) => ({ member: m, originalIndex: i }));
+        
+        // Score members: PM=100, QA=50, Developer=10 (plus index for stable ordering)
+        const scoreMember = (m: TeamMemberSuggestion, idx: number) => {
+          const role = m.role?.toLowerCase() || '';
+          if (role.includes('pm') || role.includes('product')) return 100 + (100 - idx);
+          if (role.includes('qa') || role.includes('quality') || role.includes('test')) return 50 + (100 - idx);
+          return 10 + (100 - idx); // Developers - prefer earlier ones
+        };
+        
+        sortedMembers.sort((a, b) => scoreMember(b.member, b.originalIndex) - scoreMember(a.member, a.originalIndex));
+        
+        // Keep the top N members
+        const keptMembers = sortedMembers.slice(0, newSize).map(m => m.member);
+        
+        return {
+          ...s,
+          desiredTeamSize: newSize,
+          teamMembers: keptMembers,
+        };
+      } else {
+        // Increasing: restore from allGeneratedMembers if available
+        const visibleMembers = currentAllMembers.slice(0, Math.min(newSize, currentAllMembers.length));
+        
+        return {
+          ...s,
+          desiredTeamSize: newSize,
+          teamMembers: visibleMembers,
+        };
+      }
+    });
+  };
+
+  // Regenerate team to match desired size
+  const handleRegenerateTeam = async () => {
+    if (!state.projectId) return;
+    
+    const currentCount = state.allGeneratedMembers.length;
+    const desiredCount = state.desiredTeamSize;
+    
+    if (desiredCount > currentCount) {
+      // Need to generate more members
+      const countNeeded = desiredCount - currentCount;
+      
+      try {
+        setState(s => ({ ...s, statusMessage: `Generating ${countNeeded} additional team member(s)...` }));
+        
+        const result = await generateMoreMembers.mutateAsync({
+          project_id: state.projectId!,
+          count: countNeeded,
+        });
+        
+        // Add new members to both arrays
+        const newAllMembers = [...state.allGeneratedMembers, ...result.new_members];
+        const newVisibleMembers = newAllMembers.slice(0, desiredCount);
+        
+        setState(s => ({
+          ...s,
+          allGeneratedMembers: newAllMembers,
+          teamMembers: newVisibleMembers,
+          statusMessage: null,
+        }));
+      } catch (error) {
+        console.error('[Onboarding] Failed to generate more members:', error);
+        setState(s => ({ 
+          ...s, 
+          error: 'Failed to generate additional team members',
+          statusMessage: null,
+        }));
+      }
+    } else {
+      // Just update visible members from allGeneratedMembers
+      handleTeamSizeChange(desiredCount);
     }
   };
 
@@ -289,7 +471,9 @@ export function OnboardingWizard() {
         {step === 'description' && (
           <AppDescriptionStep
             onSubmit={handleDescriptionSubmit}
+            onQuickLaunch={handleQuickLaunch}
             loading={startOnboarding.isPending}
+            quickLaunching={quickLaunching}
           />
         )}
 
@@ -302,6 +486,7 @@ export function OnboardingWizard() {
             onAutoAnswer={handleAutoAnswer}
             loading={submitAnswers.isPending}
             autoAnswerLoading={autoAnswerQuestions.isPending}
+            quickLaunching={quickLaunching}
           />
         )}
 
@@ -313,6 +498,13 @@ export function OnboardingWizard() {
             onBack={() => setStep('questions')}
             onUpdateMember={handleUpdateMember}
             onShuffleMember={handleShuffleMember}
+            recommendedTeamSize={state.recommendedTeamSize}
+            desiredTeamSize={state.desiredTeamSize}
+            maxGeneratedSize={state.allGeneratedMembers.length}
+            onTeamSizeChange={handleTeamSizeChange}
+            onRegenerateTeam={handleRegenerateTeam}
+            isRegenerating={generateMoreMembers.isPending}
+            quickLaunching={quickLaunching}
           />
         )}
 
@@ -338,6 +530,7 @@ export function OnboardingWizard() {
                 }
               }
             }}
+            quickLaunching={quickLaunching}
           />
         )}
       </div>

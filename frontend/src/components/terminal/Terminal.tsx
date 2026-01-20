@@ -21,6 +21,7 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
   const wsRef = useRef<WebSocket | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [connected, setConnected] = useState(false);
+  const [connecting, setConnecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,26 +34,28 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       allowProposedApi: true,
       theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#aeafad',
-        cursorAccent: '#1e1e1e',
-        selectionBackground: '#264f78',
-        black: '#3c3c3c',  // Slightly lighter than background so it's visible
-        red: '#f44747',
-        green: '#6a9955',
-        yellow: '#dcdcaa',
-        blue: '#569cd6',
-        magenta: '#c586c0',
-        cyan: '#4ec9b0',
-        white: '#d4d4d4',
-        brightBlack: '#808080',
-        brightRed: '#f44747',
-        brightGreen: '#6a9955',
-        brightYellow: '#dcdcaa',
-        brightBlue: '#569cd6',
-        brightMagenta: '#c586c0',
-        brightCyan: '#4ec9b0',
+        // High contrast theme for Claude Code visibility
+        background: '#1a1b26',  // Dark but not too dark
+        foreground: '#c0caf5',  // Bright foreground
+        cursor: '#7aa2f7',
+        cursorAccent: '#1a1b26',
+        selectionBackground: '#33467c',
+        // CRITICAL: Make ALL colors highly visible - Claude uses "dim" which maps to these
+        black: '#9aa5ce',       // LIGHT GRAY - never actual black!
+        red: '#f7768e',         // Bright red
+        green: '#9ece6a',       // Bright green
+        yellow: '#e0af68',      // Bright yellow
+        blue: '#7aa2f7',        // Bright blue
+        magenta: '#bb9af7',     // Bright magenta
+        cyan: '#7dcfff',        // Bright cyan
+        white: '#c0caf5',       // Bright white
+        brightBlack: '#9aa5ce', // Same light gray - NEVER dark!
+        brightRed: '#ff9e9e',
+        brightGreen: '#b5e890',
+        brightYellow: '#ffd280',
+        brightBlue: '#a8d1ff',
+        brightMagenta: '#d4b8ff',
+        brightCyan: '#a0e5ff',
         brightWhite: '#ffffff',
       },
     });
@@ -82,9 +85,14 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
 
     let hasConnected = false;
     
+    // Clear any previous error when starting new connection
+    setError(null);
+    setConnecting(true);
+    
     ws.onopen = () => {
       hasConnected = true;
       setConnected(true);
+      setConnecting(false);
       setError(null);
       if (isActive) term.focus();
       
@@ -104,12 +112,21 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
       }
     };
 
-    ws.onerror = () => {};
+    ws.onerror = () => {
+      // Don't show error immediately - let onclose handle it
+    };
 
     ws.onclose = (event) => {
       setConnected(false);
+      setConnecting(false);
       if (!hasConnected) {
-        setError('Connection error. Make sure the backend is running.');
+        // Don't show error immediately - might just be reconnecting
+        // Only show after a brief delay if still not connected
+        setTimeout(() => {
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            setError('Failed to connect. Make sure the backend is running.');
+          }
+        }, 1000);
       } else if (event.wasClean) {
         term.write('\r\n\x1b[33m[Disconnected]\x1b[0m\r\n');
       }
@@ -154,6 +171,11 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
       className={`flex-1 flex flex-col min-h-0 overflow-hidden ${isActive ? '' : 'hidden'}`}
       onClick={onActivate}
     >
+      {connecting && !connected && !error && (
+        <div className="px-4 py-2 bg-blue-500/10 text-blue-400 text-sm border-b border-blue-500/20 flex-shrink-0">
+          Connecting...
+        </div>
+      )}
       {error && (
         <div className="px-4 py-2 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20 flex-shrink-0">
           {error}
@@ -302,13 +324,13 @@ export function Terminal({ projectId, mode, startClaude = false, onClose }: Term
           <div>
             {mode === 'docker' ? (
               <>
-                <strong>Docker Mode:</strong> Sandboxed container using your API key.
-                {' '}Set <code>CLAUDE_CONFIG_BASE64</code> in .env to skip setup.
+                <strong>Docker Mode:</strong> Sandboxed container with your Claude config.
+                {' '}Set <code>CLAUDE_CONFIG_BASE64</code> in .env.
               </>
             ) : (
               <>
-                <strong>Local Mode:</strong> Running directly on your machine.
-                Use with caution - commands have full system access.
+                <strong>Docker Mode:</strong> Running in isolated container.
+                Set <code>CLAUDE_CONFIG_BASE64</code> for authentication.
               </>
             )}
           </div>

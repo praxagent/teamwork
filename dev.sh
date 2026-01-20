@@ -253,48 +253,56 @@ setup_directories() {
     log_success "Directories ready"
 }
 
-# Build Docker terminal image (for Executive Access)
-setup_terminal_image() {
-    log_header "Setting up Docker Terminal Image"
+# Build Docker images for agents and terminal
+setup_docker_images() {
+    log_header "Setting up Docker Images"
     
     # Check if Docker is available
     if ! command -v docker &>/dev/null; then
-        log_warn "Docker not found - skipping terminal image build"
-        log_info "Executive Access Docker mode will not be available"
+        log_warn "Docker not found - skipping image builds"
+        log_info "Agent Docker mode will not be available"
         return 0
     fi
     
     # Check if Docker daemon is running
     if ! docker info &>/dev/null 2>&1; then
-        log_warn "Docker daemon not running - skipping terminal image build"
-        log_info "Start Docker Desktop to enable Executive Access Docker mode"
+        log_warn "Docker daemon not running - skipping image builds"
+        log_info "Start Docker Desktop to enable Docker mode"
         return 0
     fi
     
-    local IMAGE_NAME="vteam-terminal:latest"
-    local DOCKERFILE="$SCRIPT_DIR/docker/terminal.Dockerfile"
+    # Build agent image (always rebuild to pick up changes)
+    local AGENT_IMAGE="vteam/agent:latest"
+    local AGENT_DOCKERFILE="$SCRIPT_DIR/docker/agent.Dockerfile"
     
-    # Check if image already exists
-    if docker images -q "$IMAGE_NAME" 2>/dev/null | grep -q .; then
-        log_success "Terminal image already built ($IMAGE_NAME)"
-        return 0
+    if [[ -f "$AGENT_DOCKERFILE" ]]; then
+        log_info "Building agent image..."
+        if docker build -t "$AGENT_IMAGE" -f "$AGENT_DOCKERFILE" "$SCRIPT_DIR/docker" --quiet >/dev/null 2>&1; then
+            log_success "Agent image ready ($AGENT_IMAGE)"
+        else
+            log_error "Agent image build failed!"
+            log_info "Try manually: docker build -t $AGENT_IMAGE -f $AGENT_DOCKERFILE docker/"
+        fi
     fi
     
-    # Check if Dockerfile exists
-    if [[ ! -f "$DOCKERFILE" ]]; then
-        log_warn "Terminal Dockerfile not found: $DOCKERFILE"
-        return 0
-    fi
+    # Build terminal image (for Executive Access)
+    local TERMINAL_IMAGE="vteam-terminal:latest"
+    local TERMINAL_DOCKERFILE="$SCRIPT_DIR/docker/terminal.Dockerfile"
     
-    log_info "Building terminal image with vim, python, uv, etc..."
-    log_info "This may take a few minutes on first run..."
-    
-    if docker build -t "$IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR/docker" 2>&1 | while IFS= read -r line; do
-        echo -e "${CYAN}[docker]${NC} $line"
-    done; then
-        log_success "Terminal image built successfully"
-    else
-        log_warn "Terminal image build failed - falling back to official image"
+    if [[ -f "$TERMINAL_DOCKERFILE" ]]; then
+        # Check if image already exists
+        if docker images -q "$TERMINAL_IMAGE" 2>/dev/null | grep -q .; then
+            log_success "Terminal image ready ($TERMINAL_IMAGE)"
+        else
+            log_info "Building terminal image (first run, may take a few minutes)..."
+            if docker build -t "$TERMINAL_IMAGE" -f "$TERMINAL_DOCKERFILE" "$SCRIPT_DIR/docker" 2>&1 | while IFS= read -r line; do
+                echo -e "${CYAN}[docker]${NC} $line"
+            done; then
+                log_success "Terminal image built successfully"
+            else
+                log_warn "Terminal image build failed - falling back to official image"
+            fi
+        fi
     fi
 }
 
@@ -376,7 +384,7 @@ main() {
     setup_directories
     setup_backend
     setup_frontend
-    setup_terminal_image
+    setup_docker_images
     
     log_header "Starting Servers"
     

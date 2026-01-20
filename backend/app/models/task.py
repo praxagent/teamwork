@@ -3,9 +3,9 @@
 import json
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -56,6 +56,9 @@ class Task(Base):
     last_error: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # Last error message if task failed
+    config: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )  # Extra task metadata (task_type, complexity, dependencies, etc.)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )

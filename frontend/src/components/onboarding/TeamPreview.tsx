@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Avatar, Card, CardContent } from '@/components/common';
-import { Users, Code, Shield, Briefcase, Shuffle, Pencil, Check, X, Loader2, Camera, Palmtree, Gamepad2, PawPrint, Palette } from 'lucide-react';
+import { Users, Code, Shield, Briefcase, Shuffle, Pencil, Check, X, Loader2, Camera, Palmtree, Gamepad2, PawPrint, Palette, RefreshCw } from 'lucide-react';
 import type { TeamMemberSuggestion } from '@/types';
 
 interface TeamPreviewProps {
@@ -10,6 +10,13 @@ interface TeamPreviewProps {
   onBack: () => void;
   onUpdateMember?: (index: number, member: TeamMemberSuggestion) => void;
   onShuffleMember?: (index: number) => Promise<TeamMemberSuggestion | null>;
+  recommendedTeamSize?: number;
+  desiredTeamSize?: number;
+  maxGeneratedSize?: number;
+  onTeamSizeChange?: (size: number) => void;
+  onRegenerateTeam?: () => Promise<void>;
+  isRegenerating?: boolean;
+  quickLaunching?: boolean;
 }
 
 const roleIcons: Record<string, typeof Users> = {
@@ -63,10 +70,64 @@ export function TeamPreview({
   onBack,
   onUpdateMember,
   onShuffleMember,
+  recommendedTeamSize = 5,
+  desiredTeamSize,
+  maxGeneratedSize = 0,
+  onTeamSizeChange,
+  onRegenerateTeam,
+  isRegenerating = false,
+  quickLaunching = false,
 }: TeamPreviewProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<TeamMemberSuggestion | null>(null);
   const [shufflingIndex, setShufflingIndex] = useState<number | null>(null);
+  
+  // Use external state if provided, otherwise local
+  const currentTeamSize = desiredTeamSize ?? teamMembers.length;
+
+  // Show simplified loading view during quick launch
+  if (quickLaunching) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-slack-purple/10 rounded-full mb-4 animate-pulse">
+            <Users className="w-8 h-8 text-slack-purple" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Assembling Your Team
+          </h1>
+          <p className="text-gray-600">
+            Creating {teamMembers.length || 'your'} virtual team members...
+          </p>
+          <div className="mt-6 flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-slack-purple border-t-transparent" />
+          </div>
+          {teamMembers.length > 0 && (
+            <div className="mt-8 flex justify-center gap-4 flex-wrap">
+              {teamMembers.slice(0, 5).map((member, i) => (
+                <div key={i} className="text-center animate-fade-in" style={{ animationDelay: `${i * 100}ms` }}>
+                  <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-lg font-medium text-gray-600">
+                    {member.name.charAt(0)}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">{member.name.split(' ')[0]}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  
+  const handleTeamSizeChange = (newSize: number) => {
+    if (onTeamSizeChange) {
+      onTeamSizeChange(newSize);
+    }
+  };
+  
+  // Check if regeneration is needed
+  const needsRegeneration = currentTeamSize > maxGeneratedSize;
+  const needsRefresh = currentTeamSize !== teamMembers.length;
 
   const handleEditStart = (index: number, member: TeamMemberSuggestion) => {
     setEditingIndex(index);
@@ -110,6 +171,83 @@ export function TeamPreview({
           Here's the virtual development team we've assembled for your project.
           Click the pencil to edit or shuffle to get a new team member.
         </p>
+      </div>
+
+      {/* Team Size Selection */}
+      <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="w-5 h-5 text-blue-600" />
+              <h3 className="font-medium text-blue-900">Team Size</h3>
+              {currentTeamSize === recommendedTeamSize && (
+                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded">
+                  Recommended
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-blue-700 mb-3">
+              Based on your project, we recommend <strong>{recommendedTeamSize} agents</strong>. 
+              You can adjust this to control costs - fewer agents = lower API usage.
+            </p>
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min={2}
+                max={10}
+                value={currentTeamSize}
+                onChange={(e) => handleTeamSizeChange(parseInt(e.target.value))}
+                className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                disabled={isRegenerating}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleTeamSizeChange(Math.max(2, currentTeamSize - 1))}
+                  className="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-lg font-medium disabled:opacity-50"
+                  disabled={currentTeamSize <= 2 || isRegenerating}
+                >
+                  -
+                </button>
+                <span className="w-8 text-center font-bold text-blue-900">{currentTeamSize}</span>
+                <button
+                  onClick={() => handleTeamSizeChange(Math.min(10, currentTeamSize + 1))}
+                  className="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-lg font-medium disabled:opacity-50"
+                  disabled={currentTeamSize >= 10 || isRegenerating}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-blue-600">
+                Min: 2 (PM + 1 Dev) • Max: 10 • Showing: {teamMembers.length} of {currentTeamSize} agents
+              </p>
+              
+              {/* Regenerate Button - show when size changed */}
+              {(needsRegeneration || needsRefresh) && onRegenerateTeam && (
+                <button
+                  onClick={onRegenerateTeam}
+                  disabled={isRegenerating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isRegenerating ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  {needsRegeneration ? 'Generate New Members' : 'Apply Changes'}
+                </button>
+              )}
+            </div>
+            
+            {needsRegeneration && (
+              <p className="text-xs text-amber-600 mt-2">
+                ⚠️ You've selected {currentTeamSize} agents but only {maxGeneratedSize} have been generated. 
+                Click "Generate New Members" to add {currentTeamSize - maxGeneratedSize} more.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Teams overview */}

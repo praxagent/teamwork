@@ -132,8 +132,11 @@ async def list_tasks(
     assigned_to: str | None = None,
     parent_only: bool = True,
 ) -> TaskListResponse:
-    """List tasks, optionally filtered."""
-    query = select(Task)
+    """List tasks, optionally filtered. Optimized to avoid N+1 queries."""
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy import func
+    
+    query = select(Task).options(selectinload(Task.assigned_agent))
 
     if project_id:
         query = query.where(Task.project_id == project_id)
@@ -147,10 +150,101 @@ async def list_tasks(
         query = query.where(Task.parent_task_id.is_(None))
 
     result = await db.execute(query.order_by(Task.priority.desc(), Task.created_at))
-    tasks = result.scalars().all()
+    tasks = list(result.scalars().all())
+    
+    if not tasks:
+        return TaskListResponse(tasks=[], total=0)
+    
+    task_ids = [t.id for t in tasks]
+    
+    # ============================================================
+    # BATCH QUERY 1: Pre-fetch all agents for tasks
+    # ============================================================
+    agent_ids = [t.assigned_to for t in tasks if t.assigned_to]
+    agents_map = {}
+    if agent_ids:
+        agents_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
+        for agent in agents_result.scalars().all():
+            agents_map[agent.id] = agent.name
+
+    # ============================================================
+    # BATCH QUERY 2: Count subtasks for all tasks at once
+    # ============================================================
+    subtask_counts = {}
+    subtask_query = (
+        select(Task.parent_task_id, func.count(Task.id))
+        .where(Task.parent_task_id.in_(task_ids))
+        .group_by(Task.parent_task_id)
+    )
+    subtask_result = await db.execute(subtask_query)
+    for parent_id, count in subtask_result:
+        subtask_counts[parent_id] = count
+
+    # ============================================================
+    # BATCH QUERY 3: Pre-fetch all blocker tasks at once
+    # ============================================================
+    all_blocker_ids = set()
+    for task in tasks:
+        if task.blocked_by:
+            all_blocker_ids.update(task.blocked_by)
+    
+    blockers_map = {}  # blocker_id -> (title, status)
+    if all_blocker_ids:
+        blockers_result = await db.execute(
+            select(Task.id, Task.title, Task.status).where(Task.id.in_(list(all_blocker_ids)))
+        )
+        for blocker_id, title, status in blockers_result:
+            blockers_map[blocker_id] = (title, status)
+
+    # ============================================================
+    # BUILD RESPONSES - No more DB queries needed!
+    # ============================================================
+    responses = []
+    for task in tasks:
+        # Get agent name from pre-fetched map or relationship
+        agent_name = None
+        if task.assigned_to:
+            if task.assigned_agent:
+                agent_name = task.assigned_agent.name
+            else:
+                agent_name = agents_map.get(task.assigned_to)
+        
+        # Get subtask count from pre-fetched map
+        subtask_count = subtask_counts.get(task.id, 0)
+        
+        # Get blocker info from pre-fetched map
+        blocked_by_ids = task.blocked_by or []
+        blocked_by_titles = []
+        is_blocked = False
+        
+        for blocker_id in blocked_by_ids:
+            if blocker_id in blockers_map:
+                title, status = blockers_map[blocker_id]
+                blocked_by_titles.append(title)
+                if status != "completed":
+                    is_blocked = True
+        
+        responses.append(TaskResponse(
+            id=task.id,
+            project_id=task.project_id,
+            title=task.title,
+            description=task.description,
+            team=task.team,
+            assigned_to=task.assigned_to,
+            assigned_agent_name=agent_name,
+            status=task.status,
+            priority=task.priority,
+            parent_task_id=task.parent_task_id,
+            subtask_count=subtask_count,
+            blocked_by=blocked_by_ids,
+            blocked_by_titles=blocked_by_titles,
+            is_blocked=is_blocked,
+            created_at=task.created_at.isoformat(),
+            updated_at=task.updated_at.isoformat(),
+        ))
 
     return TaskListResponse(
-        tasks=[await task_to_response(t, db) for t in tasks],
+        tasks=responses,
         total=len(tasks),
     )
 
@@ -526,6 +620,7 @@ class ExecuteTaskResponse(BaseModel):
 async def execute_task(
     task_id: str,
     request: ExecuteTaskRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> ExecuteTaskResponse:
     """
@@ -533,6 +628,10 @@ async def execute_task(
     
     This will have the specified agent work on the task,
     writing actual code to the workspace.
+    
+    The task is started in the background - the status is updated to 'in_progress'
+    immediately and the endpoint returns right away. Watch the Live Sessions panel
+    to see real-time progress.
     """
     from app.services.agent_manager import get_agent_manager, check_claude_code_available
     
@@ -555,27 +654,64 @@ async def execute_task(
             detail="Claude Code CLI is not installed. Please install it from https://claude.ai/code"
         )
     
+    # Update task status to in_progress IMMEDIATELY so frontend sees it
+    task.status = "in_progress"
+    task.assigned_to = request.agent_id
+    
+    # Update agent status
+    agent.status = "working"
+    
+    await db.commit()
+    
+    # Broadcast task status change immediately
+    await manager.broadcast_to_project(
+        task.project_id,
+        WebSocketEvent(
+            type=EventType.TASK_UPDATED,
+            data={"id": task_id, "status": "in_progress", "assigned_to": request.agent_id},
+        ),
+    )
+    
+    # Broadcast agent status change
+    await manager.broadcast_to_project(
+        task.project_id,
+        WebSocketEvent(
+            type=EventType.AGENT_STATUS,
+            data={"agent_id": agent.id, "status": "working", "name": agent.name},
+        ),
+    )
+    
     # Get or start the agent
     agent_manager = get_agent_manager()
     
     # Start agent if not running
     await agent_manager.start_agent(agent.id, agent.project_id)
     
-    # Execute the task
-    result = await agent_manager.execute_task(request.agent_id, task_id)
+    # Initialize live output IMMEDIATELY so frontend sees it right away
+    # This prevents the "Agent is starting up..." message
+    from datetime import datetime
+    agent_manager.init_live_output(
+        agent_id=request.agent_id,
+        task_title=task.title,
+        agent_name=agent.name,
+    )
     
-    if result["success"]:
-        return ExecuteTaskResponse(
-            success=True,
-            message=f"{agent.name} completed the task",
-            response=result.get("response"),
-        )
-    else:
-        return ExecuteTaskResponse(
-            success=False,
-            message=result.get("error", "Task execution failed"),
-            response=None,
-        )
+    # Execute the task in the background - don't wait for completion
+    async def run_task_in_background():
+        try:
+            await agent_manager.execute_task(request.agent_id, task_id)
+        except Exception as e:
+            print(f">>> Background task execution error: {e}", flush=True)
+    
+    # Schedule the background task
+    asyncio.create_task(run_task_in_background())
+    
+    # Return immediately - task is now running in background
+    return ExecuteTaskResponse(
+        success=True,
+        message=f"{agent.name} is now working on the task. Watch the Live Sessions panel for progress.",
+        response=None,
+    )
 
 
 class TaskLogEntry(BaseModel):
