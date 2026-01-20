@@ -362,19 +362,39 @@ async def run_docker_terminal(
             await websocket.send_text(f"\x1b[90m(Using official Docker sandbox template)\x1b[0m\r\n")
             await websocket.send_text(f"\x1b[33mNote: {image_msg}\x1b[0m\r\n")
         
-        # Start the container
-        # Note: No persistent volume for Claude config (security - no API key storage)
-        # User will need to complete Claude setup each session
+        # Start the container with workspace and Claude config mounted
+        import base64
+        import tempfile
+        
+        docker_run_cmd = [
+            "docker", "run", "-d",
+            "--name", container_name,
+            "-v", f"{workspace_path.absolute()}:/workspace",
+            "-w", "/workspace",
+        ]
+        
+        # Mount Claude config from CLAUDE_CONFIG_BASE64 (required)
+        # Mount to a temp location, then copy inside container (Claude needs write access)
+        claude_config_mounted = False
+        config_temp_path = None
+        if settings.claude_config_base64:
+            try:
+                decoded_config = base64.b64decode(settings.claude_config_base64).decode('utf-8')
+                config_temp_path = Path(tempfile.gettempdir()) / f"claude_config_terminal_{container_name}.json"
+                config_temp_path.write_text(decoded_config)
+                config_temp_path.chmod(0o644)
+                # Mount to temp location - will copy to ~/.claude.json after container starts
+                docker_run_cmd.extend(["-v", f"{config_temp_path}:/tmp/claude_config_mount.json:ro"])
+                claude_config_mounted = True
+            except Exception as e:
+                await websocket.send_text(f"\x1b[31mError decoding CLAUDE_CONFIG_BASE64: {e}\x1b[0m\r\n")
+        else:
+            await websocket.send_text(f"\x1b[33mWARNING: CLAUDE_CONFIG_BASE64 not set!\x1b[0m\r\n")
+        
+        docker_run_cmd.extend([image_to_use, "tail", "-f", "/dev/null"])
+        
         create_result = subprocess.run(
-            [
-                "docker", "run", "-d",
-                "--name", container_name,
-                "-v", f"{workspace_path.absolute()}:/workspace",
-                "-e", f"ANTHROPIC_API_KEY={settings.anthropic_api_key}",
-                "-w", "/workspace",
-                image_to_use,
-                "tail", "-f", "/dev/null",
-            ],
+            docker_run_cmd,
             capture_output=True,
             text=True,
         )
@@ -386,74 +406,42 @@ async def run_docker_terminal(
                 capture_output=True,
             )
             
-            # If user provided their Claude config as base64, inject it
-            if settings.claude_config_base64:
-                await websocket.send_text("\x1b[33mInjecting Claude config...\x1b[0m\r\n")
-                
-                # Find the agent user's home directory
-                home_result = subprocess.run(
-                    ["docker", "exec", "-u", "agent", container_name, "bash", "-c", "echo $HOME"],
+            # Copy Claude config from mount to writable location (Claude needs write access)
+            if claude_config_mounted:
+                copy_result = subprocess.run(
+                    ["docker", "exec", container_name, "bash", "-c",
+                     "cp /tmp/claude_config_mount.json /home/agent/.claude.json && "
+                     "chown agent:agent /home/agent/.claude.json && "
+                     "chmod 600 /home/agent/.claude.json"],
                     capture_output=True,
                     text=True,
                 )
-                agent_home = home_result.stdout.strip() or "/home/agent"
-                
-                # Decode the config, add current API key to approved list, re-encode
-                try:
-                    config_json = base64.b64decode(settings.claude_config_base64).decode('utf-8')
-                    config = json.loads(config_json)
-                    
-                    # Extract API key suffix (Claude uses this as identifier)
-                    api_key = settings.anthropic_api_key
-                    key_suffix = api_key.split('-')[-1] if '-' in api_key else api_key[-20:]
-                    
-                    # Add to approved list if not already there
-                    if "customApiKeyResponses" not in config:
-                        config["customApiKeyResponses"] = {"approved": [], "rejected": []}
-                    if key_suffix not in config["customApiKeyResponses"]["approved"]:
-                        config["customApiKeyResponses"]["approved"].append(key_suffix)
-                    
-                    # Also set the primaryApiKey to match
-                    config["primaryApiKey"] = api_key
-                    
-                    # Re-encode
-                    modified_config = json.dumps(config)
-                    config_b64 = base64.b64encode(modified_config.encode()).decode()
-                except Exception as e:
-                    await websocket.send_text(f"\x1b[31mConfig parse error: {e}\x1b[0m\r\n")
-                    config_b64 = settings.claude_config_base64
-                
-                # Decode and write the config to home directory (ephemeral - not persisted)
-                result = subprocess.run(
-                    ["docker", "exec", "-u", "agent", container_name, "bash", "-c",
-                     f"echo '{config_b64}' | base64 -d > {agent_home}/.claude.json && echo 'OK'"],
-                    capture_output=True,
-                    text=True,
-                )
-                
-                if "OK" in result.stdout:
-                    await websocket.send_text("\x1b[32mClaude config loaded!\x1b[0m\r\n")
+                if copy_result.returncode == 0:
+                    await websocket.send_text("\x1b[32mClaude config ready!\x1b[0m\r\n")
                 else:
-                    await websocket.send_text(f"\x1b[31mFailed to inject config: {result.stderr}\x1b[0m\r\n")
+                    await websocket.send_text(f"\x1b[33mWarning: Could not copy Claude config: {copy_result.stderr}\x1b[0m\r\n")
             else:
-                await websocket.send_text("\x1b[32mContainer ready!\x1b[0m\r\n")
-                if start_claude:
-                    await websocket.send_text("\x1b[33mTip: Set CLAUDE_CONFIG_BASE64 to skip setup. See README.\x1b[0m\r\n")
+                await websocket.send_text("\x1b[33mNo Claude config. Set CLAUDE_CONFIG_BASE64.\x1b[0m\r\n")
         
         if create_result.returncode != 0:
             # Fallback to node image if official image not available
             await websocket.send_text("\x1b[33mFalling back to manual setup...\x1b[0m\r\n")
             
+            fallback_cmd = [
+                "docker", "run", "-d",
+                "--name", container_name,
+                "-v", f"{workspace_path.absolute()}:/workspace",
+                "-w", "/workspace",
+            ]
+            
+            # Reuse the same claude config mount (to temp location)
+            if claude_config_mounted and config_temp_path and config_temp_path.exists():
+                fallback_cmd.extend(["-v", f"{config_temp_path}:/tmp/claude_config_mount.json:ro"])
+            
+            fallback_cmd.extend(["node:20-slim", "tail", "-f", "/dev/null"])
+            
             create_result = subprocess.run(
-                [
-                    "docker", "run", "-d",
-                    "--name", container_name,
-                    "-v", f"{workspace_path.absolute()}:/workspace",
-                    "-e", f"ANTHROPIC_API_KEY={settings.anthropic_api_key}",
-                    "-w", "/workspace",
-                    "node:20-slim",
-                    "tail", "-f", "/dev/null",
-                ],
+                fallback_cmd,
                 capture_output=True,
                 text=True,
             )
@@ -488,36 +476,47 @@ async def run_docker_terminal(
         await websocket.send_text("\x1b[33mStarting stopped container...\x1b[0m\r\n")
         subprocess.run(["docker", "start", container_name], capture_output=True)
     
-    # Check if using the official sandbox template (runs as 'agent' user)
-    # or our fallback node image (runs as root)
+    # Check if using a proper agent image (sandbox-template or our custom vteam images)
+    # These run as 'agent' user and support --dangerously-skip-permissions
     inspect_result = subprocess.run(
         ["docker", "inspect", "--format", "{{.Config.Image}}", container_name],
         capture_output=True,
         text=True,
     )
-    is_sandbox_template = "sandbox-templates" in inspect_result.stdout
+    image_name = inspect_result.stdout.strip()
+    is_agent_image = any(x in image_name for x in ["sandbox-templates", "vteam-terminal", "vteam/agent"])
+    print(f">>> Terminal: image={image_name}, is_agent_image={is_agent_image}", flush=True)
     
     # Now exec into the container with PTY
+    # Use script command to create a proper TTY wrapper
+    api_key = settings.anthropic_api_key_clean
+    
+    if not api_key or len(api_key) < 20:
+        print(f">>> ERROR: ANTHROPIC_API_KEY is empty or too short! Claude Code will fail.", flush=True)
+    
     if start_claude:
-        if is_sandbox_template:
-            cmd = ["docker", "exec", "-it", "-u", "agent",
-                   "-e", f"ANTHROPIC_API_KEY={settings.anthropic_api_key}",
-                   "-e", "TERM=xterm-256color",
-                   container_name, "claude", "--dangerously-skip-permissions"]
+        # IS_SANDBOX=1 suppresses the bypass permissions warning
+        if is_agent_image:
+            inner_cmd = f"docker exec -it -u agent -e ANTHROPIC_API_KEY={api_key} -e IS_SANDBOX=1 -e TERM=xterm-256color {container_name} claude --dangerously-skip-permissions"
         else:
-            cmd = ["docker", "exec", "-it",
-                   "-e", f"ANTHROPIC_API_KEY={settings.anthropic_api_key}",
-                   "-e", "TERM=xterm-256color",
-                   container_name, "claude"]
+            inner_cmd = f"docker exec -it -e ANTHROPIC_API_KEY={api_key} -e IS_SANDBOX=1 -e TERM=xterm-256color {container_name} claude"
+        print(f">>> Starting Claude Code with API key and IS_SANDBOX=1 in container {container_name}", flush=True)
     else:
-        if is_sandbox_template:
-            cmd = ["docker", "exec", "-it", "-u", "agent",
-                   "-e", "TERM=xterm-256color",
-                   container_name, "bash"]
+        if is_agent_image:
+            inner_cmd = f"docker exec -it -u agent -e TERM=xterm-256color {container_name} bash"
         else:
-            cmd = ["docker", "exec", "-it",
-                   "-e", "TERM=xterm-256color",
-                   container_name, "bash"]
+            inner_cmd = f"docker exec -it -e TERM=xterm-256color {container_name} bash"
+    
+    # Use script to ensure proper TTY handling on macOS
+    import platform
+    if platform.system() == "Darwin":
+        # macOS: script -q /dev/null command
+        cmd = ["script", "-q", "/dev/null", "bash", "-c", inner_cmd]
+    else:
+        # Linux: script -q -c command /dev/null
+        cmd = ["script", "-q", "-c", inner_cmd, "/dev/null"]
+    
+    print(f">>> Terminal command: {cmd}", flush=True)
     
     await websocket.send_text(f"\x1b[32mConnecting to container {container_name}...\x1b[0m\r\n")
     
@@ -576,8 +575,10 @@ async def run_docker_terminal(
             while True:
                 try:
                     data = await websocket.receive()
+                    print(f">>> Terminal WS received: {data.keys()}", flush=True)
                     if "text" in data:
                         text = data["text"]
+                        print(f">>> Terminal text input: {repr(text[:50] if len(text) > 50 else text)}", flush=True)
                         if text.startswith("\x1b[8;"):
                             try:
                                 parts = text[4:-1].split(";")
@@ -595,7 +596,10 @@ async def run_docker_terminal(
                             os.write(master_fd, text.encode('utf-8'))
                     elif "bytes" in data:
                         # Binary input - write directly (preserves control chars like Ctrl+C)
-                        os.write(master_fd, data["bytes"])
+                        raw_bytes = data["bytes"]
+                        print(f">>> Terminal bytes input: {repr(raw_bytes)}", flush=True)
+                        bytes_written = os.write(master_fd, raw_bytes)
+                        print(f">>> Terminal wrote {bytes_written} bytes to PTY", flush=True)
                 except WebSocketDisconnect:
                     break
                 except Exception:

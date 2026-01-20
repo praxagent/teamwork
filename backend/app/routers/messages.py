@@ -1077,12 +1077,18 @@ async def list_channel_messages(
     thread_id: str | None = None,
 ) -> MessageListResponse:
     """List messages in a channel."""
+    print(f">>> Fetching messages for channel {channel_id}, skip={skip}, limit={limit}", flush=True)
+    
     # Verify channel exists
     channel_result = await db.execute(
         select(Channel).where(Channel.id == channel_id)
     )
-    if not channel_result.scalar_one_or_none():
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
+        print(f">>> Channel {channel_id} not found!", flush=True)
         raise HTTPException(status_code=404, detail="Channel not found")
+    
+    print(f">>> Found channel: {channel.name}", flush=True)
 
     # Build query
     query = select(Message).where(Message.channel_id == channel_id)
@@ -1097,6 +1103,7 @@ async def list_channel_messages(
     # Get total count
     count_result = await db.execute(query)
     total = len(count_result.scalars().all())
+    print(f">>> Total messages in channel: {total}", flush=True)
 
     # Get paginated messages
     result = await db.execute(
@@ -1110,6 +1117,8 @@ async def list_channel_messages(
 
     # Reverse to show oldest first
     messages.reverse()
+    
+    print(f">>> Returning {len(messages)} messages for channel {channel.name}", flush=True)
 
     return MessageListResponse(
         messages=[await message_to_response(m, db) for m in messages],

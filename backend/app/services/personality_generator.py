@@ -148,9 +148,9 @@ class PersonalityGenerator:
 Teams needed: {', '.join(teams)}
 Components: {json.dumps(components, indent=2)}
 
-Generate EXACTLY 5 team members. Include:
+Generate EXACTLY 4 team members. Include:
 - 1 Product Manager
-- 3 Developers (mix of frontend/backend/full-stack based on needs)
+- 2 Developers (mix of frontend/backend/full-stack based on needs)
 - 1 QA Engineer
 
 For each person, provide:
@@ -163,7 +163,7 @@ For each person, provide:
 Make personalities varied and interesting - some outgoing, some introverted,
 different communication styles, varied interests.
 
-Return ONLY a JSON array of exactly 5 team members, no explanation."""
+Return ONLY a JSON array of exactly 4 team members, no explanation."""
 
         response = await self.client.messages.create(
             model=self.model,
@@ -208,8 +208,8 @@ Return ONLY a JSON array of exactly 5 team members, no explanation."""
             profile_image_type=random.choice(image_types),
         ))
         
-        # Developers (exactly 3 for a team of 5)
-        dev_count = 3
+        # Developers (2 for a team of 4)
+        dev_count = 2
         dev_teams = teams if teams else ["Full Stack"]
         for i in range(dev_count):
             team = dev_teams[i % len(dev_teams)] if dev_teams else "Full Stack"

@@ -68,6 +68,60 @@ export function useDeleteProject() {
   });
 }
 
+export function useResetProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (projectId: string) => {
+      const response = await fetch(`${API_BASE}/projects/${projectId}/reset`, { 
+        method: 'POST' 
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || `Reset failed: ${response.status}`);
+      }
+      return response.json();
+    },
+    onMutate: async (projectId) => {
+      // OPTIMISTIC UPDATE: Clear messages immediately before server responds
+      // This makes the UI feel instant while the actual reset happens
+      
+      // Cancel any in-flight queries to prevent race conditions
+      await queryClient.cancelQueries({ queryKey: ['messages'] });
+      await queryClient.cancelQueries({ queryKey: ['tasks', projectId] });
+      
+      // Get all query keys that start with 'messages' and clear them
+      const queryCache = queryClient.getQueryCache();
+      const messageQueries = queryCache.findAll({ queryKey: ['messages'] });
+      
+      // Clear each message query immediately
+      for (const query of messageQueries) {
+        queryClient.setQueryData(query.queryKey, { messages: [], total: 0, has_more: false });
+      }
+      
+      // Also reset tasks to pending status optimistically
+      const tasksData = queryClient.getQueryData<{ tasks: Task[]; total: number }>(['tasks', projectId]);
+      if (tasksData) {
+        queryClient.setQueryData(['tasks', projectId], {
+          ...tasksData,
+          tasks: tasksData.tasks.map((t: Task) => ({ ...t, status: 'pending', assigned_to: null })),
+        });
+      }
+    },
+    onSuccess: (_, projectId) => {
+      // Force refetch all project-related queries from server
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['agents', projectId] });
+      // Force refetch messages (they should now be empty from server)
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      // Also clear live sessions
+      queryClient.invalidateQueries({ queryKey: ['live-sessions', projectId] });
+    },
+  });
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient();
 
@@ -258,6 +312,7 @@ export function useMessages(channelId: string | null, skip = 0, limit = 50) {
       ),
     enabled: !!channelId,
     staleTime: 0, // Always refetch when channel changes
+    refetchOnMount: 'always', // Force refetch on mount/refresh
     refetchOnWindowFocus: true,
   });
 }
@@ -520,6 +575,44 @@ export function useStartAllAgents() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+}
+
+// Agent Takeover
+export interface TakeoverResponse {
+  success: boolean;
+  message: string;
+  container_name: string | null;
+  workspace_path: string | null;
+}
+
+export function useTakeoverAgent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (agentId: string) =>
+      fetchJson<TakeoverResponse>(`/agents/${agentId}/takeover`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['live-sessions'] });
+    },
+  });
+}
+
+export function useReleaseAgent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (agentId: string) =>
+      fetchJson<{ success: boolean; message: string }>(`/agents/${agentId}/release`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['live-sessions'] });
     },
   });
 }

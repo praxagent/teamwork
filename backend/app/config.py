@@ -69,13 +69,21 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # API Keys
+    # API Keys - quotes are stripped in case .env has KEY="value" format
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     
-    # Claude Code config (base64 encoded ~/.claude/claude.json)
-    # Generate with: cat ~/.claude/claude.json | base64
-    # This allows Docker Claude Code to skip setup
+    @property
+    def anthropic_api_key_clean(self) -> str:
+        """Return API key with quotes stripped."""
+        key = self.anthropic_api_key
+        if key:
+            return key.strip().strip('"').strip("'")
+        return key
+    
+    # Claude Code authentication config (base64 encoded ~/.claude.json)
+    # Generate with: cat ~/.claude.json | base64
+    # This is decoded and mounted into Docker containers at ~/.claude.json
     claude_config_base64: str = ""
 
     # Database - stored at project root ./data/
@@ -103,9 +111,9 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
-    # Agent Runtime - Docker is recommended for security (agents run in isolated containers)
-    # 'subprocess' is deprecated but still accepted for backward compatibility
-    default_agent_runtime: Literal["docker", "subprocess"] = "docker"
+    # Agent Runtime - Docker ONLY for security (agents run in isolated containers)
+    # Subprocess mode has been removed - all agents must run in Docker
+    default_agent_runtime: Literal["docker"] = "docker"
     
     # Task Retry Configuration
     max_task_retries: int = 3  # Maximum retries before moving task back to todo permanently

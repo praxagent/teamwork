@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/common';
 import { useProjects } from '@/hooks/useApi';
-import { Users, Rocket, ArrowRight, FolderOpen, RotateCcw, X, Github, Server, Key } from 'lucide-react';
+import { Users, Rocket, ArrowRight, FolderOpen, RotateCcw, X, Github, Server, Key, AlertTriangle } from 'lucide-react';
 
 export function Home() {
   const navigate = useNavigate();
@@ -48,6 +48,17 @@ export function Home() {
           Describe your app idea and watch as a virtual team of AI developers, product managers,
           and QA engineers collaborate to bring it to life.
         </p>
+
+        {/* Proof of Concept Warning */}
+        <div className="max-w-2xl mx-auto mb-8 bg-yellow-500/20 border border-yellow-400/50 rounded-lg px-4 py-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <div className="text-left">
+              <p className="text-yellow-200 font-semibold text-sm">Proof of Concept Only</p>
+              <p className="text-yellow-200/80 text-sm">This is an experimental project for demonstration purposes. Do not rely on it for actual product development or production use.</p>
+            </div>
+          </div>
+        </div>
 
         {/* Open Source Badges */}
         <div className="flex flex-wrap items-center justify-center gap-3 mb-8 text-sm">

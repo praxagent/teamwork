@@ -132,8 +132,9 @@ async def list_tasks(
     assigned_to: str | None = None,
     parent_only: bool = True,
 ) -> TaskListResponse:
-    """List tasks, optionally filtered."""
+    """List tasks, optionally filtered. Optimized to avoid N+1 queries."""
     from sqlalchemy.orm import selectinload
+    from sqlalchemy import func
     
     query = select(Task).options(selectinload(Task.assigned_agent))
 
@@ -149,9 +150,16 @@ async def list_tasks(
         query = query.where(Task.parent_task_id.is_(None))
 
     result = await db.execute(query.order_by(Task.priority.desc(), Task.created_at))
-    tasks = result.scalars().all()
+    tasks = list(result.scalars().all())
     
-    # Pre-fetch all agents for tasks in one query (fallback if selectinload didn't work)
+    if not tasks:
+        return TaskListResponse(tasks=[], total=0)
+    
+    task_ids = [t.id for t in tasks]
+    
+    # ============================================================
+    # BATCH QUERY 1: Pre-fetch all agents for tasks
+    # ============================================================
     agent_ids = [t.assigned_to for t in tasks if t.assigned_to]
     agents_map = {}
     if agent_ids:
@@ -159,7 +167,38 @@ async def list_tasks(
         for agent in agents_result.scalars().all():
             agents_map[agent.id] = agent.name
 
-    # Build responses efficiently without N+1 queries
+    # ============================================================
+    # BATCH QUERY 2: Count subtasks for all tasks at once
+    # ============================================================
+    subtask_counts = {}
+    subtask_query = (
+        select(Task.parent_task_id, func.count(Task.id))
+        .where(Task.parent_task_id.in_(task_ids))
+        .group_by(Task.parent_task_id)
+    )
+    subtask_result = await db.execute(subtask_query)
+    for parent_id, count in subtask_result:
+        subtask_counts[parent_id] = count
+
+    # ============================================================
+    # BATCH QUERY 3: Pre-fetch all blocker tasks at once
+    # ============================================================
+    all_blocker_ids = set()
+    for task in tasks:
+        if task.blocked_by:
+            all_blocker_ids.update(task.blocked_by)
+    
+    blockers_map = {}  # blocker_id -> (title, status)
+    if all_blocker_ids:
+        blockers_result = await db.execute(
+            select(Task.id, Task.title, Task.status).where(Task.id.in_(list(all_blocker_ids)))
+        )
+        for blocker_id, title, status in blockers_result:
+            blockers_map[blocker_id] = (title, status)
+
+    # ============================================================
+    # BUILD RESPONSES - No more DB queries needed!
+    # ============================================================
     responses = []
     for task in tasks:
         # Get agent name from pre-fetched map or relationship
@@ -170,24 +209,20 @@ async def list_tasks(
             else:
                 agent_name = agents_map.get(task.assigned_to)
         
-        # Count subtasks efficiently (this could still be optimized with a subquery)
-        subtask_result = await db.execute(
-            select(Task.id).where(Task.parent_task_id == task.id)
-        )
-        subtask_count = len(subtask_result.scalars().all())
+        # Get subtask count from pre-fetched map
+        subtask_count = subtask_counts.get(task.id, 0)
         
-        # Get blocker info
+        # Get blocker info from pre-fetched map
         blocked_by_ids = task.blocked_by or []
         blocked_by_titles = []
         is_blocked = False
         
-        if blocked_by_ids:
-            blockers_result = await db.execute(
-                select(Task).where(Task.id.in_(blocked_by_ids))
-            )
-            blockers = blockers_result.scalars().all()
-            blocked_by_titles = [b.title for b in blockers]
-            is_blocked = any(b.status != "completed" for b in blockers)
+        for blocker_id in blocked_by_ids:
+            if blocker_id in blockers_map:
+                title, status = blockers_map[blocker_id]
+                blocked_by_titles.append(title)
+                if status != "completed":
+                    is_blocked = True
         
         responses.append(TaskResponse(
             id=task.id,

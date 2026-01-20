@@ -12,7 +12,7 @@ export interface Project {
 
 export interface ProjectConfig {
   status?: string;
-  runtime_mode?: 'subprocess' | 'docker';
+  runtime_mode?: 'docker';  // Always Docker for security
   workspace_type?: 'local' | 'local_git' | 'browser' | 'hybrid';
   analysis?: ProjectAnalysis;
   breakdown?: ProjectBreakdown;

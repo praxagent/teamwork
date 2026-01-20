@@ -208,9 +208,8 @@ class AgentManager:
     """
     Manages Claude Code agent instances.
 
-    Supports two runtime modes:
-    - subprocess: Run agents as local subprocess
-    - docker: Run agents in Docker containers
+    All agents run in Docker containers for security and isolation.
+    The host's ~/.claude.json is mounted for authentication.
     """
 
     def __init__(self, db_session_factory: Callable[[], AsyncSession]) -> None:
@@ -382,11 +381,52 @@ class AgentManager:
         """
         import re
         
-        text = terminal.output_buffer
+        # Strip ANSI escape codes for reliable pattern matching
+        # ANSI codes look like \x1b[...m, \x1b[?...h, \x1b[?...l, etc.
+        ansi_escape = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07')
+        
+        raw_text = terminal.output_buffer
+        text = ansi_escape.sub('', raw_text)  # Strip ANSI for matching
         
         # Get the last portion of text to check for prompts
+        # Use more lines because Claude Code prompts can be large (bypass permissions is ~15 lines)
         lines = text.strip().split('\n')
-        last_lines = '\n'.join(lines[-20:]) if len(lines) > 20 else text
+        last_lines = '\n'.join(lines[-40:]) if len(lines) > 40 else text
+        
+        # Also get the last 2000 chars for searching large prompts
+        recent_text = text[-2000:] if len(text) > 2000 else text
+        
+        # ============================================================
+        # BYPASS PERMISSIONS - HANDLE FIRST (most critical startup prompt)
+        # This is a large box that takes up many lines
+        # ============================================================
+        if 'Bypass Permissions' in recent_text or 'Yes, I accept' in recent_text:
+            print(f">>> Agent {agent_id}: *** BYPASS PERMISSIONS DETECTED ***", flush=True)
+            # Check if we're on option 1 (No, exit) - need to move to option 2
+            if '1. No' in recent_text and '2. Yes' in recent_text:
+                if '❯ 1' in recent_text or '> 1' in recent_text:
+                    print(f">>> Agent {agent_id}: On option 1 (No, exit) - MOVING TO OPTION 2", flush=True)
+                    return '\x1b[B\r\r'  # Arrow down + Enter + Enter
+                elif '❯ 2' in recent_text or '> 2' in recent_text:
+                    print(f">>> Agent {agent_id}: Already on option 2 - CONFIRMING", flush=True)
+                    return '\r\r'  # Just confirm with Enter twice
+                else:
+                    print(f">>> Agent {agent_id}: Selection unclear - moving down + confirming", flush=True)
+                    return '\x1b[B\r\r'
+            else:
+                print(f">>> Agent {agent_id}: Bypass Permissions - options not found, trying arrow down", flush=True)
+                return '\x1b[B\r\r'
+        
+        # ============================================================
+        # SETTINGS ERROR - Continue without broken settings
+        # ============================================================
+        if 'Settings Error' in recent_text or 'Continue without these settings' in recent_text:
+            print(f">>> Agent {agent_id}: *** SETTINGS ERROR DETECTED - continuing without ***", flush=True)
+            # Option 2 is "Continue without these settings"
+            if '❯ 2' in recent_text or '> 2' in recent_text:
+                return '\r'  # Already on option 2, just confirm
+            else:
+                return '\x1b[B\r'  # Move to option 2 and confirm
         
         # ============================================================
         # PASTED TEXT PROMPT - We handle this in _invoke_claude_code
@@ -403,9 +443,21 @@ class AgentManager:
         # ============================================================
         # CLAUDE CODE API KEY PROMPT - Most common stuck point
         # ============================================================
-        if 'Do you want to use this API key?' in last_lines:
+        if 'Do you want to use this API key?' in recent_text:
             print(f">>> Agent {agent_id}: Detected API key prompt! Sending '1' + Enter to select Yes", flush=True)
             return '1\r'
+        
+        # ============================================================
+        # MISSING API KEY - Need to run /login command
+        # This happens when OAuth tokens expire but ANTHROPIC_API_KEY is available
+        # ============================================================
+        if 'Missing API key' in recent_text:
+            # Check if we're at the prompt (❯) - ready to type /login
+            if '❯' in last_lines[-200:]:
+                print(f">>> Agent {agent_id}: Missing API key at prompt - running /login", flush=True)
+                return '/login\r'
+            else:
+                print(f">>> Agent {agent_id}: Missing API key detected, waiting for prompt...", flush=True)
         
         # ============================================================
         # CLAUDE CODE LOGIN METHOD SELECTION
@@ -413,8 +465,7 @@ class AgentManager:
         # Select option 1 if we have subscription config, else 2 for API billing
         # ============================================================
         if 'Select login method' in last_lines or 'Claude account with subscription' in last_lines:
-            # If we have CLAUDE_CONFIG_BASE64, use subscription (option 1)
-            # Otherwise use API billing (option 2)
+            # If CLAUDE_CONFIG_BASE64 is set, we have a subscription - select option 1
             if settings.claude_config_base64:
                 print(f">>> Agent {agent_id}: Detected login prompt, selecting Claude subscription (option 1)", flush=True)
                 return '1\r'
@@ -433,13 +484,6 @@ class AgentManager:
         )
         
         if is_selection_menu:
-            # ============================================================
-            # BYPASS PERMISSIONS WARNING - Must accept to continue
-            # Options: 1. No, exit  |  2. Yes, I accept
-            # ============================================================
-            if 'Bypass Permissions mode' in last_lines or 'bypass permissions' in last_lines.lower():
-                print(f">>> Agent {agent_id}: Detected Bypass Permissions warning, accepting (option 2)", flush=True)
-                return '2\r'  # Select "Yes, I accept"
             
             # ============================================================
             # DANGEROUS COMMANDS / ACCEPT WARNINGS
@@ -533,22 +577,35 @@ class AgentManager:
         Detect if Claude Code has completed the current task.
         
         Returns True if task appears complete, False otherwise.
-        Uses pattern matching for fast detection before falling back to LLM.
+        
+        STRICT VALIDATION:
+        1. Task prompt must have been submitted
+        2. Must NOT be on any startup/setup screens
+        3. Must have STRONG evidence of actual work done (tool usage, file edits)
+        4. Must show explicit completion message from Claude
         """
         import re
         
         # CRITICAL: If the task prompt was never submitted, the task can't be complete!
         if not terminal.prompt_submitted:
+            print(f">>> Agent {agent_id}: Task prompt never submitted - NOT complete", flush=True)
             return False
         
-        text = terminal.output_buffer
+        # Strip ANSI escape codes for reliable pattern matching
+        ansi_escape = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07')
+        raw_text = terminal.output_buffer
+        text = ansi_escape.sub('', raw_text)
         
         # Get the last portion of text
         lines = text.strip().split('\n')
-        last_lines = '\n'.join(lines[-30:]) if len(lines) > 30 else text
+        last_lines = '\n'.join(lines[-50:]) if len(lines) > 50 else text
         
-        # Indicators that we're still in startup/setup mode (NOT task execution)
-        startup_indicators = [
+        # =============================================================
+        # BLOCKER: If ANY of these are in the output, NOT complete
+        # These indicate startup, errors, or incomplete states
+        # =============================================================
+        blocking_indicators = [
+            # Startup/setup screens
             'Select login method',
             'Claude account with subscription',
             'Anthropic Console account',
@@ -556,51 +613,119 @@ class AgentManager:
             'Dark mode',
             'Light mode',
             'Welcome to Claude Code',
+            'Welcome back',  # Welcome screen still visible
+            'Tips for getting started',  # Welcome screen
+            'Recent activity',  # Welcome screen  
             'Let\'s get started',
+            'Bypass Permissions mode',
+            'Enter to confirm',
+            'Esc to cancel',
+            'No, exit',
+            'Yes, I accept',
+            'Do you want to use this API key',
+            'bypass permissions on',  # Still showing bypass mode indicator
+            
+            # Error states
+            'Error:',
+            'error:',
+            'Failed to',
+            'failed to',
+            'Permission denied',
+            'Cannot find',
+            'not found',
+            'ENOENT',
+            'EACCES',
+            
+            # Still working indicators
+            '◐', '◑', '◒', '◓',  # Spinner
+            'Thinking...',
+            'Reading file',
+            'Writing file',
+            'Running command',
         ]
-        if any(ind in text for ind in startup_indicators):
-            # Still in startup - can't be complete
+        
+        for indicator in blocking_indicators:
+            if indicator in last_lines:
+                print(f">>> Agent {agent_id}: Blocking indicator found: '{indicator}' - NOT complete", flush=True)
+                return False
+        
+        # =============================================================
+        # REQUIRED: Must have STRONG evidence of actual tool usage
+        # Claude Code shows these when actually doing work
+        # =============================================================
+        tool_usage_evidence = [
+            # Claude Code tool indicators (these appear when tools are used)
+            '⏵ Read(',  # Read tool
+            '⏵ Write(',  # Write tool  
+            '⏵ Edit(',  # Edit tool
+            '⏵ Bash(',  # Bash tool
+            '⏵ TodoWrite(',  # Todo tool
+            '✓ Read',  # Completed read
+            '✓ Write',  # Completed write
+            '✓ Edit',  # Completed edit
+            '✓ Bash',  # Completed bash
+            'Created file',
+            'Updated file', 
+            'Modified file',
+            'Wrote to',
+            'git add',
+            'git commit',
+            '[main ',  # Git commit output
+            'files changed',  # Git status
+            'insertions(+)',  # Git diff
+            'deletions(-)',  # Git diff
+        ]
+        
+        has_tool_usage = any(evidence in text for evidence in tool_usage_evidence)
+        
+        if not has_tool_usage:
+            print(f">>> Agent {agent_id}: No tool usage evidence found - NOT complete", flush=True)
             return False
         
-        # Must have evidence of actual work being done
-        work_evidence = [
-            'Created', 'Updated', 'Modified', 'Wrote', 'Edited',
-            'committed', 'commit', 'Saved', 'Generated',
-            '✓', '✔', 'Done', 'Completed',
-            'file', 'package.json', '.ts', '.js', '.py', '.tsx', '.jsx',
-        ]
-        has_work_evidence = any(ind in text for ind in work_evidence)
-        
-        if not has_work_evidence:
-            # No evidence any work was done
-            return False
-        
-        # Completion indicators from Claude Code
+        # =============================================================
+        # REQUIRED: Must have explicit completion message from Claude
+        # =============================================================
         completion_patterns = [
-            # Explicit completion messages
-            r'Task completed',
-            r'All done!',
-            r'Successfully completed',
-            r'Changes committed',
             r'I\'ve completed',
             r'I have completed',
+            r'Task completed',
+            r'All done',
+            r'Successfully completed',
             r'The task is complete',
             r'Work is complete',
             r'Implementation complete',
-            
-            # Git commit patterns (strong indicator)
-            r'\[main [a-f0-9]+\]',  # Git commit hash
+            r'I\'ve finished',
+            r'I have finished',
+            r'Changes have been committed',
+            r'committed the changes',
         ]
         
+        has_completion_message = False
         for pattern in completion_patterns:
             if re.search(pattern, last_lines, re.IGNORECASE):
-                # Make sure we're not in the middle of something
-                working_indicators = ['Running', 'Reading', 'Writing', 'Thinking', '◐', '◑', '◒', '◓']
-                if not any(ind in last_lines[-500:] for ind in working_indicators):
-                    print(f">>> Agent {agent_id}: Detected task completion pattern: {pattern}", flush=True)
-                    return True
+                has_completion_message = True
+                print(f">>> Agent {agent_id}: Found completion message: {pattern}", flush=True)
+                break
         
-        return False
+        if not has_completion_message:
+            print(f">>> Agent {agent_id}: No completion message found - NOT complete", flush=True)
+            return False
+        
+        # =============================================================
+        # FINAL CHECK: Make sure Claude is idle (waiting for next input)
+        # The prompt line should be visible and not mid-output
+        # =============================================================
+        # Look for the idle prompt indicator in the very last lines
+        very_last = '\n'.join(lines[-5:]) if len(lines) > 5 else text
+        idle_indicators = ['❯', '>', '$', '>>>']
+        is_idle = any(ind in very_last for ind in idle_indicators)
+        
+        if not is_idle:
+            print(f">>> Agent {agent_id}: Claude not idle yet - NOT complete", flush=True)
+            return False
+        
+        print(f">>> Agent {agent_id}: ALL CHECKS PASSED - Task is COMPLETE", flush=True)
+        return True
 
     async def _llm_analyze_terminal_state(self, agent_id: str, terminal_output: str) -> dict:
         """
@@ -613,10 +738,15 @@ class AgentManager:
         - reason: explanation
         """
         import anthropic
+        import re
+        
+        # Strip ANSI escape codes for cleaner LLM analysis
+        ansi_escape = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07')
+        clean_output = ansi_escape.sub('', terminal_output)
         
         # Get last 100 lines of output for analysis (avoid huge payloads)
-        lines = terminal_output.strip().split('\n')
-        recent_output = '\n'.join(lines[-100:]) if len(lines) > 100 else terminal_output
+        lines = clean_output.strip().split('\n')
+        recent_output = '\n'.join(lines[-100:]) if len(lines) > 100 else clean_output
         
         # Skip if output is too short (likely still loading)
         if len(recent_output.strip()) < 50:
@@ -630,8 +760,11 @@ Determine the current state of the terminal:
    - Interactive menus with numbered options (1. Yes, 2. No, etc.)
    - Login/authentication prompts ("Select login method", "Claude account with subscription")
    - Theme selection ("Choose the text style", "Dark mode", "Light mode")
+   - **Bypass Permissions warning** ("WARNING: Claude Code running in Bypass Permissions mode" with options 1. No, exit / 2. Yes, I accept)
+   - API key prompts ("Do you want to use this API key?")
    - Yes/No prompts ([y/N], [Y/n])
    - Permission requests ("Do you want to proceed?")
+   - "Enter to confirm" or "Esc to cancel" at the bottom of a menu
    - Selection prompts with arrow indicators (❯) for CHOICES
    - "Welcome to Claude Code" startup screens with menus
    - Any numbered list where user must select an option
@@ -643,12 +776,19 @@ Determine the current state of the terminal:
    - File operations happening
    - Loading animations
 
-3. **TASK_COMPLETED**: Claude has ACTUALLY finished real work. ONLY use this if:
-   - There is clear evidence of FILES CREATED OR MODIFIED
-   - Git commits were made (you see commit hashes like "[main abc1234]")
-   - Claude explicitly says "Task completed", "All done", "I've completed the task"
-   - DO NOT use this for startup screens, menus, or login prompts!
-   - DO NOT use this if no actual code/files were created!
+3. **TASK_COMPLETED**: Claude has ACTUALLY finished real work. BE VERY STRICT! ONLY use this if ALL of these are true:
+   - Claude used ACTUAL TOOLS (you see "⏵ Write(", "⏵ Edit(", "⏵ Bash(", "✓ Write", etc.)
+   - Files were ACTUALLY created/modified (not just talked about)
+   - Claude explicitly says "I've completed", "Task completed", "All done", "finished"
+   - The terminal shows Claude is idle (❯ prompt visible, no spinners)
+   
+   DO NOT use TASK_COMPLETED if:
+   - You see "Welcome to Claude Code" or "Welcome back" (startup screen!)
+   - You see "Tips for getting started" or "Recent activity" (welcome screen!)
+   - You see login/theme/permissions prompts
+   - Claude only TALKED about what to do but didn't DO it
+   - No tool usage indicators (⏵, ✓) are visible
+   - You see any error messages
 
 4. **ERROR**: Something went wrong. Look for:
    - Error messages, stack traces
@@ -668,9 +808,12 @@ Respond in JSON format ONLY:
     "suggested_input": "input to send if waiting_for_input, else null"
 }}
 
-For suggested_input:
+For suggested_input (VERY IMPORTANT):
+- **Bypass Permissions warning** ("1. No, exit" / "2. Yes, I accept"): ALWAYS use "\\x1b[B\\r" (arrow down then Enter) to select "Yes, I accept"
 - Login prompt with "Claude account with subscription": use "1" (subscription) or "2" (API)
 - Theme selection: use "1" (dark mode is usually fine)
+- **API key prompt** ("Do you want to use this API key?"): use "1" (Yes, use the API key!)
+- "Missing API key" message: Just needs to run /login, use "/login\\r"
 - Numbered menu: use the number for "Yes"/"proceed"/"accept" (often "1" or "2")
 - y/n prompt: use "y"
 - Just needs Enter: use ""
@@ -747,6 +890,21 @@ For suggested_input:
                                 terminal.output_buffer += text
                                 terminal.last_output_at = datetime.utcnow()
                                 
+                                # Parse stream-json lines for human-readable display
+                                # This makes the Live Sessions view more useful
+                                display_text = ""
+                                for line in text.split('\n'):
+                                    if line.strip():
+                                        parsed = self._parse_stream_json_line(line)
+                                        if parsed:
+                                            display_text += parsed
+                                        elif not line.startswith('{'):
+                                            # Not JSON, show as-is
+                                            display_text += line + '\n'
+                                
+                                # If we got readable text, use it; otherwise fall back to raw
+                                output_for_display = display_text if display_text.strip() else text
+                                
                                 # Check for prompts and auto-respond (for non-interactive automation)
                                 now = datetime.utcnow()
                                 if (now - last_response_time).total_seconds() > response_cooldown:
@@ -759,19 +917,20 @@ For suggested_input:
                                         except Exception as e:
                                             print(f">>> Failed to send auto-response: {e}", flush=True)
                                 
-                                # Update live output for the frontend
+                                # Update live output for the frontend (use parsed output for better display)
+                                current_output = self._live_output.get(agent_id, {}).get("output", "")
                                 self._live_output[agent_id] = {
                                     "status": "running",
-                                    "output": terminal.output_buffer,
+                                    "output": current_output + output_for_display,
                                     "last_update": datetime.utcnow().isoformat(),
                                     "started_at": started_at,
                                     "has_terminal": True,
                                 }
                                 
-                                # Send raw output to attached WebSocket clients (xterm.js will render it)
+                                # Send to attached WebSocket clients (parsed for readability)
                                 for ws in terminal.attached_websockets:
                                     try:
-                                        await ws.send_text(text)
+                                        await ws.send_text(output_for_display)
                                     except Exception:
                                         pass
                                 
@@ -871,12 +1030,15 @@ For suggested_input:
                                     last_response_time = now
                             
                             elif state == "task_completed":
-                                print(f">>> Agent {agent_id}: LLM detected task completion!", flush=True)
-                                # Signal completion by marking terminal as done
-                                # We'll send /exit to cleanly close Claude Code
-                                os.write(terminal.master_fd, b"/exit\r")
-                                terminal.is_running = False
-                                self._live_output[agent_id]["status"] = "completed"
+                                # LLM thinks task is done - but VERIFY with pattern matching first!
+                                if self._detect_task_completion(agent_id, terminal):
+                                    print(f">>> Agent {agent_id}: LLM + pattern match BOTH confirm completion!", flush=True)
+                                    os.write(terminal.master_fd, b"/exit\r")
+                                    terminal.is_running = False
+                                    self._live_output[agent_id]["status"] = "completed"
+                                else:
+                                    print(f">>> Agent {agent_id}: LLM said complete but pattern match DISAGREES - NOT marking complete", flush=True)
+                                    # LLM might be hallucinating - don't mark complete
                             
                             elif state == "error":
                                 print(f">>> Agent {agent_id}: LLM detected error state", flush=True)
@@ -1002,15 +1164,13 @@ For suggested_input:
         self,
         agent_id: str,
         project_id: str,
-        runtime_mode: str = "subprocess",
     ) -> bool:
         """
-        Start an agent process.
+        Start an agent process in Docker container.
 
         Args:
             agent_id: The agent's database ID
             project_id: The project's database ID
-            runtime_mode: 'subprocess' or 'docker'
 
         Returns:
             True if agent started successfully
@@ -1041,10 +1201,8 @@ For suggested_input:
             # Create message queue for this agent
             self._message_queues[agent_id] = asyncio.Queue()
 
-            if runtime_mode == "subprocess":
-                success = await self._start_subprocess_agent(agent, workspace_dir, project_id)
-            else:
-                success = await self._start_docker_agent(agent, workspace_dir, project_id)
+            # All agents run in Docker - no subprocess fallback
+            success = await self._start_docker_agent(agent, workspace_dir, project_id)
 
             if success:
                 # Update agent status
@@ -1056,7 +1214,7 @@ For suggested_input:
                     agent_id=agent_id,
                     activity_type="agent_started",
                     description=f"{agent.name} came online",
-                    extra_data={"runtime_mode": runtime_mode},
+                    extra_data={"runtime_mode": "docker"},
                 )
                 db.add(activity)
                 await db.commit()
@@ -1076,56 +1234,11 @@ For suggested_input:
 
             return success
 
-    async def _start_subprocess_agent(
-        self, agent: Agent, workspace_dir: Path, project_id: str
-    ) -> bool:
-        """Start an agent as a subprocess using Claude Code CLI."""
-        # Initialize git repo if not exists
-        git_dir = workspace_dir / ".git"
-        if not git_dir.exists():
-            try:
-                subprocess.run(
-                    ["git", "init"],
-                    cwd=workspace_dir,
-                    capture_output=True,
-                    timeout=10,
-                )
-                subprocess.run(
-                    ["git", "config", "user.email", "agent@vteam.local"],
-                    cwd=workspace_dir,
-                    capture_output=True,
-                    timeout=10,
-                )
-                subprocess.run(
-                    ["git", "config", "user.name", "VTeam Agent"],
-                    cwd=workspace_dir,
-                    capture_output=True,
-                    timeout=10,
-                )
-            except Exception as e:
-                print(f"Failed to init git: {e}")
-
-        # Create the agent process record
-        agent_process = AgentProcess(
-            agent_id=agent.id,
-            project_id=project_id,
-            is_running=True,
-            started_at=datetime.utcnow(),
-            workspace_dir=workspace_dir,
-        )
-
-        # If agent has a session ID, we can resume
-        if agent.session_id:
-            agent_process.session_id = agent.session_id
-
-        self._agents[agent.id] = agent_process
-        return True
-
     async def _start_docker_agent(
         self, agent: Agent, workspace_dir: Path, project_id: str
     ) -> bool:
-        """Start an agent in a Docker container with mounted workspace."""
-        # Check if Docker is available
+        """Start an agent in a Docker container with mounted workspace. NO FALLBACK TO LOCAL."""
+        # Check if Docker is available - REQUIRED, no fallback
         try:
             proc = await asyncio.create_subprocess_exec(
                 "docker", "version",
@@ -1134,13 +1247,15 @@ For suggested_input:
             )
             await proc.wait()
             if proc.returncode != 0:
-                print(f">>> Docker not available, falling back to subprocess", flush=True)
-                return await self._start_subprocess_agent(agent, workspace_dir, project_id)
+                print(f">>> ERROR: Docker not available! Agents require Docker.", flush=True)
+                print(f">>> Please ensure Docker is running.", flush=True)
+                return False
         except FileNotFoundError:
-            print(f">>> Docker not found, falling back to subprocess", flush=True)
-            return await self._start_subprocess_agent(agent, workspace_dir, project_id)
+            print(f">>> ERROR: Docker not found! Agents require Docker.", flush=True)
+            print(f">>> Install Docker: https://docs.docker.com/get-docker/", flush=True)
+            return False
         
-        # Check if the agent image exists
+        # Check if the agent image exists - REQUIRED, no fallback
         image_name = "vteam/agent:latest"
         proc = await asyncio.create_subprocess_exec(
             "docker", "image", "inspect", image_name,
@@ -1150,18 +1265,19 @@ For suggested_input:
         await proc.wait()
         
         if proc.returncode != 0:
-            # Image doesn't exist - we need to build it or use a base image
-            print(f">>> Docker image {image_name} not found, falling back to subprocess", flush=True)
-            print(f">>> To use Docker mode, build the image: docker build -t {image_name} -f docker/agent.Dockerfile .", flush=True)
-            return await self._start_subprocess_agent(agent, workspace_dir, project_id)
+            print(f">>> ERROR: Docker image {image_name} not found!", flush=True)
+            print(f">>> Build it with: docker build -t {image_name} -f docker/agent.Dockerfile .", flush=True)
+            return False
         
         print(f">>> Starting Docker agent for {agent.name} with workspace: {workspace_dir}", flush=True)
         
         # Agent is ready but Claude Code is invoked per-task
         agent_process = AgentProcess(
             agent_id=agent.id,
+            project_id=project_id,
             is_running=True,
-            runtime_mode="docker",
+            started_at=datetime.utcnow(),
+            workspace_dir=workspace_dir,
         )
         
         if agent.session_id:
@@ -1171,15 +1287,21 @@ For suggested_input:
         return True
 
     async def stop_agent(self, agent_id: str) -> bool:
-        """Stop an agent process."""
+        """Stop an agent process and clean up all resources."""
         if agent_id not in self._agents:
             return False
 
         agent_process = self._agents[agent_id]
-
-        # Note: AgentProcess doesn't hold a persistent process - Claude Code is invoked
-        # on-demand for each task. We just mark it as not running.
         agent_process.is_running = False
+
+        # CRITICAL: Close any running terminal (kills the claude process)
+        if agent_id in self._agent_terminals:
+            print(f">>> Stopping agent {agent_id}: closing terminal", flush=True)
+            self._close_agent_terminal(agent_id)
+        
+        # Clean up live output
+        if agent_id in self._live_output:
+            del self._live_output[agent_id]
 
         # Clean up queue
         if agent_id in self._message_queues:
@@ -1205,6 +1327,90 @@ For suggested_input:
                 db.add(activity)
                 await db.commit()
 
+        return True
+
+    async def pause_agent(self, agent_id: str, db: AsyncSession) -> bool:
+        """
+        Pause an agent - stops current work but keeps agent in a state where it can resume.
+        
+        Used for takeover - user wants to work in the terminal and then hand back.
+        """
+        # Close any running terminal (kills current claude process)
+        if agent_id in self._agent_terminals:
+            print(f">>> Pausing agent {agent_id}: closing terminal", flush=True)
+            self._close_agent_terminal(agent_id)
+        
+        # Mark agent as paused (but not stopped)
+        if agent_id in self._agents:
+            self._agents[agent_id].is_running = False
+        
+        # Update agent status in DB
+        result = await db.execute(select(Agent).where(Agent.id == agent_id))
+        agent = result.scalar_one_or_none()
+        if agent:
+            agent.status = "paused"
+            await db.commit()
+            
+            # Log activity
+            activity = ActivityLog(
+                agent_id=agent_id,
+                activity_type="agent_paused",
+                description=f"{agent.name} paused for user takeover",
+            )
+            db.add(activity)
+            await db.commit()
+        
+        return True
+
+    async def resume_agent(self, agent_id: str, db: AsyncSession) -> bool:
+        """
+        Resume an agent after takeover.
+        
+        Re-enables the agent to pick up pending tasks.
+        """
+        # Mark agent as running again
+        if agent_id in self._agents:
+            self._agents[agent_id].is_running = True
+        else:
+            # Agent process doesn't exist, need to re-start it
+            result = await db.execute(select(Agent).where(Agent.id == agent_id))
+            agent = result.scalar_one_or_none()
+            if agent:
+                # Get workspace
+                from app.models import Project
+                project_result = await db.execute(
+                    select(Project).where(Project.id == agent.project_id)
+                )
+                project = project_result.scalar_one_or_none()
+                
+                if project:
+                    workspace_dir_name = project.workspace_dir or project.get_workspace_dir_name()
+                    workspace_dir = self._workspace_path / workspace_dir_name
+                    
+                    self._agents[agent_id] = AgentProcess(
+                        agent_id=agent_id,
+                        project_id=agent.project_id,
+                        is_running=True,
+                        started_at=datetime.utcnow(),
+                        workspace_dir=workspace_dir,
+                    )
+        
+        # Update agent status in DB
+        result = await db.execute(select(Agent).where(Agent.id == agent_id))
+        agent = result.scalar_one_or_none()
+        if agent:
+            agent.status = "idle"
+            await db.commit()
+            
+            # Log activity
+            activity = ActivityLog(
+                agent_id=agent_id,
+                activity_type="agent_resumed",
+                description=f"{agent.name} resumed after user takeover",
+            )
+            db.add(activity)
+            await db.commit()
+        
         return True
 
     async def send_message_to_agent(
@@ -1334,11 +1540,16 @@ You write clean, well-documented code. When creating files:
         prompt_file = None
         
         if claude_code_mode == "terminal":
-            # True Interactive Terminal Mode
-            # Run claude in interactive mode - xterm.js on frontend renders the TUI properly
-            # User can watch and take over at any time
+            # PROGRAMMATIC MODE with streaming output
+            # Run Claude with -p flag (headless) which:
+            # 1. Avoids ALL interactive prompts (API key, bypass permissions, etc.)
+            # 2. Reads prompt from stdin
+            # 3. Outputs streaming JSON that we parse for display
+            # 
+            # This is the most reliable way to run Claude Code programmatically
             
-            cmd_parts = ["claude"]
+            # Build claude command for programmatic mode
+            cmd_parts = ["claude", "-p", "-"]  # Read prompt from stdin
             
             # Add model selection if specified
             if model:
@@ -1346,23 +1557,30 @@ You write clean, well-documented code. When creating files:
                 print(f">>> Using model: {model}", flush=True)
             
             # Add system prompt
-            cmd_parts.extend(["--append-system-prompt", system_prompt])
+            cmd_parts.extend(["--append-system-prompt", shlex.quote(system_prompt)])
             
             # Resume session if available
             if session_id:
-                cmd_parts.extend(["--resume", session_id])
+                cmd_parts.extend(["--continue", session_id])
             
             # Skip all permission prompts - we're running in Docker so it's isolated
             cmd_parts.extend(["--dangerously-skip-permissions"])
             
-            # Build the shell command
-            shell_cmd = ' '.join(shlex.quote(p) for p in cmd_parts)
+            # Use streaming JSON output for real-time visibility
+            # Note: stream-json requires --verbose when using -p
+            cmd_parts.extend(["--verbose", "--output-format", "stream-json"])
             
-            # Will send prompt as terminal input after startup
-            prompt_to_send = prompt
+            # Build shell command that pipes the prompt via heredoc
+            claude_cmd = ' '.join(cmd_parts)
+            # Use heredoc to pass the prompt cleanly
+            shell_cmd = f'''cat << 'PROMPT_EOF' | {claude_cmd}
+{prompt}
+PROMPT_EOF'''
             
-            print(f">>> Running Claude Code in INTERACTIVE TERMINAL mode", flush=True)
-            print(f">>> Command: {shell_cmd}", flush=True)
+            # No prompt to send separately - it's piped via heredoc
+            prompt_to_send = None
+            
+            print(f">>> Running Claude Code in PROGRAMMATIC mode (-p with stream-json)", flush=True)
             print(f">>> Working directory: {workspace_dir}", flush=True)
             print(f">>> Prompt length: {len(prompt)} chars", flush=True)
             
@@ -1403,7 +1621,7 @@ You write clean, well-documented code. When creating files:
             docker_image = "vteam/agent:latest"
             
             if use_docker:
-                # Check Docker availability
+                # Check Docker availability - REQUIRED, no fallback
                 try:
                     proc = await asyncio.create_subprocess_exec(
                         "docker", "version",
@@ -1411,22 +1629,26 @@ You write clean, well-documented code. When creating files:
                         stderr=asyncio.subprocess.DEVNULL,
                     )
                     await proc.wait()
-                    docker_available = proc.returncode == 0
+                    if proc.returncode != 0:
+                        print(f">>> ERROR: Docker not available! Agents require Docker.", flush=True)
+                        return ("[ERROR: Docker not available]", None)
                     
-                    if docker_available:
-                        # Check if image exists
-                        proc = await asyncio.create_subprocess_exec(
-                            "docker", "image", "inspect", docker_image,
-                            stdout=asyncio.subprocess.DEVNULL,
-                            stderr=asyncio.subprocess.DEVNULL,
-                        )
-                        await proc.wait()
-                        docker_available = proc.returncode == 0
-                        
-                        if not docker_available:
-                            print(f">>> Docker image {docker_image} not found, falling back to local", flush=True)
+                    # Check if image exists - REQUIRED
+                    proc = await asyncio.create_subprocess_exec(
+                        "docker", "image", "inspect", docker_image,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    await proc.wait()
+                    if proc.returncode != 0:
+                        print(f">>> ERROR: Docker image {docker_image} not found!", flush=True)
+                        print(f">>> Build it with: docker build -t {docker_image} -f docker/agent.Dockerfile .", flush=True)
+                        return (f"[ERROR: Docker image {docker_image} not found]", None)
+                    
+                    docker_available = True
                 except FileNotFoundError:
-                    print(f">>> Docker not found, falling back to local execution", flush=True)
+                    print(f">>> ERROR: Docker not found! Agents require Docker.", flush=True)
+                    return ("[ERROR: Docker not found]", None)
             
             # Ensure Claude Code settings exist with bypass permissions enabled
             # This prevents the "Do you accept?" warning for --dangerously-skip-permissions
@@ -1450,78 +1672,83 @@ You write clean, well-documented code. When creating files:
                         print(f">>> Could not update Claude settings: {e}", flush=True)
             
             # Build environment variables
-            # For terminal mode, don't pass ANTHROPIC_API_KEY to avoid the 
-            # "Do you want to use this API key?" prompt. Claude Code should
-            # use its built-in auth (CLAUDE_CONFIG_BASE64 or OAuth).
-            # For programmatic mode, we still pass it since -p mode doesn't prompt.
-            if claude_code_mode == "terminal":
-                terminal_env = {}  # Let Claude Code use its default auth
-            else:
-                terminal_env = {"ANTHROPIC_API_KEY": settings.anthropic_api_key}
+            # ALWAYS pass ANTHROPIC_API_KEY as a fallback if OAuth/.claude.json fails
+            api_key = settings.anthropic_api_key_clean
+            terminal_env = {"ANTHROPIC_API_KEY": api_key}
             
-            # If Docker is available, wrap the command
-            if docker_available:
-                print(f">>> Running in Docker container ({docker_image})", flush=True)
-                # Build Docker command with workspace mount
-                docker_cmd = [
-                    "docker", "run", "--rm", "-it",
-                    "-v", f"{workspace_dir}:/workspace",
-                    "-w", "/workspace",
-                    "--memory", "4g",
-                    "--cpus", "2",
-                ]
-                
-                # Pass CLAUDE_CONFIG_BASE64 for auth if available
-                if settings.claude_config_base64:
-                    docker_cmd.extend(["-e", f"CLAUDE_CONFIG_BASE64={settings.claude_config_base64}"])
-                
-                # Add API key for programmatic mode
-                if terminal_env.get("ANTHROPIC_API_KEY"):
-                    docker_cmd.extend(["-e", f"ANTHROPIC_API_KEY={terminal_env['ANTHROPIC_API_KEY']}"])
-                
-                docker_cmd.append(docker_image)
-                docker_cmd.extend(["bash", "-c", shell_cmd])
-                
-                final_cmd = docker_cmd
-                execution_dir = Path("/workspace")  # Inside container
+            # Docker is REQUIRED - no local fallback
+            print(f">>> Running in Docker container ({docker_image})", flush=True)
+            
+            # Build Docker command with workspace mount
+            docker_cmd = [
+                "docker", "run", "--rm", "-it",
+                "-v", f"{workspace_dir}:/workspace",
+                "-w", "/workspace",
+                "--memory", "4g",
+                "--cpus", "2",
+            ]
+            
+            # Mount Claude auth config into container from CLAUDE_CONFIG_BASE64
+            # Mount to temp location first, container entrypoint copies it (Claude needs write access)
+            import base64
+            
+            if settings.claude_config_base64:
+                # Decode base64 and write to temp file, then mount to temp location
+                try:
+                    decoded_config = base64.b64decode(settings.claude_config_base64).decode('utf-8')
+                    config_temp_path = Path(tempfile.gettempdir()) / f"claude_config_{agent.id}.json"
+                    config_temp_path.write_text(decoded_config)
+                    config_temp_path.chmod(0o644)
+                    print(f">>> Mounting Claude config from CLAUDE_CONFIG_BASE64 ({len(decoded_config)} bytes)", flush=True)
+                    # Mount to temp location - entrypoint will copy to ~/.claude.json
+                    docker_cmd.extend(["-v", f"{config_temp_path}:/tmp/claude_config_mount.json:ro"])
+                except Exception as e:
+                    print(f">>> ERROR decoding CLAUDE_CONFIG_BASE64: {e}", flush=True)
             else:
-                final_cmd = ["bash", "-c", shell_cmd]
-                execution_dir = workspace_dir
+                print(f">>> WARNING: CLAUDE_CONFIG_BASE64 not set! Agents will be prompted for login.", flush=True)
+            
+            # ALWAYS add API key - Claude Code will use it if OAuth fails
+            # api_key already set above from settings.anthropic_api_key_clean
+            
+            if api_key and len(api_key) > 20:
+                docker_cmd.extend(["-e", f"ANTHROPIC_API_KEY={api_key}"])
+                if api_key.startswith("sk-ant-"):
+                    print(f">>> ANTHROPIC_API_KEY added (sk-ant-...{api_key[-4:]}, len={len(api_key)})", flush=True)
+                else:
+                    print(f">>> WARNING: API key format unexpected but passing: {api_key[:15]}...", flush=True)
+            else:
+                print(f">>> ERROR: ANTHROPIC_API_KEY is empty or too short!", flush=True)
+                print(f">>> Current value: '{api_key}'", flush=True)
+                print(f">>> Make sure ANTHROPIC_API_KEY is set correctly in .env", flush=True)
+            
+            # IS_SANDBOX=1 suppresses the bypass permissions warning
+            # See: https://github.com/anthropics/claude-code/issues/927
+            docker_cmd.extend(["-e", "IS_SANDBOX=1"])
+            
+            docker_cmd.append(docker_image)
+            docker_cmd.extend(["bash", "-c", shell_cmd])
+            
+            final_cmd = docker_cmd
             
             # Create PTY terminal for this agent
             terminal = self._create_agent_terminal(
                 agent_id=agent.id,
                 cmd=final_cmd,
-                workspace_dir=execution_dir if not docker_available else workspace_dir,  # Use host path for PTY
-                env=terminal_env if not docker_available else {},  # Docker handles env vars
+                workspace_dir=workspace_dir,  # Use host path for PTY
+                env={},  # Docker handles env vars
             )
             
             print(f">>> Claude Code PTY process started, PID: {terminal.process.pid}", flush=True)
             
-            # For interactive mode, send the prompt after a brief delay for claude to initialize
-            if prompt_to_send:
-                await asyncio.sleep(3)  # Give claude more time to fully start up
-                print(f">>> Sending prompt to interactive terminal ({len(prompt_to_send)} chars)...", flush=True)
-                
-                # Mark that we're sending the prompt
-                terminal.prompt_sent = True
-                terminal.prompt_submitted = True  # Mark as submitted to prevent auto-responder duplicate
-                
-                # Send the prompt - Claude Code will show it as "[Pasted text #1 +X lines]"
-                self.send_to_agent_terminal(agent.id, prompt_to_send.encode('utf-8'))
-                
-                # Wait for Claude Code to process the paste
-                await asyncio.sleep(1.0)
-                
-                # Send Enter (carriage return) to submit
-                # In terminal mode, \r is typically what the Enter key sends
-                self.send_to_agent_terminal(agent.id, b"\r")
-                
-                print(f">>> Prompt sent and submitted", flush=True)
-                
-                # Update live output to show prompt was sent
-                if agent.id in self._live_output:
-                    self._live_output[agent.id]["output"] += f"\n>>> Prompt sent to Claude Code <<<\n\n"
+            # In programmatic mode (-p), the prompt is passed via heredoc stdin
+            # No need to wait for TUI or send prompt separately
+            terminal.prompt_sent = True
+            terminal.prompt_submitted = True
+            
+            # Update live output
+            if agent.id in self._live_output:
+                self._live_output[agent.id]["output"] += f"\n>>> Claude Code running in PROGRAMMATIC mode <<<\n"
+                self._live_output[agent.id]["output"] += f">>> Output will stream as JSON and be parsed for display <<<\n\n"
             
             # Wait for the PTY process to complete (output is captured by background reader)
             timeout_seconds = 600  # 10 minutes
@@ -1555,6 +1782,12 @@ You write clean, well-documented code. When creating files:
             
             # Clean up terminal (but preserve output in _live_output)
             self._close_agent_terminal(agent.id)
+            
+            # Check if process was killed (SIGTERM = 143, SIGKILL = 137)
+            # This happens when user pauses/stops the agent - DON'T mark task complete
+            if return_code in (143, 137, -15, -9):
+                print(f">>> Agent was KILLED (return code {return_code}) - task NOT complete", flush=True)
+                return ("[KILLED: Agent was stopped/paused]", None)
             
             return (output, None)
                 
@@ -1638,13 +1871,16 @@ You write clean, well-documented code. When creating files:
         Select the appropriate Claude model based on task complexity and project config.
         
         Model selection modes:
-        - "auto": PM decides based on task complexity
-        - "opus", "sonnet", "haiku": Fixed model for all tasks
+        - "haiku": Default - uses claude-haiku-4-5 for all tasks (cheapest)
+        - "sonnet": Uses claude-sonnet-4-5 for all tasks
+        - "opus": Uses claude-opus-4-5 for all tasks (most capable, expensive)
+        - "auto": PM decides based on task complexity keywords
         - "hybrid": User can override per task, defaults to auto
         
         Returns model name or None (to use Claude Code default).
         """
-        model_mode = project_config.get("model_mode", "auto")
+        # Default to haiku to minimize API costs - user can override to "auto" or "sonnet"
+        model_mode = project_config.get("model_mode", "haiku")
         
         # If a specific model is set on the task, use that (hybrid mode override)
         task_model = None
@@ -2142,6 +2378,15 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
                 await db.commit()
                 return {"success": False, "error": error_msg}
             
+            # Check if agent was killed/paused - DON'T mark task complete
+            if response and "[KILLED:" in response:
+                print(f">>> Agent {agent_id}: Was killed/paused - task stays in progress", flush=True)
+                agent.status = "idle"
+                task.status = "pending"  # Return to pending for retry
+                task.assigned_to = None  # Unassign so it can be picked up again
+                await db.commit()
+                return {"success": False, "error": "Agent was stopped/paused"}
+            
             # Update session ID
             if new_session_id:
                 agent_process.session_id = new_session_id
@@ -2151,6 +2396,52 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
             end_commit = await self._get_current_commit(workspace_dir)
             if end_commit:
                 task.end_commit = end_commit
+            
+            # =============================================================
+            # VERIFY ACTUAL WORK WAS DONE before marking complete!
+            # =============================================================
+            git_changes = await self._verify_git_changes(workspace_dir, task.start_commit)
+            execution_log = self._live_output.get(agent_id, {}).get("output", "")
+            
+            # Check for evidence of actual work in the execution log
+            work_indicators = [
+                '⏵ Write(', '⏵ Edit(', '⏵ Bash(',  # Tool usage
+                '✓ Write', '✓ Edit', '✓ Bash',  # Completed tools
+                'Created file', 'Updated file', 'Modified file',
+                'git commit', '[main ',
+            ]
+            has_work_in_log = any(ind in execution_log for ind in work_indicators)
+            
+            # If no git changes AND no work in log, this might be a false completion
+            if not git_changes["has_changes"] and not has_work_in_log:
+                print(f">>> Agent {agent_id}: WARNING - No git changes and no work indicators!", flush=True)
+                print(f">>> Git: commits={git_changes['commits_since']}, files={git_changes['files_changed']}", flush=True)
+                
+                # Check if this is a review/read-only task (doesn't require code changes)
+                review_keywords = ['review', 'analyze', 'check', 'investigate', 'read', 'look at', 'examine']
+                is_review_task = any(kw in task.title.lower() or kw in (task.description or '').lower() for kw in review_keywords)
+                
+                if not is_review_task:
+                    # Not a review task but no work done - mark as failed!
+                    print(f">>> Agent {agent_id}: Task marked FAILED - no code was produced!", flush=True)
+                    task.status = "pending"  # Reset to pending for retry
+                    task.retry_count = (task.retry_count or 0) + 1
+                    task.last_error = "Task failed: Claude Code exited without producing any code. Check work log for details."
+                    agent.status = "idle"
+                    await db.commit()
+                    
+                    # Post failure message to team
+                    await self._post_team_update(
+                        db,
+                        agent,
+                        f"❌ I ran into an issue with **{task.title}** and couldn't complete it. Moving back to pending for review.",
+                    )
+                    
+                    return {"success": False, "error": "No code produced - task reset to pending"}
+                else:
+                    print(f">>> Agent {agent_id}: Review task - no code changes expected, proceeding", flush=True)
+            else:
+                print(f">>> Agent {agent_id}: Work verified! Git: {git_changes['commits_since']} commits, {git_changes['files_changed']} files, +{git_changes['insertions']}/-{git_changes['deletions']}", flush=True)
             
             # Update task status
             task.status = "completed"
@@ -2340,6 +2631,76 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
             return None
         except Exception:
             return None
+    
+    async def _verify_git_changes(self, workspace_dir: Path, start_commit: str | None) -> dict:
+        """
+        Verify if there were actual git changes since start_commit.
+        
+        Returns dict with:
+        - has_changes: bool
+        - commits_since: int
+        - files_changed: int
+        - insertions: int
+        - deletions: int
+        """
+        result = {
+            "has_changes": False,
+            "commits_since": 0,
+            "files_changed": 0,
+            "insertions": 0,
+            "deletions": 0,
+        }
+        
+        try:
+            # Only count changes SINCE start_commit, not pre-existing files
+            if not start_commit:
+                print(f">>> Git verification: No start_commit to compare against", flush=True)
+                return result
+            
+            # Check commits since start
+            if start_commit:
+                log_result = subprocess.run(
+                    ["git", "rev-list", "--count", f"{start_commit}..HEAD"],
+                    cwd=workspace_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if log_result.returncode == 0:
+                    commits = int(log_result.stdout.strip())
+                    result["commits_since"] = commits
+                    if commits > 0:
+                        result["has_changes"] = True
+                        
+                        # Get diff stats
+                        diff_result = subprocess.run(
+                            ["git", "diff", "--stat", start_commit, "HEAD"],
+                            cwd=workspace_dir,
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+                        if diff_result.returncode == 0:
+                            # Parse last line like "3 files changed, 50 insertions(+), 10 deletions(-)"
+                            lines = diff_result.stdout.strip().split('\n')
+                            if lines:
+                                import re
+                                last_line = lines[-1]
+                                files_match = re.search(r'(\d+) files? changed', last_line)
+                                ins_match = re.search(r'(\d+) insertions?', last_line)
+                                del_match = re.search(r'(\d+) deletions?', last_line)
+                                if files_match:
+                                    result["files_changed"] = int(files_match.group(1))
+                                if ins_match:
+                                    result["insertions"] = int(ins_match.group(1))
+                                if del_match:
+                                    result["deletions"] = int(del_match.group(1))
+            
+            return result
+            
+        except Exception as e:
+            print(f">>> Git verification error: {e}", flush=True)
+            return result
 
     async def _find_next_task(self, db: AsyncSession, agent: Agent) -> Task | None:
         """Find the next pending task for this agent to work on."""
@@ -2594,6 +2955,20 @@ Implement the request now."""
             for agent_id, process in self._agents.items()
             if process.is_running
         ]
+    
+    def cleanup_all_terminals(self) -> int:
+        """
+        Force close all terminal sessions. Used during shutdown.
+        Returns the number of terminals closed.
+        """
+        terminal_ids = list(self._agent_terminals.keys())
+        count = len(terminal_ids)
+        
+        for agent_id in terminal_ids:
+            print(f">>> Cleanup: closing terminal for {agent_id}", flush=True)
+            self._close_agent_terminal(agent_id)
+        
+        return count
 
     def init_live_output(self, agent_id: str, task_title: str, agent_name: str) -> None:
         """

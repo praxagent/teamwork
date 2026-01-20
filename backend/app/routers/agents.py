@@ -783,3 +783,99 @@ async def send_terminal_input(
         raise HTTPException(status_code=404, detail="No active terminal for this agent")
     
     return {"success": True, "message": "Input sent to terminal"}
+
+
+class TakeoverResponse(BaseModel):
+    """Response for takeover endpoint."""
+    success: bool
+    message: str
+    container_name: str | None = None
+    workspace_path: str | None = None
+
+
+@router.post("/{agent_id}/takeover")
+async def takeover_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Take over an agent's session.
+    
+    This:
+    1. Pauses the agent's current task (if any)
+    2. Returns container info for starting an interactive terminal
+    
+    The frontend can then open a terminal WebSocket to the container.
+    """
+    from app.services.agent_manager import get_agent_manager
+    from app.config import settings
+    
+    # Get agent from DB
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id)
+    )
+    agent = result.scalar_one_or_none()
+    
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent_manager = get_agent_manager()
+    
+    # Pause the agent (this kills the current Claude process)
+    await agent_manager.pause_agent(agent_id, db)
+    
+    # Get workspace path
+    from app.models import Project
+    project_result = await db.execute(
+        select(Project).where(Project.id == agent.project_id)
+    )
+    project = project_result.scalar_one_or_none()
+    
+    workspace_dir = None
+    if project:
+        workspace_dir = project.workspace_dir or project.get_workspace_dir_name()
+        workspace_path = str(settings.workspace_path / workspace_dir) if workspace_dir else None
+    else:
+        workspace_path = None
+    
+    # Container name for this project (used by terminal router)
+    container_name = f"vteam-terminal-{agent.project_id[:8]}"
+    
+    return TakeoverResponse(
+        success=True,
+        message=f"Agent {agent.name} paused. You can now open an interactive terminal.",
+        container_name=container_name,
+        workspace_path=workspace_path,
+    )
+
+
+@router.post("/{agent_id}/release")
+async def release_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Release control back to the agent after takeover.
+    
+    This resumes the agent so it can pick up pending tasks.
+    """
+    from app.services.agent_manager import get_agent_manager
+    
+    # Get agent from DB
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id)
+    )
+    agent = result.scalar_one_or_none()
+    
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent_manager = get_agent_manager()
+    
+    # Resume the agent
+    await agent_manager.resume_agent(agent_id, db)
+    
+    return {
+        "success": True,
+        "message": f"Control released. Agent {agent.name} will resume working.",
+    }

@@ -267,7 +267,7 @@ export function ConfigOptions({
               onClick={() => setConfig({ ...config, claude_code_mode: 'terminal' })}
               icon={MonitorPlay}
               title="Interactive Terminal Mode"
-              description="Agents run Claude Code in a real terminal you can watch live and take over. Requires CLAUDE_CONFIG_BASE64."
+              description="Agents run Claude Code in a real terminal you can watch live and take over."
               badge="Recommended"
             />
             {config.claude_code_mode === 'terminal' && (
@@ -275,14 +275,14 @@ export function ConfigOptions({
                 <div className="flex items-start gap-2">
                   <Key className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm">
-                    <p className="font-medium text-green-800">CLAUDE_CONFIG_BASE64 Required</p>
+                    <p className="font-medium text-green-800">Claude Authentication Required</p>
                     <p className="text-green-700 mt-1">
                       This mode gives you a real terminal experience - watch agents code live and 
-                      take over if needed. To use it, set the <code className="bg-green-100 px-1 rounded">CLAUDE_CONFIG_BASE64</code> environment 
-                      variable with your Claude authentication.
+                      take over if needed. Set <code className="bg-green-100 px-1 rounded">CLAUDE_CONFIG_BASE64</code> in 
+                      your .env file with your Claude authentication.
                     </p>
                     <p className="text-green-600 mt-2 text-xs">
-                      Run: <code className="bg-green-100 px-1 rounded">cat ~/.claude.json | base64</code> to get this value.
+                      Generate with: <code className="bg-green-100 px-1 rounded">cat ~/.claude.json | base64</code>
                     </p>
                   </div>
                 </div>

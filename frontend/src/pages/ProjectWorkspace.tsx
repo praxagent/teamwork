@@ -93,9 +93,12 @@ export function ProjectWorkspace() {
   useEffect(() => {
     if (channelsData?.channels) {
       setChannels(channelsData.channels);
-      // Select first channel by default
+      // Select #general by default, or first public channel, or any first channel
       if (!currentChannelId && channelsData.channels.length > 0) {
-        setCurrentChannelId(channelsData.channels[0].id);
+        const generalChannel = channelsData.channels.find(c => c.name === 'general');
+        const firstPublic = channelsData.channels.find(c => c.type === 'public');
+        const defaultChannel = generalChannel || firstPublic || channelsData.channels[0];
+        setCurrentChannelId(defaultChannel.id);
       }
     }
   }, [channelsData, setChannels, currentChannelId, setCurrentChannelId]);

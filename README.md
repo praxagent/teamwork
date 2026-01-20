@@ -2,9 +2,13 @@
 
 ![TeamWork Header](assets/teamwork-header.png)
 
+> **PROOF OF CONCEPT**
+>
+> **This is an experimental project for demonstration and learning purposes only.** It is not intended for actual product development or production use. The AI agents may produce incomplete, incorrect, or non-functional code. Do not rely on this tool for building real software products. Use at your own risk and for educational/exploratory purposes only.
+
 A web application where AI agents simulate a software development team. Describe your application idea and the system generates a virtual team with a Product Manager, developers, and QA engineers. Each agent has a distinct persona and collaborates through a Slack-like interface to build your project.
 
-> **⚠️ Important: API Keys & Costs**
+> **Important: API Keys & Costs**
 >
 > This application requires your own API keys:
 > - **Anthropic API Key** (required) - Powers the AI agents via Claude
@@ -253,7 +257,7 @@ Create a `.env` file in the **project root** (copy from `.env.example`):
 | `OPENAI_API_KEY` | - | OpenAI API key for AI-generated profile images* |
 | `DATABASE_URL` | `sqlite:///./vteam.db` | Database URL |
 | `WORKSPACE_PATH` | `./workspace` | Code output directory |
-| `CLAUDE_CONFIG_BASE64` | - | Base64-encoded Claude config for Docker auth (see below) |
+| `CLAUDE_CONFIG_BASE64` | - | Base64-encoded `~/.claude.json` for Docker auth (see below) |
 
 *If `OPENAI_API_KEY` is not provided, AI profile image generation is automatically disabled. Agents will use colored initials avatars instead.
 
@@ -357,19 +361,24 @@ Agents automatically detect when Claude Code is:
 
 This prevents agents from getting stuck on interactive prompts while keeping API costs minimal.
 
-### Authentication Setup
+### Authentication Setup (Required)
 
-To use your Claude subscription (Pro/Max/Teams) instead of API credits, export your local Claude config:
+Agents need your Claude authentication. Export your Claude config as base64:
 
 ```bash
-# On your local machine, after running 'claude' once to authenticate:
-cat ~/.claude/claude.json | base64
+# First, authenticate Claude Code locally (one time):
+claude
 
-# Copy the output and add to your .env file:
+# Then export your config:
+cat ~/.claude.json | base64
+
+# Add to your .env file:
 CLAUDE_CONFIG_BASE64=<paste the base64 string here>
 ```
 
-This injects your config into Docker containers at runtime (not persisted to disk).
+The base64 config is decoded and mounted into each Docker container at `~/.claude.json`.
+
+**Note**: The auth file is `~/.claude.json` (in home directory), NOT `~/.claude/claude.json`.
 
 ### Building the Agent Image
 
@@ -552,22 +561,68 @@ Reset the database (warning: deletes all data):
 rm -rf data/vteam.db*
 ```
 
-### Start completely fresh
-To wipe everything and start over (instead of deleting projects one by one in the UI):
+### Cleanup Commands
+
+The project includes several cleanup utilities via Makefile:
 
 ```bash
-# Stop the server first
-# Then delete database and all generated code:
-rm -rf data/vteam.db* workspace/*
+# Clean up Python caches and node_modules
+make clean
 
-# Or use the Makefile shortcut:
+# Stop and remove all vteam Docker containers
+make clean-docker
+
+# Clean everything (files + Docker containers)
+make clean-all
+
+# Delete just the database (keeps generated code)
 make reset-db
-rm -rf workspace/*
+
+# Full reset: database, workspace, and Docker containers
+make reset-all
+```
+
+| Command | Files/Caches | Docker Containers | Database | Workspace |
+|---------|:------------:|:-----------------:|:--------:|:---------:|
+| `make clean` | ✅ | ❌ | ❌ | ❌ |
+| `make clean-docker` | ❌ | ✅ | ❌ | ❌ |
+| `make clean-all` | ✅ | ✅ | ❌ | ❌ |
+| `make reset-db` | ❌ | ❌ | ✅ | ❌ |
+| `make reset-all` | ❌ | ✅ | ✅ | ✅ |
+
+**Note**: When you stop the backend with `Ctrl+C`, it automatically cleans up Docker containers and temp files. The Makefile commands are for manual cleanup when needed.
+
+### Project Reset vs Delete
+
+You can reset or delete individual projects from the Settings panel in the UI. Here's what each operation does:
+
+| Resource | Reset | Delete |
+|----------|:-----:|:------:|
+| Project record | ✅ Kept | ❌ Deleted |
+| Team members (agents) | ✅ Kept (status → idle) | ❌ Deleted |
+| Task definitions | ✅ Kept (status → pending) | ❌ Deleted |
+| Channels | ✅ Kept | ❌ Deleted |
+| Chat messages | ❌ Cleared | ❌ Deleted |
+| Activity logs | ❌ Cleared | ❌ Deleted |
+| Docker containers | ❌ Stopped & removed | ❌ Stopped & removed |
+| Workspace files | ❌ Cleared (keeps .git) | ❌ Deleted entirely |
+
+**Reset** = Start the project over with the same team and tasks (like a "new game+")
+**Delete** = Remove everything and start from scratch
+
+### Start completely fresh
+
+To wipe everything and start over:
+
+```bash
+# Stop the server first (Ctrl+C), then:
+make reset-all
 ```
 
 This removes:
 - All projects, agents, tasks, and chat history (database)
 - All generated code (workspace folder)
+- All vteam Docker containers
 
 The folders will be recreated automatically when you restart the server.
 

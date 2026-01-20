@@ -1,7 +1,7 @@
 # TeamWork Makefile
 # Convenience commands for development and deployment
 
-.PHONY: help dev docker-up docker-down docker-build docker-logs clean reset-db reset-all install
+.PHONY: help dev docker-up docker-down docker-build docker-logs clean clean-docker clean-all reset-db reset-all install
 
 help:
 	@echo "TeamWork - Available Commands"
@@ -19,8 +19,10 @@ help:
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean          Remove generated files and caches"
+	@echo "  make clean-docker   Stop and remove all vteam Docker containers"
+	@echo "  make clean-all      Clean files, caches, and Docker containers"
 	@echo "  make reset-db       Delete the database only"
-	@echo "  make reset-all      Delete database AND all generated code (full reset)"
+	@echo "  make reset-all      Full reset: database, workspace, and containers"
 	@echo ""
 
 # Docker commands
@@ -67,14 +69,28 @@ clean:
 	rm -rf frontend/.vite 2>/dev/null || true
 	@echo "Cleaned up generated files and caches"
 
+clean-docker:
+	@echo "Stopping and removing vteam containers..."
+	@docker ps -a --filter "name=vteam-" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
+	@echo "Removing temporary config files..."
+	@rm -f /tmp/claude_config_*.json 2>/dev/null || true
+	@echo "Docker cleanup complete!"
+	@echo ""
+	@echo "Remaining vteam images (use 'docker rmi' to remove):"
+	@docker images --filter "reference=vteam*" --format "  {{.Repository}}:{{.Tag}} ({{.Size}})"
+
+clean-all: clean clean-docker
+	@echo "Full cleanup complete!"
+
 reset-db:
 	rm -f data/vteam.db* backend/data/vteam.db*
 	@echo "Database deleted. It will be recreated on next startup."
 
-reset-all:
+reset-all: clean-docker
 	rm -f data/vteam.db* backend/data/vteam.db*
 	rm -rf workspace/*
-	@echo "Database and workspace deleted. Everything will be recreated on next startup."
+	@echo "Database, workspace, and Docker containers deleted."
+	@echo "Everything will be recreated on next startup."
 
 # Install dependencies
 install:

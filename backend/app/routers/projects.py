@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Project, get_db
+from app.models import Project, Task, Agent, get_db
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -343,11 +343,234 @@ async def delete_project(
     project_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Delete a project."""
+    """
+    Delete a project completely.
+    
+    This removes:
+    - The project from the database
+    - All agents, channels, tasks, messages (via cascade)
+    - All activity logs for the project's agents
+    - All Docker containers for the project's agents
+    - The workspace directory and all files
+    """
+    import subprocess
+    import shutil
+    from pathlib import Path
+    from app.config import settings
+    from app.models import Agent
+    from app.models.activity import ActivityLog
+    
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-
+    
+    # Get all agents for this project to clean up their resources
+    agents_result = await db.execute(select(Agent).where(Agent.project_id == project_id))
+    agents = agents_result.scalars().all()
+    agent_ids = [a.id for a in agents]
+    
+    # 1. Stop and remove Docker containers for each agent
+    for agent in agents:
+        container_names = [
+            f"vteam-agent-{agent.id}",
+            f"vteam-terminal-{agent.id[:8]}",
+        ]
+        for container_name in container_names:
+            try:
+                subprocess.run(
+                    ["docker", "rm", "-f", container_name],
+                    capture_output=True,
+                    timeout=10
+                )
+            except Exception:
+                pass  # Container might not exist
+    
+    # 2. Clean up temp config files for agents
+    for agent in agents:
+        try:
+            config_path = Path(f"/tmp/claude_config_{agent.id}.json")
+            if config_path.exists():
+                config_path.unlink()
+        except Exception:
+            pass
+    
+    # 3. Delete activity logs for these agents
+    if agent_ids:
+        activities_result = await db.execute(
+            select(ActivityLog).where(ActivityLog.agent_id.in_(agent_ids))
+        )
+        activities = activities_result.scalars().all()
+        for activity in activities:
+            await db.delete(activity)
+    
+    # 4. Delete workspace directory
+    if project.workspace_dir:
+        workspace_path = Path(settings.workspace_root) / project.workspace_dir
+        if workspace_path.exists() and workspace_path.is_dir():
+            try:
+                shutil.rmtree(workspace_path)
+            except Exception as e:
+                print(f"Warning: Could not delete workspace {workspace_path}: {e}")
+    
+    # 5. Delete the project (cascades to agents, channels, tasks, messages)
     await db.delete(project)
+    await db.commit()
+
+
+class ResetResponse(BaseModel):
+    """Response for project reset."""
+    success: bool
+    message: str
+    tasks_reset: int
+    activities_cleared: int
+    messages_cleared: int
+
+
+@router.post("/{project_id}/reset", response_model=ResetResponse)
+async def reset_project(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> ResetResponse:
+    """
+    Reset a project to initial state.
+    
+    This clears:
+    - All task progress (moves tasks back to pending)
+    - Agent activity logs
+    - Chat messages in all channels
+    - Docker containers for agents
+    - Workspace files (keeps .git for history)
+    
+    But keeps:
+    - The project itself
+    - Team members (agents)
+    - Task definitions
+    - Channels (but empties them)
+    """
+    from app.models import ActivityLog, Channel, Message
+    import subprocess
+    import shutil
+    from pathlib import Path
+    from app.config import settings
+    
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Get all agents for this project first (needed for Docker cleanup)
+    agents_result = await db.execute(select(Agent).where(Agent.project_id == project_id))
+    agents = agents_result.scalars().all()
+    agent_ids = [a.id for a in agents]
+    
+    # Stop and remove Docker containers for each agent
+    containers_stopped = 0
+    for agent in agents:
+        container_names = [
+            f"vteam-agent-{agent.id}",
+            f"vteam-terminal-{agent.id[:8]}",
+        ]
+        for container_name in container_names:
+            try:
+                result_docker = subprocess.run(
+                    ["docker", "rm", "-f", container_name],
+                    capture_output=True,
+                    timeout=10
+                )
+                if result_docker.returncode == 0:
+                    containers_stopped += 1
+            except Exception:
+                pass  # Container might not exist
+        
+        # Clean up temp config files
+        try:
+            config_path = Path(f"/tmp/claude_config_{agent.id}.json")
+            if config_path.exists():
+                config_path.unlink()
+        except Exception:
+            pass
+    
+    if containers_stopped > 0:
+        print(f">>> Reset: Stopped {containers_stopped} Docker containers", flush=True)
+    
+    # Reset ALL tasks to pending (regardless of current status)
+    tasks_result = await db.execute(select(Task).where(Task.project_id == project_id))
+    tasks = tasks_result.scalars().all()
+    tasks_reset = 0
+    for task in tasks:
+        old_status = task.status
+        task.status = "pending"
+        task.assigned_to = None
+        task.retry_count = 0
+        task.last_error = None
+        task.start_commit = None
+        task.end_commit = None
+        tasks_reset += 1
+        print(f">>> Reset task: '{task.title}' {old_status} -> pending", flush=True)
+    
+    # Clear activity logs for these agents
+    activities_cleared = 0
+    if agent_ids:
+        activities_result = await db.execute(
+            select(ActivityLog).where(ActivityLog.agent_id.in_(agent_ids))
+        )
+        activities = activities_result.scalars().all()
+        activities_cleared = len(activities)
+        for activity in activities:
+            await db.delete(activity)
+    
+    # Clear all messages in all channels
+    channels_result = await db.execute(select(Channel).where(Channel.project_id == project_id))
+    channels = channels_result.scalars().all()
+    print(f">>> Reset: Found {len(channels)} channels to clear", flush=True)
+    messages_cleared = 0
+    for channel in channels:
+        messages_result = await db.execute(select(Message).where(Message.channel_id == channel.id))
+        messages = messages_result.scalars().all()
+        print(f">>> Reset: Channel '{channel.name}' has {len(messages)} messages to delete", flush=True)
+        messages_cleared += len(messages)
+        for message in messages:
+            await db.delete(message)
+    print(f">>> Reset: Deleted {messages_cleared} messages total", flush=True)
+    
+    # Reset agent status
+    for agent in agents:
+        agent.status = "idle"
+    
+    # Clear workspace directory (use project.workspace_dir, not config)
+    workspace_dir_name = project.workspace_dir or project.get_workspace_dir_name()
+    if workspace_dir_name:
+        workspace_path = settings.workspace_path / workspace_dir_name
+        if workspace_path.exists() and workspace_path.is_dir():
+            print(f">>> Reset: Clearing workspace {workspace_path}", flush=True)
+            # Don't delete, just clear contents (keep .git for history)
+            for item in workspace_path.iterdir():
+                if item.name not in [".git"]:  # Keep git history
+                    try:
+                        if item.is_dir():
+                            shutil.rmtree(item)
+                        else:
+                            item.unlink()
+                    except Exception as e:
+                        print(f">>> Reset: Could not delete {item}: {e}", flush=True)
+    
+    # Make sure project is not paused so tasks can be picked up
+    project.status = "active"
+    if project.config:
+        project.config = {**project.config, "paused": False}
+    print(f">>> Reset: Project status set to active", flush=True)
+    
+    await db.commit()
+    
+    print(f">>> Reset complete: {tasks_reset} tasks, {messages_cleared} messages, {activities_cleared} activities cleared", flush=True)
+    
+    return ResetResponse(
+        success=True,
+        message=f"Project reset. {tasks_reset} tasks reset, {messages_cleared} messages cleared.",
+        tasks_reset=tasks_reset,
+        activities_cleared=activities_cleared,
+        messages_cleared=messages_cleared,
+    )

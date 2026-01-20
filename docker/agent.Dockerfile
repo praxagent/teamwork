@@ -1,11 +1,11 @@
 # Agent Docker image for isolated Claude Code execution
-# This image is used when DEFAULT_AGENT_RUNTIME=docker
+# ALL agents run in Docker containers - no local execution allowed
 #
 # Build: docker build -t vteam/agent:latest -f docker/agent.Dockerfile .
 # 
 # The container runs Claude Code with:
 # - Mounted workspace volume (-v /path/to/workspace:/workspace)
-# - CLAUDE_CONFIG_BASE64 for authentication
+# - Mounted Claude auth config (-v ~/.claude.json:/home/agent/.claude.json:ro)
 # - Isolated execution environment
 # - Non-root user (required for --dangerously-skip-permissions)
 
@@ -38,10 +38,15 @@ RUN groupadd -g ${GROUP_ID} agent \
     && mkdir -p /workspace \
     && chown -R agent:agent /workspace
 
-# Set up Claude config directory for agent user
+# Set up Claude config directory for agent user with ALL bypass settings
+# NOTE: Use "Bash" not "Bash(*)" - Claude Code doesn't accept parentheses for "allow all"
 RUN mkdir -p /home/agent/.claude \
-    && echo '{"permissions":{"defaultMode":"bypassPermissions"}}' > /home/agent/.claude/settings.json \
+    && echo '{"permissions":{"defaultMode":"bypassPermissions","allow":["Bash","Read","Write","Edit"]},"hasCompletedOnboarding":true,"hasAcknowledgedCostThreshold":true,"bypassPermissionsModeAccepted":true}' > /home/agent/.claude/settings.json \
     && chown -R agent:agent /home/agent/.claude
+
+# IS_SANDBOX=1 tells Claude Code we're in a sandbox, suppressing the bypass permissions warning
+# See: https://github.com/anthropics/claude-code/issues/927
+ENV IS_SANDBOX=1
 
 # Initialize git config for agent user
 RUN su - agent -c 'git config --global user.email "agent@teamwork.local" \
@@ -51,7 +56,7 @@ RUN su - agent -c 'git config --global user.email "agent@teamwork.local" \
 
 # Entrypoint script that:
 # 1. Fixes workspace permissions if needed
-# 2. Sets up Claude config from CLAUDE_CONFIG_BASE64
+# 2. Copies mounted Claude auth config from temp mount to writable location
 # 3. Runs the command as the agent user
 RUN echo '#!/bin/bash\n\
 set -e\n\
@@ -61,19 +66,20 @@ if [ -d /workspace ] && [ "$(stat -c %u /workspace)" = "0" ]; then\n\
     chown -R agent:agent /workspace 2>/dev/null || true\n\
 fi\n\
 \n\
-# Set up Claude auth config from base64 if provided\n\
-# NOTE: Auth goes to ~/.claude.json (NOT ~/.claude/claude.json)\n\
-if [ -n "$CLAUDE_CONFIG_BASE64" ]; then\n\
-    echo "$CLAUDE_CONFIG_BASE64" | base64 -d > /home/agent/.claude.json\n\
+# Claude auth config is mounted read-only at /tmp/claude_config_mount.json\n\
+# Copy to ~/.claude.json where Claude Code expects it (needs write access)\n\
+if [ -f /tmp/claude_config_mount.json ]; then\n\
+    cp /tmp/claude_config_mount.json /home/agent/.claude.json\n\
     chown agent:agent /home/agent/.claude.json\n\
-    echo "Claude auth config initialized from CLAUDE_CONFIG_BASE64"\n\
+    chmod 600 /home/agent/.claude.json\n\
+    echo ">>> Claude auth config ready ($(wc -c < /home/agent/.claude.json) bytes)"\n\
+else\n\
+    echo ">>> WARNING: Claude config not mounted - will prompt for login"\n\
 fi\n\
 \n\
-# Ensure settings directory and bypass mode config exist\n\
+# Ensure settings directory and bypass mode config exist with ALL flags\n\
 mkdir -p /home/agent/.claude\n\
-if [ ! -f /home/agent/.claude/settings.json ]; then\n\
-    echo "{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}" > /home/agent/.claude/settings.json\n\
-fi\n\
+echo "{\"permissions\":{\"defaultMode\":\"bypassPermissions\",\"allow\":[\"Bash\",\"Read\",\"Write\",\"Edit\"]},\"hasCompletedOnboarding\":true,\"hasAcknowledgedCostThreshold\":true,\"bypassPermissionsModeAccepted\":true}" > /home/agent/.claude/settings.json\n\
 chown -R agent:agent /home/agent/.claude\n\
 \n\
 # Run command as agent user\n\
