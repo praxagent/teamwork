@@ -26,7 +26,7 @@ Build software with a virtual dev team:
 
 ### Coaching Mode
 Accelerate your learning with personalized AI coaches:
-- **Subject Coaches** - One expert coach per topic (languages, math, interview prep, etc.)
+- **Topic Coaches** - One expert coach per goal (languages, math, interview prep, fitness, professional skills, etc.)
 - **Personal Manager** - Coordinates all coaches, tracks progress, keeps you motivated
 - **Progress Tracking** - Vocabulary lists, skill ratings, topic coverage, conversation history
 

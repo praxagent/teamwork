@@ -200,7 +200,7 @@ export function Home() {
             <div className="text-center mb-8">
               <h3 className="text-xl font-semibold text-white mb-2">Accelerate Your Learning</h3>
               <p className="text-white/70 max-w-2xl mx-auto">
-                Get personalized AI coaches for any subject. From languages to calculus, interview prep to professional development - learn with adaptive, intelligent tutors.
+                Get personalized AI coaches for any goal. Languages, math, interview prep, fitness, professional skills, and more - learn and grow with adaptive, intelligent tutors.
               </p>
             </div>
 
