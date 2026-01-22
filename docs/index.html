@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TeamWork - Agentic Virtual Dev Teams</title>
-  <meta name="description" content="Describe your app idea and watch as a virtual team of AI developers, product managers, and QA engineers collaborate to bring it to life.">
+  <title>TeamWork - AI-Powered Virtual Teams</title>
+  <meta name="description" content="Build startups with AI dev teams or accelerate learning with AI coaches. Open source, self-hosted, bring your own API key.">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -51,6 +51,13 @@
     .lightbox-close:hover {
       color: white;
     }
+    /* Tab transitions */
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-slack-purple to-purple-900">
@@ -75,12 +82,12 @@
       <span class="text-yellow-400">TeamWork</span>
       <span class="ml-3 text-xs font-medium bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded-full align-middle">BETA</span>
       <br>
-      <span class="text-3xl md:text-4xl font-normal text-white/90">Agentic Virtual Dev Teams</span>
+      <span class="text-3xl md:text-4xl font-normal text-white/90">AI-Powered Virtual Teams</span>
     </h1>
 
     <p class="text-xl text-white/80 max-w-2xl mx-auto mb-6">
-      Describe your app idea and watch as a virtual team of AI developers, product managers,
-      and QA engineers collaborate to bring it to life.
+      Build startups with AI dev teams or accelerate your learning with personalized AI coaches.
+      Two modes, one platform.
     </p>
 
     <!-- Proof of Concept Warning -->
@@ -131,149 +138,253 @@
     </a>
   </div>
 
-  <!-- How it works -->
-  <div class="max-w-6xl mx-auto px-4 pb-12">
-    <h2 class="text-2xl font-bold text-white text-center mb-8">How It Works</h2>
+  <!-- Mode Selector Tabs -->
+  <div class="max-w-6xl mx-auto px-4 pb-8">
+    <h2 class="text-2xl font-bold text-white text-center mb-6">Choose Your Mode</h2>
     
-    <!-- Desktop: horizontal flow -->
-    <div class="hidden md:flex items-center justify-center gap-6 text-white/80">
-      <div class="flex items-center gap-2">
-        <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">1</span>
-        <span>Describe your app idea</span>
+    <div class="flex justify-center gap-4 mb-8">
+      <button 
+        id="tab-startup" 
+        onclick="switchTab('startup')"
+        class="px-6 py-3 rounded-lg font-medium text-lg transition-all bg-yellow-400 text-purple-900 shadow-lg"
+      >
+        <span class="flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+          </svg>
+          Startup Mode
+        </span>
+      </button>
+      <button 
+        id="tab-coaching" 
+        onclick="switchTab('coaching')"
+        class="px-6 py-3 rounded-lg font-medium text-lg transition-all bg-white/20 text-white hover:bg-white/30"
+      >
+        <span class="flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+          </svg>
+          Coaching Mode
+        </span>
+      </button>
+    </div>
+
+    <!-- Startup Mode Content -->
+    <div id="content-startup" class="tab-content active">
+      <div class="text-center mb-8">
+        <h3 class="text-xl font-semibold text-white mb-2">Build Your Startup with AI</h3>
+        <p class="text-white/70 max-w-2xl mx-auto">
+          Describe your app idea and watch as a virtual team of AI developers, product managers, and QA engineers collaborate to bring it to life.
+        </p>
       </div>
-      <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
-      </svg>
-      <div class="flex items-center gap-2">
-        <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">2</span>
-        <span>AI generates your team</span>
+
+      <!-- How it works - Startup -->
+      <div class="hidden md:flex items-center justify-center gap-6 text-white/80 mb-12">
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">1</span>
+          <span>Describe your app idea</span>
+        </div>
+        <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+        </svg>
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">2</span>
+          <span>AI generates your team</span>
+        </div>
+        <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+        </svg>
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">3</span>
+          <span>Watch them build it</span>
+        </div>
       </div>
-      <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
-      </svg>
-      <div class="flex items-center gap-2">
-        <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">3</span>
-        <span>Watch them build it</span>
-      </div>
-      <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-      </svg>
-      <div class="flex items-center gap-2">
-        <span class="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">↺</span>
-        <span>Feedback & Direction</span>
+
+      <!-- Startup Features Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/startup/example_chat.png')">
+            <img src="screenshots/startup/example_chat.png" alt="Real-time Team Chat" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Real-time Team Chat</h3>
+            <p class="text-white/70 text-sm">Communicate with your AI team through familiar channels. Each agent has unique personality.</p>
+          </div>
+        </div>
+
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/startup/kanban_board.png')">
+            <img src="screenshots/startup/kanban_board.png" alt="Kanban Task Board" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Kanban Task Board</h3>
+            <p class="text-white/70 text-sm">Drag-and-drop task management. Your PM creates tasks and developers execute autonomously.</p>
+          </div>
+        </div>
+
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/startup/executive_access.png')">
+            <img src="screenshots/startup/executive_access.png" alt="Executive Access Terminal" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Executive Access Terminal</h3>
+            <p class="text-white/70 text-sm">Launch Claude Code or drop to raw terminal. Run locally or in isolated Docker containers.</p>
+          </div>
+        </div>
+
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/startup/step3_meant_your_team.png')">
+            <img src="screenshots/startup/step3_meant_your_team.png" alt="Meet Your Team" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Unique AI Personalities</h3>
+            <p class="text-white/70 text-sm">Each team member has distinct skills and personality. Meet your team before they start building.</p>
+          </div>
+        </div>
+
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/startup/follow_agent_work.png')">
+            <img src="screenshots/startup/follow_agent_work.png" alt="Live Sessions" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Live Sessions & Takeover</h3>
+            <p class="text-white/70 text-sm">Watch agents work in real-time. Take over anytime to work directly, then hand control back.</p>
+          </div>
+        </div>
+
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/startup/example_file_viewer.png')">
+            <img src="screenshots/startup/example_file_viewer.png" alt="File Browser" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Built-in File Browser</h3>
+            <p class="text-white/70 text-sm">Browse generated code, view diffs, and explore your workspace. Code is written locally.</p>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Mobile: 2x2 grid -->
-    <div class="md:hidden grid grid-cols-2 gap-4 text-white/80">
-      <div class="flex items-center gap-3">
-        <span class="w-9 h-9 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">1</span>
-        <span>Describe your idea</span>
+    <!-- Coaching Mode Content -->
+    <div id="content-coaching" class="tab-content">
+      <div class="text-center mb-8">
+        <h3 class="text-xl font-semibold text-white mb-2">Accelerate Your Learning</h3>
+        <p class="text-white/70 max-w-2xl mx-auto">
+          Get personalized AI coaches for any subject. From languages to calculus, interview prep to professional development - learn with adaptive, intelligent tutors.
+        </p>
       </div>
-      <div class="flex items-center gap-3">
-        <span class="w-9 h-9 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">2</span>
-        <span>AI builds your team</span>
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="w-9 h-9 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">3</span>
-        <span>Watch them build it</span>
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="w-9 h-9 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">↺</span>
-        <span>Feedback & iterate</span>
-      </div>
-    </div>
-  </div>
 
-  <!-- Features -->
-  <div class="max-w-6xl mx-auto px-4 pb-16">
-    <h2 class="text-2xl font-bold text-white text-center mb-8">Your Virtual Startup</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      
-      <!-- Card 1 -->
-      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
-        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/example_chat.png')">
-          <img src="screenshots/example_chat.png" alt="Real-time Team Chat" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
-          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+      <!-- How it works - Coaching -->
+      <div class="hidden md:flex items-center justify-center gap-6 text-white/80 mb-12">
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 bg-green-400 text-purple-900 rounded-full flex items-center justify-center font-bold">1</span>
+          <span>Describe your learning goals</span>
+        </div>
+        <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+        </svg>
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 bg-green-400 text-purple-900 rounded-full flex items-center justify-center font-bold">2</span>
+          <span>AI creates your coaches</span>
+        </div>
+        <svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+        </svg>
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 bg-green-400 text-purple-900 rounded-full flex items-center justify-center font-bold">3</span>
+          <span>Learn & track progress</span>
+        </div>
+      </div>
+
+      <!-- Coaching Features Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/coaching/coaching_chat_calc.png')">
+            <img src="screenshots/coaching/coaching_chat_calc.png" alt="Personalized Coaching" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Personalized Coaching</h3>
+            <p class="text-white/70 text-sm">Each coach adapts to your level and learning style. Get explanations, practice problems, and instant feedback.</p>
           </div>
         </div>
-        <div class="p-5">
-          <h3 class="font-bold text-white text-lg mb-2">Real-time Team Chat</h3>
-          <p class="text-white/70 text-sm">Communicate with your AI team through familiar channels. Each agent has unique personality - they chat, joke, and collaborate naturally.</p>
-        </div>
-      </div>
 
-      <!-- Card 2 -->
-      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
-        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/kanban_board.png')">
-          <img src="screenshots/kanban_board.png" alt="Kanban Task Board" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
-          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/coaching/coaching_meet_coaches.png')">
+            <img src="screenshots/coaching/coaching_meet_coaches.png" alt="Meet Your Coaches" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Meet Your Coaches</h3>
+            <p class="text-white/70 text-sm">AI generates personalized coaches for each topic, each with unique teaching styles and expertise.</p>
           </div>
         </div>
-        <div class="p-5">
-          <h3 class="font-bold text-white text-lg mb-2">Kanban Task Board</h3>
-          <p class="text-white/70 text-sm">Drag-and-drop task management. Your PM creates tasks, assigns work, and developers execute autonomously.</p>
-        </div>
-      </div>
 
-      <!-- Card 3 -->
-      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
-        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/executive_access.png')">
-          <img src="screenshots/executive_access.png" alt="Executive Access Terminal" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
-          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+        <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
+          <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/coaching/coaching_progres.png')">
+            <img src="screenshots/coaching/coaching_progres.png" alt="Progress Tracking" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold text-white text-lg mb-2">Progress Tracking</h3>
+            <p class="text-white/70 text-sm">Track your learning journey with detailed progress metrics, skill ratings, and topic coverage.</p>
           </div>
         </div>
-        <div class="p-5">
-          <h3 class="font-bold text-white text-lg mb-2">Executive Access Terminal</h3>
-          <p class="text-white/70 text-sm">Launch your own Claude Code session or drop to a raw terminal. Run locally or in an isolated Docker container with your workspace mounted for safety.</p>
-        </div>
-      </div>
 
-      <!-- Card 4 -->
-      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
-        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/step3_meant_your_team.png')">
-          <img src="screenshots/step3_meant_your_team.png" alt="Unique AI Personalities" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
-          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+        <!-- Icon-based feature cards -->
+        <div class="bg-white/10 border border-white/20 rounded-xl p-6">
+          <div class="w-12 h-12 bg-green-400/20 rounded-lg flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+            </svg>
           </div>
+          <h3 class="font-bold text-white text-lg mb-2">Long-term Memory</h3>
+          <p class="text-white/70 text-sm">Coaches remember your strengths, weaknesses, and learning style across sessions.</p>
         </div>
-        <div class="p-5">
-          <h3 class="font-bold text-white text-lg mb-2">Unique AI Personalities</h3>
-          <p class="text-white/70 text-sm">Each team member has distinct skills, personality, and communication style. Meet your team before they start building.</p>
-        </div>
-      </div>
 
-      <!-- Card 5 -->
-      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
-        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/follow_agent_work.png')">
-          <img src="screenshots/follow_agent_work.png" alt="Live Sessions" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
-          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+        <div class="bg-white/10 border border-white/20 rounded-xl p-6">
+          <div class="w-12 h-12 bg-green-400/20 rounded-lg flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
           </div>
+          <h3 class="font-bold text-white text-lg mb-2">Markdown Notes</h3>
+          <p class="text-white/70 text-sm">All progress stored in editable markdown files you can view and customize.</p>
         </div>
-        <div class="p-5">
-          <h3 class="font-bold text-white text-lg mb-2">Live Sessions & Takeover</h3>
-          <p class="text-white/70 text-sm">Watch agents work with a rich view of their progress, tool calls, and todos. Take over anytime to work directly in the terminal, then hand control back.</p>
-        </div>
-      </div>
 
-      <!-- Card 6 -->
-      <div class="bg-white/10 border border-white/20 rounded-xl overflow-hidden">
-        <div class="aspect-video bg-gray-900/50 overflow-hidden cursor-pointer group relative" onclick="openLightbox('screenshots/example_file_viewer.png')">
-          <img src="screenshots/example_file_viewer.png" alt="Built-in File Browser" class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300">
-          <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-            <span class="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium bg-black/50 px-3 py-1 rounded-full">Click to enlarge</span>
+        <div class="bg-white/10 border border-white/20 rounded-xl p-6">
+          <div class="w-12 h-12 bg-green-400/20 rounded-lg flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+            </svg>
           </div>
-        </div>
-        <div class="p-5">
-          <h3 class="font-bold text-white text-lg mb-2">Built-in File Browser</h3>
-          <p class="text-white/70 text-sm">Browse generated code, view diffs, and explore your workspace. All code is written locally and ready to deploy.</p>
+          <h3 class="font-bold text-white text-lg mb-2">Learning Tasks</h3>
+          <p class="text-white/70 text-sm">Kanban board for tracking learning goals and practice assignments.</p>
         </div>
       </div>
-
     </div>
   </div>
 
@@ -303,6 +414,21 @@
   </div>
 
   <script>
+    function switchTab(mode) {
+      // Update tab buttons
+      document.getElementById('tab-startup').className = mode === 'startup' 
+        ? 'px-6 py-3 rounded-lg font-medium text-lg transition-all bg-yellow-400 text-purple-900 shadow-lg'
+        : 'px-6 py-3 rounded-lg font-medium text-lg transition-all bg-white/20 text-white hover:bg-white/30';
+      
+      document.getElementById('tab-coaching').className = mode === 'coaching'
+        ? 'px-6 py-3 rounded-lg font-medium text-lg transition-all bg-green-400 text-purple-900 shadow-lg'
+        : 'px-6 py-3 rounded-lg font-medium text-lg transition-all bg-white/20 text-white hover:bg-white/30';
+
+      // Update content visibility
+      document.getElementById('content-startup').className = mode === 'startup' ? 'tab-content active' : 'tab-content';
+      document.getElementById('content-coaching').className = mode === 'coaching' ? 'tab-content active' : 'tab-content';
+    }
+
     function openLightbox(src) {
       document.getElementById('lightbox-img').src = src;
       document.getElementById('lightbox').classList.add('active');

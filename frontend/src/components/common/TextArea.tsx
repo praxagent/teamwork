@@ -29,6 +29,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
             'placeholder:text-gray-400',
             'disabled:bg-gray-50 disabled:text-gray-500',
             'px-3 py-2 text-sm border resize-none',
+            'bg-white text-gray-900',  // Explicit colors for visibility
             error && 'border-red-500 focus:border-red-500 focus:ring-red-500',
             className
           )}

@@ -28,6 +28,7 @@ from app.models import init_db, AsyncSessionLocal, Agent, Channel, Message, Proj
 from app.routers import (
     agents_router,
     channels_router,
+    coaching_router,
     messages_router,
     onboarding_router,
     projects_router,
@@ -698,6 +699,7 @@ app.add_middleware(
 app.include_router(projects_router, prefix="/api")
 app.include_router(agents_router, prefix="/api")
 app.include_router(channels_router, prefix="/api")
+app.include_router(coaching_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(onboarding_router, prefix="/api")

@@ -17,6 +17,8 @@ export interface ProjectConfig {
   analysis?: ProjectAnalysis;
   breakdown?: ProjectBreakdown;
   team_suggestions?: TeamMemberSuggestion[];
+  project_type?: 'software' | 'coaching';
+  coaching_topics?: string[];
 }
 
 export interface ProjectAnalysis {
@@ -52,7 +54,8 @@ export interface Agent {
   id: string;
   project_id: string;
   name: string;
-  role: 'pm' | 'developer' | 'qa';
+  role: 'pm' | 'developer' | 'qa' | 'coach' | 'personal_manager';
+  specialization?: string | null;  // Topic for coaches (e.g., "calculus", "system-design")
   team: string | null;
   status: 'idle' | 'working' | 'blocked' | 'offline';
   persona: AgentPersona | null;
@@ -95,10 +98,12 @@ export interface AgentPersona {
 
 export interface TeamMemberSuggestion {
   name: string;
-  role: 'pm' | 'developer' | 'qa';
+  role: 'pm' | 'developer' | 'qa' | 'coach' | 'personal_manager';
+  specialization?: string | null;  // Topic for coaches
   team: string | null;
   personality_summary: string;
   profile_image_type: string;
+  teaching_style?: string;  // For coaches
 }
 
 export interface Channel {

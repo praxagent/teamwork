@@ -407,7 +407,7 @@ async def delete_project(
     
     # 4. Delete workspace directory
     if project.workspace_dir:
-        workspace_path = Path(settings.workspace_root) / project.workspace_dir
+        workspace_path = settings.workspace_path / project.workspace_dir
         if workspace_path.exists() and workspace_path.is_dir():
             try:
                 shutil.rmtree(workspace_path)
@@ -564,6 +564,41 @@ async def reset_project(
     print(f">>> Reset: Project status set to active", flush=True)
     
     await db.commit()
+    
+    # For coaching projects, recreate the coaching files and restart monitoring
+    config = project.config or {}
+    if config.get("project_type") == "coaching":
+        print(f">>> Reset: Recreating coaching files for coaching project", flush=True)
+        try:
+            from app.services.progress_tracker import ProgressTracker
+            from app.services.coaching_manager import start_coaching_monitoring
+            
+            # Get topics from agents' specializations, including coach names
+            topics = []
+            for agent in agents:
+                if agent.role == "coach" and agent.specialization:
+                    topics.append({
+                        "name": agent.specialization,
+                        "coach_name": agent.name,  # Use coach's name for folder
+                        "current_level": "beginner",
+                        "target_level": "intermediate",
+                        "initial_goals": [],
+                        "suggested_resources": [],
+                    })
+            
+            if topics:
+                tracker = ProgressTracker(project.id, project.workspace_dir)
+                coaching_style = config.get("coaching_style", {})
+                await tracker.initialize_files(topics, coaching_style)
+                print(f">>> Reset: Created coaching files for {len(topics)} topics", flush=True)
+                
+                # Restart coaching monitoring (which triggers kickoff messages)
+                start_coaching_monitoring(project.id)
+                print(f">>> Reset: Started coaching monitoring and kickoff", flush=True)
+            else:
+                print(f">>> Reset: No topics found from agents, skipping coaching file creation", flush=True)
+        except Exception as e:
+            print(f">>> Reset: Error creating coaching files: {e}", flush=True)
     
     print(f">>> Reset complete: {tasks_reset} tasks, {messages_cleared} messages, {activities_cleared} activities cleared", flush=True)
     

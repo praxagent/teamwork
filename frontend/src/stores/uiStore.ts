@@ -6,14 +6,29 @@ interface TypingAgent {
   agent_name: string;
 }
 
-interface CEOProfile {
+interface UserProfile {
   name: string;
   photoUrl: string | null;
 }
 
+// User role labels based on project type
+export type UserRole = 'ceo' | 'student';
+
 interface UIState {
-  // CEO Profile
-  ceoProfile: CEOProfile;
+  // Dark mode
+  darkMode: boolean;
+  toggleDarkMode: () => void;
+  setDarkMode: (dark: boolean) => void;
+
+  // User Profile (was CEO Profile)
+  userProfile: UserProfile;
+  userRole: UserRole;
+  setUserName: (name: string) => void;
+  setUserPhoto: (url: string | null) => void;
+  setUserRole: (role: UserRole) => void;
+  
+  // Legacy alias for backwards compatibility
+  ceoProfile: UserProfile;
   setCeoName: (name: string) => void;
   setCeoPhoto: (url: string | null) => void;
 
@@ -48,10 +63,10 @@ interface UIState {
   setAgentTyping: (channelId: string, agentId: string, agentName: string, isTyping: boolean) => void;
 }
 
-// Load CEO profile from localStorage
-const loadCeoProfile = (): CEOProfile => {
+// Load user profile from localStorage
+const loadUserProfile = (): UserProfile => {
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('ceoProfile');
+    const saved = localStorage.getItem('userProfile') || localStorage.getItem('ceoProfile');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -60,20 +75,90 @@ const loadCeoProfile = (): CEOProfile => {
       }
     }
   }
-  return { name: 'CEO', photoUrl: null };
+  return { name: 'You', photoUrl: null };
 };
 
+// Get display label for user based on role
+export const getUserLabel = (role: UserRole, name?: string): string => {
+  const displayName = name || 'You';
+  switch (role) {
+    case 'student':
+      return displayName === 'You' ? 'You' : `${displayName} (You)`;
+    case 'ceo':
+    default:
+      return displayName === 'You' ? 'CEO (You)' : `${displayName} (You)`;
+  }
+};
+
+// Load dark mode preference
+const loadDarkMode = (): boolean => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('darkMode');
+    if (saved !== null) {
+      return saved === 'true';
+    }
+    // Default to system preference
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  return false;
+};
+
+// Apply dark mode to document
+const applyDarkMode = (dark: boolean) => {
+  if (typeof document !== 'undefined') {
+    if (dark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }
+};
+
+// Initialize dark mode on load
+if (typeof window !== 'undefined') {
+  applyDarkMode(loadDarkMode());
+}
+
 export const useUIStore = create<UIState>((set) => ({
-  ceoProfile: loadCeoProfile(),
+  // Dark mode
+  darkMode: loadDarkMode(),
+  toggleDarkMode: () => set((state) => {
+    const newDark = !state.darkMode;
+    localStorage.setItem('darkMode', String(newDark));
+    applyDarkMode(newDark);
+    return { darkMode: newDark };
+  }),
+  setDarkMode: (dark) => {
+    localStorage.setItem('darkMode', String(dark));
+    applyDarkMode(dark);
+    return set({ darkMode: dark });
+  },
+
+  userProfile: loadUserProfile(),
+  userRole: 'ceo' as UserRole,
+  setUserName: (name) => set((state) => {
+    const newProfile = { ...state.userProfile, name };
+    localStorage.setItem('userProfile', JSON.stringify(newProfile));
+    return { userProfile: newProfile, ceoProfile: newProfile };
+  }),
+  setUserPhoto: (url) => set((state) => {
+    const newProfile = { ...state.userProfile, photoUrl: url };
+    localStorage.setItem('userProfile', JSON.stringify(newProfile));
+    return { userProfile: newProfile, ceoProfile: newProfile };
+  }),
+  setUserRole: (role) => set({ userRole: role }),
+  
+  // Legacy aliases
+  ceoProfile: loadUserProfile(),
   setCeoName: (name) => set((state) => {
-    const newProfile = { ...state.ceoProfile, name };
-    localStorage.setItem('ceoProfile', JSON.stringify(newProfile));
-    return { ceoProfile: newProfile };
+    const newProfile = { ...state.userProfile, name };
+    localStorage.setItem('userProfile', JSON.stringify(newProfile));
+    return { userProfile: newProfile, ceoProfile: newProfile };
   }),
   setCeoPhoto: (url) => set((state) => {
-    const newProfile = { ...state.ceoProfile, photoUrl: url };
-    localStorage.setItem('ceoProfile', JSON.stringify(newProfile));
-    return { ceoProfile: newProfile };
+    const newProfile = { ...state.userProfile, photoUrl: url };
+    localStorage.setItem('userProfile', JSON.stringify(newProfile));
+    return { userProfile: newProfile, ceoProfile: newProfile };
   }),
 
   sidebarCollapsed: false,

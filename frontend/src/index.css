@@ -2,17 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global styles */
+/* Global styles - Light mode default */
 :root {
   font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #1d1c1d;
-  background-color: #ffffff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  /* CSS custom properties for theme */
+  --color-text: #1d1c1d;
+  --color-bg: #ffffff;
+  --color-text-secondary: #6b7280;
+  --color-bg-secondary: #f3f4f6;
+}
+
+/* Light mode - explicit defaults with high specificity */
+html:not(.dark) {
+  color: var(--color-text) !important;
+  background-color: var(--color-bg) !important;
+}
+
+html:not(.dark) body {
+  background-color: var(--color-bg) !important;
+  color: var(--color-text) !important;
+}
+
+html:not(.dark) #root {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Dark mode - when .dark class is on html */
+html.dark {
+  --color-text: #e2e8f0;
+  --color-bg: #0f172a;
+  --color-text-secondary: #94a3b8;
+  --color-bg-secondary: #1e293b;
+  
+  color: var(--color-text) !important;
+  background-color: var(--color-bg) !important;
+}
+
+html.dark body {
+  background-color: var(--color-bg) !important;
+  color: var(--color-text) !important;
+}
+
+html.dark #root {
+  background-color: var(--color-bg);
+  color: var(--color-text);
 }
 
 * {
@@ -26,7 +67,7 @@ html, body, #root {
   width: 100%;
 }
 
-/* Scrollbar styles */
+/* Scrollbar styles - Light mode */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -43,6 +84,15 @@ html, body, #root {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #a1a1a1;
+}
+
+/* Scrollbar styles - Dark mode */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 /* Custom utility classes */
@@ -67,26 +117,199 @@ html, body, #root {
   overflow-wrap: break-word;
 }
 
-.message-content code {
-  background-color: #f8f8f8;
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-family: Monaco, Menlo, Consolas, monospace;
-  font-size: 0.9em;
+/* Light mode message content - FORCE light colors for text */
+html:not(.dark) .message-content,
+html:not(.dark) .markdown-content {
+  color: #1d1c1d !important;
 }
 
-.message-content pre {
-  background-color: #f8f8f8;
-  padding: 12px;
-  border-radius: 6px;
+/* Light mode - Force dark text on paragraphs, headings, lists, etc. */
+html:not(.dark) .message-content p,
+html:not(.dark) .message-content h1,
+html:not(.dark) .message-content h2,
+html:not(.dark) .message-content h3,
+html:not(.dark) .message-content h4,
+html:not(.dark) .message-content li,
+html:not(.dark) .message-content strong,
+html:not(.dark) .message-content em,
+html:not(.dark) .message-content span,
+html:not(.dark) .markdown-content p,
+html:not(.dark) .markdown-content h1,
+html:not(.dark) .markdown-content h2,
+html:not(.dark) .markdown-content h3,
+html:not(.dark) .markdown-content h4,
+html:not(.dark) .markdown-content li,
+html:not(.dark) .markdown-content strong,
+html:not(.dark) .markdown-content em,
+html:not(.dark) .markdown-content span {
+  color: #1d1c1d !important;
+}
+
+/* Light mode - code blocks stay dark themed */
+html:not(.dark) .message-content pre,
+html:not(.dark) .markdown-content pre,
+html:not(.dark) .message-content pre *,
+html:not(.dark) .markdown-content pre * {
+  color: #e2e8f0 !important;
+}
+
+/* Dark mode message content */
+html.dark .message-content,
+html.dark .markdown-content {
+  color: #e2e8f0 !important;
+}
+
+/* Dark mode - Force light text on paragraphs, headings, lists, etc. */
+html.dark .message-content p,
+html.dark .message-content h1,
+html.dark .message-content h2,
+html.dark .message-content h3,
+html.dark .message-content h4,
+html.dark .message-content li,
+html.dark .message-content strong,
+html.dark .message-content em,
+html.dark .message-content span,
+html.dark .markdown-content p,
+html.dark .markdown-content h1,
+html.dark .markdown-content h2,
+html.dark .markdown-content h3,
+html.dark .markdown-content h4,
+html.dark .markdown-content li,
+html.dark .markdown-content strong,
+html.dark .markdown-content em,
+html.dark .markdown-content span {
+  color: #e2e8f0 !important;
+}
+
+/* ============================================
+   LIGHT MODE CHAT OVERRIDES
+   Force correct colors when NOT in dark mode
+   Only target chat-specific containers
+   ============================================ */
+html:not(.dark) .bg-white {
+  background-color: #ffffff !important;
+}
+
+html:not(.dark) .bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+html:not(.dark) .bg-gray-50 {
+  background-color: #f9fafb !important;
+}
+
+html:not(.dark) .border-gray-200 {
+  border-color: #e5e7eb !important;
+}
+
+html:not(.dark) .border-gray-300 {
+  border-color: #d1d5db !important;
+}
+
+/* Inline code - Light mode */
+.message-content code:not(pre code),
+.markdown-content code:not(pre code) {
+  background-color: #e2e8f0;
+  color: #db2777;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: Monaco, Menlo, Consolas, 'Courier New', monospace;
+  font-size: 0.875em;
+}
+
+/* Inline code - Dark mode */
+html.dark .message-content code:not(pre code),
+html.dark .markdown-content code:not(pre code) {
+  background-color: #334155;
+  color: #f472b6;
+}
+
+/* Code blocks - Always dark theme for visibility and contrast */
+.message-content pre,
+.markdown-content pre {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+  padding: 16px;
+  border-radius: 8px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 12px 0;
+  border: 1px solid #475569;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
 }
 
-.message-content pre code {
-  background: none;
+.message-content pre code,
+.markdown-content pre code {
+  background: none !important;
+  color: inherit !important;
   padding: 0;
+  font-family: Monaco, Menlo, Consolas, 'Courier New', monospace;
+  font-size: 0.875em;
+  line-height: 1.6;
 }
+
+/* Syntax highlighter overrides for proper colors */
+.markdown-content pre[class*="language-"],
+.markdown-content code[class*="language-"] {
+  color: #e2e8f0 !important;
+  background: transparent !important;
+}
+
+/* KaTeX math equation styles - Light mode */
+.markdown-content .katex-display {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  overflow-x: auto;
+}
+
+.markdown-content .katex {
+  font-size: 1.1em;
+  color: #1d1c1d;
+}
+
+/* KaTeX - Dark mode */
+html.dark .markdown-content .katex-display {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-color: #334155;
+}
+
+html.dark .markdown-content .katex {
+  color: #e2e8f0;
+}
+
+/* Inline math */
+.markdown-content .katex-inline {
+  padding: 0 2px;
+}
+
+/* Block math - centered with nice background */
+.markdown-content .katex-display > .katex {
+  display: inline-block;
+  text-align: center;
+}
+
+/* Chat message text colors - Light mode */
+.chat-message-text {
+  color: var(--color-text) !important;
+}
+
+/* Chat message text - Dark mode */
+html.dark .chat-message-text {
+  color: #f1f5f9 !important;
+}
+
+/* Explicit light mode chat text */
+html:not(.dark) .chat-message-text {
+  color: #1d1c1d !important;
+}
+
+/* ============================================
+   LIGHT MODE OVERRIDES - ONLY FOR MESSAGE CONTENT
+   Don't override global Tailwind classes as that
+   breaks dark: modifiers on other elements
+   ============================================ */
 
 /* Status indicator pulse animation */
 @keyframes pulse {

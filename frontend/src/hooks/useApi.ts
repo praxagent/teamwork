@@ -436,10 +436,13 @@ export function useDeleteTask() {
 // Onboarding
 export function useStartOnboarding() {
   return useMutation({
-    mutationFn: (description: string) =>
+    mutationFn: (data: { description: string; team_type?: 'software' | 'coaching' }) =>
       fetchJson<ClarifyingQuestionsResponse>('/onboarding/start', {
         method: 'POST',
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({
+          description: data.description,
+          team_type: data.team_type || 'software',
+        }),
       }),
   });
 }
@@ -670,6 +673,31 @@ export function useFileContent(projectId: string | null, filePath: string | null
   });
 }
 
+// Save file content
+export interface SaveFileResponse {
+  success: boolean;
+  path: string;
+  message: string;
+}
+
+export function useSaveFile(projectId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { path: string; content: string }) =>
+      fetchJson<SaveFileResponse>(`/workspace/${projectId}/file`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_, variables) => {
+      // Invalidate the file content cache for this file
+      queryClient.invalidateQueries({ queryKey: ['file-content', projectId, variables.path] });
+      // Also invalidate workspace files in case of new file
+      queryClient.invalidateQueries({ queryKey: ['workspace', projectId] });
+    },
+  });
+}
+
 // Execute code from chat
 export interface CodeResponse {
   success: boolean;
@@ -860,5 +888,182 @@ export function useRemoveAgentProfileImage() {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
     },
+  });
+}
+
+// Agent Prompts - stored in .agents/{agent-name}/ folder
+export interface AgentPrompts {
+  soul_prompt: string | null;
+  skills_prompt: string | null;
+  source: 'database' | 'file' | 'mixed';
+}
+
+export function useAgentPrompts(agentId: string | null) {
+  return useQuery({
+    queryKey: ['agent-prompts', agentId],
+    queryFn: () => fetchJson<AgentPrompts>(`/agents/${agentId}/prompts`),
+    enabled: !!agentId,
+  });
+}
+
+export function useUpdateAgentPrompts() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      agentId: string;
+      soul_prompt?: string;
+      skills_prompt?: string;
+    }) => {
+      const { agentId, ...body } = data;
+      return fetchJson<{ success: boolean; message: string; path: string }>(
+        `/agents/${agentId}/prompts`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(body),
+        }
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['agent-prompts', variables.agentId] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+}
+
+export function useInitAgentPrompts() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (agentId: string) => {
+      return fetchJson<{ success: boolean; message: string; path: string }>(
+        `/agents/${agentId}/prompts/init`,
+        { method: 'POST' }
+      );
+    },
+    onSuccess: (_, agentId) => {
+      queryClient.invalidateQueries({ queryKey: ['agent-prompts', agentId] });
+    },
+  });
+}
+
+// Coaching Progress
+export interface CoachingProgressOverview {
+  content: string;
+  topics: string[];  // Legacy - topic slugs
+  coaches: string[]; // New - coach folder names
+}
+
+export interface CoachProgress {
+  coach: string;
+  soul: string | null;  // Coach's personality prompt (EDITABLE!)
+  skills: string | null;  // Coach's skills/expertise prompt (EDITABLE!)
+  progress: string | null;
+  learnings: string | null;
+  strengths: string | null;
+  improvements: string | null;
+  summary: string | null;
+  resources: string | null;
+  vocabulary: string | null;
+  topics_covered: string | null;
+  ratings: string | null;
+}
+
+export interface TopicProgress {
+  topic: string;
+  content: string;
+}
+
+export function useCoachingProgress(projectId: string | null) {
+  return useQuery({
+    queryKey: ['coaching-progress', projectId],
+    queryFn: () => fetchJson<CoachingProgressOverview>(`/coaching/progress/${projectId}`),
+    enabled: !!projectId,
+  });
+}
+
+export function useTopicProgress(projectId: string | null, topic: string | null) {
+  return useQuery({
+    queryKey: ['topic-progress', projectId, topic],
+    queryFn: () => fetchJson<TopicProgress>(`/coaching/progress/${projectId}/${encodeURIComponent(topic || '')}`),
+    enabled: !!projectId && !!topic,
+  });
+}
+
+export function useCoachProgress(projectId: string | null, coachName: string | null) {
+  return useQuery({
+    queryKey: ['coach-progress', projectId, coachName],
+    queryFn: () => fetchJson<CoachProgress>(`/coaching/coach/${projectId}/${encodeURIComponent(coachName || '')}`),
+    enabled: !!projectId && !!coachName,
+  });
+}
+
+export function useRecordSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      projectId: string;
+      topic: string;
+      summary: string;
+      duration_minutes?: number;
+      key_learnings?: string[];
+      areas_to_review?: string[];
+      mood?: string;
+    }) => {
+      const { projectId, topic, ...body } = data;
+      return fetchJson<{ success: boolean; message: string }>(
+        `/coaching/session/${projectId}/${encodeURIComponent(topic)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['coaching-progress', variables.projectId] });
+      queryClient.invalidateQueries({ queryKey: ['topic-progress', variables.projectId, variables.topic] });
+    },
+  });
+}
+
+export function useUpdateSkillLevel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      projectId: string;
+      topic: string;
+      level: string;
+      notes?: string;
+    }) => {
+      const { projectId, topic, ...body } = data;
+      return fetchJson<{ success: boolean; message: string }>(
+        `/coaching/skill/${projectId}/${encodeURIComponent(topic)}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        }
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['coaching-progress', variables.projectId] });
+      queryClient.invalidateQueries({ queryKey: ['topic-progress', variables.projectId, variables.topic] });
+    },
+  });
+}
+
+// Vocabulary Tracking
+export interface VocabularyData {
+  topic: string;
+  content: string | null;
+  has_vocabulary: boolean;
+}
+
+export function useVocabulary(projectId: string | null, topic: string | null) {
+  return useQuery({
+    queryKey: ['vocabulary', projectId, topic],
+    queryFn: () => fetchJson<VocabularyData>(`/coaching/vocabulary/${projectId}/${encodeURIComponent(topic || '')}`),
+    enabled: !!projectId && !!topic,
   });
 }

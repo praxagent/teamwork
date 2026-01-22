@@ -18,6 +18,7 @@ function TypingIndicatorInline({ channelId }: { channelId?: string }) {
   const typingAgents = useUIStore((state) => 
     channelId ? state.typingAgents[channelId] || [] : []
   );
+  const darkMode = useUIStore((state) => state.darkMode);
 
   if (typingAgents.length === 0) {
     return null;
@@ -34,12 +35,15 @@ function TypingIndicatorInline({ channelId }: { channelId?: string }) {
     typingText = `${names.length} people are typing`;
   }
 
+  const textColor = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const dotColor = darkMode ? 'bg-gray-500' : 'bg-gray-400';
+
   return (
-    <div className="flex items-center gap-1.5 text-xs text-gray-500 mr-2">
+    <div className={`flex items-center gap-1.5 text-xs mr-2 ${textColor}`}>
       <div className="flex gap-0.5">
-        <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }} />
-        <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }} />
-        <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }} />
+        <span className={`w-1 h-1 rounded-full animate-bounce ${dotColor}`} style={{ animationDelay: '0ms', animationDuration: '1s' }} />
+        <span className={`w-1 h-1 rounded-full animate-bounce ${dotColor}`} style={{ animationDelay: '150ms', animationDuration: '1s' }} />
+        <span className={`w-1 h-1 rounded-full animate-bounce ${dotColor}`} style={{ animationDelay: '300ms', animationDuration: '1s' }} />
       </div>
       <span className="italic whitespace-nowrap">{typingText}</span>
     </div>
@@ -173,13 +177,28 @@ export function MessageInput({
     textareaRef.current?.focus();
   };
 
+  const darkMode = useUIStore((state) => state.darkMode);
+  
+  // Explicit colors based on dark mode
+  const containerBg = darkMode ? 'bg-slate-900' : 'bg-white';
+  const popupBg = darkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-gray-200';
+  const popupHeaderBg = darkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-50 text-gray-500';
+  const popupItemBg = darkMode ? 'hover:bg-slate-700 text-gray-100' : 'hover:bg-gray-100 text-gray-900';
+  const popupItemRole = darkMode ? 'text-gray-500' : 'text-gray-400';
+  const inputContainerBorder = darkMode ? 'border-slate-600 focus-within:border-slate-500 focus-within:ring-slate-500' : 'border-gray-300 focus-within:border-gray-400 focus-within:ring-gray-400';
+  const inputContainerBg = darkMode ? 'bg-slate-800' : 'bg-white';
+  const inputTextColor = darkMode ? 'text-gray-100 placeholder-gray-500' : 'text-gray-900 placeholder-gray-400';
+  const toolbarBorder = darkMode ? 'border-slate-700' : 'border-gray-100';
+  const toolbarButtonColor = darkMode ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-500 hover:bg-gray-100';
+  const sendButtonInactive = darkMode ? 'bg-slate-700 text-gray-500' : 'bg-gray-100 text-gray-400';
+
   return (
-    <div className="px-4 pb-4">
+    <div className={`px-4 pb-4 ${containerBg}`}>
       <div className="relative">
         {/* Mention popup */}
         {showMentions && filteredAgents.length > 0 && (
-          <div className="absolute bottom-full left-0 w-64 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-            <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50">
+          <div className={`absolute bottom-full left-0 w-64 mb-2 border rounded-lg shadow-lg overflow-hidden ${popupBg}`}>
+            <div className={`px-3 py-2 text-xs font-medium ${popupHeaderBg}`}>
               Team Members
             </div>
             <div className="max-h-48 overflow-y-auto">
@@ -191,14 +210,14 @@ export function MessageInput({
                     'w-full px-3 py-2 flex items-center gap-2 text-left',
                     index === selectedMentionIndex
                       ? 'bg-slack-active text-white'
-                      : 'hover:bg-gray-100'
+                      : popupItemBg
                   )}
                 >
                   <span className="font-medium">{agent.name}</span>
                   <span
                     className={clsx(
                       'text-xs',
-                      index === selectedMentionIndex ? 'text-white/70' : 'text-gray-400'
+                      index === selectedMentionIndex ? 'text-white/70' : popupItemRole
                     )}
                   >
                     {agent.role}
@@ -210,7 +229,7 @@ export function MessageInput({
         )}
 
         {/* Input container */}
-        <div className="border border-gray-300 rounded-lg focus-within:border-gray-400 focus-within:ring-1 focus-within:ring-gray-400">
+        <div className={`border rounded-lg focus-within:ring-1 ${inputContainerBorder} ${inputContainerBg}`}>
           <textarea
             ref={textareaRef}
             value={content}
@@ -219,22 +238,22 @@ export function MessageInput({
             placeholder={placeholder || `Message #${channelName}`}
             disabled={disabled}
             rows={1}
-            className="w-full px-3 py-2 resize-none bg-transparent focus:outline-none disabled:opacity-50 text-gray-900"
+            className={`w-full px-3 py-2 resize-none bg-transparent focus:outline-none disabled:opacity-50 ${inputTextColor}`}
           />
 
           {/* Bottom toolbar */}
-          <div className="flex items-center justify-between px-2 py-1 border-t border-gray-100">
+          <div className={`flex items-center justify-between px-2 py-1 border-t ${toolbarBorder}`}>
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                className="p-1.5 hover:bg-gray-100 rounded text-gray-500"
+                className={`p-1.5 rounded ${toolbarButtonColor}`}
                 title="Attach file"
               >
                 <Paperclip className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                className="p-1.5 hover:bg-gray-100 rounded text-gray-500"
+                className={`p-1.5 rounded ${toolbarButtonColor}`}
                 title="Mention someone"
                 onClick={() => {
                   setContent(content + '@');
@@ -247,7 +266,7 @@ export function MessageInput({
               </button>
               <button
                 type="button"
-                className="p-1.5 hover:bg-gray-100 rounded text-gray-500"
+                className={`p-1.5 rounded ${toolbarButtonColor}`}
                 title="Add emoji"
               >
                 <Smile className="w-4 h-4" />
@@ -285,7 +304,7 @@ export function MessageInput({
                   'p-1.5 rounded transition-colors',
                   content.trim()
                     ? 'bg-slack-active text-white hover:bg-blue-700'
-                    : 'bg-gray-100 text-gray-400'
+                    : sendButtonInactive
                 )}
               >
                 <Send className="w-4 h-4" />

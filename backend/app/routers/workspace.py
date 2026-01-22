@@ -224,6 +224,53 @@ async def get_file_content(
     )
 
 
+class SaveFileRequest(BaseModel):
+    """Request to save file content."""
+    path: str
+    content: str
+
+
+class SaveFileResponse(BaseModel):
+    """Response after saving file."""
+    success: bool
+    path: str
+    message: str
+
+
+@router.put("/{project_id}/file", response_model=SaveFileResponse)
+async def save_file_content(
+    project_id: str,
+    request: SaveFileRequest,
+    db: AsyncSession = Depends(get_db),
+) -> SaveFileResponse:
+    """Save/update content of a file."""
+    workspace_path = await get_project_workspace_path(project_id, db)
+    file_path = workspace_path / request.path
+    
+    # Security: ensure path is within workspace
+    try:
+        file_path = file_path.resolve()
+        workspace_resolved = workspace_path.resolve()
+        if not str(file_path).startswith(str(workspace_resolved)):
+            raise HTTPException(status_code=403, detail="Access denied")
+    except Exception:
+        raise HTTPException(status_code=403, detail="Invalid path")
+    
+    # Ensure parent directory exists
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        file_path.write_text(request.content, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+    
+    return SaveFileResponse(
+        success=True,
+        path=request.path,
+        message=f"File saved successfully",
+    )
+
+
 @router.get("/{project_id}/git-log")
 async def get_git_log(
     project_id: str,
