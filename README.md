@@ -1,6 +1,6 @@
 # TeamWork
 
-![TeamWork Header](assets/startup/teamwork-header.png)
+![TeamWork Header](docs/screenshots/startup/teamwork-header.png)
 
 > **PROOF OF CONCEPT**
 >
