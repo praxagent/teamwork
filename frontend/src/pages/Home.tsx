@@ -48,7 +48,7 @@ export function Home() {
         </h1>
 
         <p className="text-xl text-white/80 max-w-2xl mx-auto mb-6">
-          Build startups with AI dev teams or accelerate your learning with personalized AI coaches.
+          Build apps with AI dev teams or accelerate your learning with personalized AI coaches.
           Two modes, one platform.
         </p>
 
@@ -123,7 +123,7 @@ export function Home() {
         {activeMode === 'startup' && (
           <div>
             <div className="text-center mb-8">
-              <h3 className="text-xl font-semibold text-white mb-2">Build Your Startup with AI</h3>
+              <h3 className="text-xl font-semibold text-white mb-2">Build Your App with AI</h3>
               <p className="text-white/70 max-w-2xl mx-auto">
                 Describe your app idea and watch as a virtual team of AI developers, product managers, and QA engineers collaborate to bring it to life.
               </p>
