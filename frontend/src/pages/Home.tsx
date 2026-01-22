@@ -47,9 +47,12 @@ export function Home() {
           <span className="text-3xl md:text-4xl font-normal text-white/90">AI-Powered Virtual Teams</span>
         </h1>
 
-        <p className="text-xl text-white/80 max-w-2xl mx-auto mb-6">
-          Build apps with AI dev teams or accelerate your learning with personalized AI coaches.
-          Two modes, one platform.
+        <p className="text-xl text-white/80 max-w-2xl mx-auto mb-4">
+          An open-source research project exploring human-friendly ways to interact with multiple AI agents.
+          Not to replace teams, but to magnify human talent by empowering individuals with their own dedicated teams.
+        </p>
+        <p className="text-lg text-white/70 max-w-2xl mx-auto mb-6">
+          Build apps with AI dev teams or accelerate your learning with personalized AI coaches. Two modes, one platform.
         </p>
 
         {/* Proof of Concept Warning */}

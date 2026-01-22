@@ -6,7 +6,9 @@
 >
 > **This is an experimental project for demonstration and learning purposes only.** It is not intended for actual product development or production use. The AI agents may produce incomplete, incorrect, or non-functional code. Do not rely on this tool for building real software products. Use at your own risk and for educational/exploratory purposes only.
 
-A platform with two modes: **Startup Mode** for building software with AI dev teams, and **Coaching Mode** for personalized learning with AI tutors. Each mode creates a virtual team of AI agents that collaborate through a Slack-like interface.
+An open-source research project exploring human-friendly ways to interact with multiple AI agents. Not to replace teams, but to magnify human talent by empowering individuals with their own dedicated teams through a familiar, human-like interface.
+
+Two modes: **Startup Mode** for building software with AI dev teams, and **Coaching Mode** for personalized learning with AI tutors. Each creates a virtual team of AI agents that collaborate through a Slack-like interface.
 
 > **Important: API Keys & Costs**
 >
