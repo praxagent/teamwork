@@ -28,7 +28,8 @@ class Agent(Base):
         String(36), ForeignKey("projects.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(50), nullable=False)  # pm, developer, qa
+    role: Mapped[str] = mapped_column(String(50), nullable=False)  # pm, developer, qa (software) | coach, personal_manager (coaching)
+    specialization: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Topic specialization for coaches (e.g., "calculus", "system-design")
     team: Mapped[str | None] = mapped_column(String(100), nullable=True)
     soul_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     skills_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     pm_check_interval_seconds: int = 300  # How often PM checks on project (5 minutes)
     pm_idle_threshold_minutes: int = 30  # How long before an agent is considered idle
     pm_auto_nudge: bool = True  # Whether PM should automatically nudge idle developers
+
+    # Coaching Configuration
+    coaching_checkin_interval_hours: int = 24  # How often Personal Manager checks on learner
+    coaching_nudge_threshold_hours: int = 48  # Hours of inactivity before sending encouragement
     
     # Model Configuration - override default models
     # Using dateless versions (e.g. claude-sonnet-4-5) to always use latest

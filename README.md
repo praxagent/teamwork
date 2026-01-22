@@ -1,12 +1,12 @@
 # TeamWork
 
-![TeamWork Header](assets/teamwork-header.png)
+![TeamWork Header](assets/startup/teamwork-header.png)
 
 > **PROOF OF CONCEPT**
 >
 > **This is an experimental project for demonstration and learning purposes only.** It is not intended for actual product development or production use. The AI agents may produce incomplete, incorrect, or non-functional code. Do not rely on this tool for building real software products. Use at your own risk and for educational/exploratory purposes only.
 
-A web application where AI agents simulate a software development team. Describe your application idea and the system generates a virtual team with a Product Manager, developers, and QA engineers. Each agent has a distinct persona and collaborates through a Slack-like interface to build your project.
+A platform with two modes: **Startup Mode** for building software with AI dev teams, and **Coaching Mode** for personalized learning with AI tutors. Each mode creates a virtual team of AI agents that collaborate through a Slack-like interface.
 
 > **Important: API Keys & Costs**
 >
@@ -16,14 +16,32 @@ A web application where AI agents simulate a software development team. Describe
 >
 > **Use at your own risk.** Running AI agents can consume significant API credits, especially for complex projects or extended sessions. Monitor your API usage dashboards and set spending limits. The authors are not responsible for any charges incurred.
 
+## Two Modes
+
+### Startup Mode
+Build software with a virtual dev team:
+- **Product Manager** - Breaks down requirements, creates tasks, coordinates team
+- **Developers** - Write code using Claude Code in isolated Docker containers
+- **QA Engineers** - Test and verify functionality
+
+### Coaching Mode
+Accelerate your learning with personalized AI coaches:
+- **Subject Coaches** - One expert coach per topic (languages, math, interview prep, etc.)
+- **Personal Manager** - Coordinates all coaches, tracks progress, keeps you motivated
+- **Progress Tracking** - Vocabulary lists, skill ratings, topic coverage, conversation history
+
 ## Features
 
+### Common Features (Both Modes)
 - **Just Launch!** - Go from idea to working team in seconds with AI-automated setup
 - Onboarding wizard with AI-driven clarifying questions (or skip with Just Launch)
 - Dynamic team generation with unique agent personalities
 - Real-time chat interface with channels and direct messages
 - AI-generated profile images for team members
 - Kanban task board with drag-and-drop
+- Customizable agent personalities (edit soul.md and skills.md prompts)
+
+### Startup Mode Features
 - **Live Sessions** - Watch agents work in real-time with rich formatted output
 - **Takeover & Release** - Jump into any agent's terminal, work directly, then hand control back
 - Code generation to a local workspace (mounted in Docker for security)
@@ -32,37 +50,53 @@ A web application where AI agents simulate a software development team. Describe
 - **Smart terminal detection** - LLM-powered idle detection prevents agents from getting stuck
 - **Executive Access** - Run Claude Code or terminal sessions directly in the browser
 
+### Coaching Mode Features
+- **Progress Panel** - Track learning journey with coach cards and skill metrics
+- **Long-term Memory** - Coaches remember your strengths, weaknesses, and learning style
+- **Topic Coverage** - See what you've learned and what's next
+- **Markdown Notes** - All progress stored in editable markdown files
+
 ## Screenshots
 
-### Getting Started
+### Startup Mode
 
 | Step 1: Describe Your Idea | Step 2: Refining Questions |
 |---|---|
-| ![Step 1](assets/step1_describe_your_idea.png) | ![Step 2](assets/step2_refining_questions.png) |
+| ![Step 1](docs/screenshots/startup/step1_describe_your_idea.png) | ![Step 2](docs/screenshots/startup/step2_refining_questions.png) |
 
 | Step 3: Meet Your Team | Step 4: Configuration |
 |---|---|
-| ![Step 3](assets/step3_meant_your_team.png) | ![Step 4](assets/step4_configurations.png) |
-
-### Main Interface
+| ![Step 3](docs/screenshots/startup/step3_meant_your_team.png) | ![Step 4](docs/screenshots/startup/step4_configurations.png) |
 
 | Chat Interface | Kanban Board |
 |---|---|
-| ![Chat](assets/example_chat.png) | ![Kanban](assets/kanban_board.png) |
+| ![Chat](docs/screenshots/startup/example_chat.png) | ![Kanban](docs/screenshots/startup/kanban_board.png) |
 
 | File Viewer | Live Sessions |
 |---|---|
-| ![Files](assets/example_file_viewer.png) | ![Live Sessions](assets/follow_agent_work.png) |
+| ![Files](docs/screenshots/startup/example_file_viewer.png) | ![Live Sessions](docs/screenshots/startup/follow_agent_work.png) |
 
-### Executive Access
+#### Executive Access
 
-![Executive Access](assets/executive_access.png)
+![Executive Access](docs/screenshots/startup/executive_access.png)
 
 Launch Claude Code or terminal sessions directly in your browser. Agents run in isolated Docker containers for security, with your workspace mounted so you can edit code in your IDE while they work.
 
+### Coaching Mode
+
+| Personalized Coaching | Meet Your Coaches |
+|---|---|
+| ![Coaching Chat](docs/screenshots/coaching/coaching_chat_calc.png) | ![Meet Your Coaches](docs/screenshots/coaching/coaching_meet_coaches.png) |
+
+| Progress Tracking |
+|---|
+| ![Progress Tracking](docs/screenshots/coaching/coaching_progres.png) |
+
+Each coach adapts to your level and learning style. Get explanations, practice problems, and instant feedback. Coaches track your progress in markdown files that you can view and edit.
+
 ### Projects
 
-![My Projects](assets/my_projects_page.png)
+![My Projects](docs/screenshots/startup/my_projects_page.png)
 
 ## Quick Start with Docker
 
@@ -103,11 +137,11 @@ The easiest way to run TeamWork is with Docker Compose.
 
 | Path | Description |
 |------|-------------|
-| `./workspace/` | Generated code from your AI team |
+| `./workspace/` | Generated code (Startup) or coaching notes (Coaching) |
 | `./data/` | SQLite database |
 | `./.env` | Environment variables (API keys) |
 
-Your generated code persists in the `workspace/` folder even after stopping containers.
+Your generated code and coaching progress persists in the `workspace/` folder even after stopping containers.
 
 ---
 
@@ -191,8 +225,17 @@ teamwork/
 ├── .env              # API keys (not committed)
 ├── data/             # SQLite database
 │   └── vteam.db
-├── workspace/        # Generated code
+├── workspace/        # Generated code / coaching notes
 │   └── {project-dirs}/
+│       ├── .agents/         # Agent personality prompts
+│       │   └── {agent-name}/
+│       │       ├── soul.md
+│       │       └── skills.md
+│       └── .coaching/       # Coaching mode progress (if applicable)
+│           └── {coach-name}/
+│               ├── progress.md
+│               ├── vocabulary.md
+│               └── ...
 ├── backend/
 └── frontend/
 ```
@@ -219,6 +262,7 @@ teamwork/
 │   │   ├── routers/
 │   │   ├── services/
 │   │   └── agents/
+│   │       └── prompts/   # Centralized prompt templates
 │   └── Dockerfile
 ├── workspace/             # Generated code (git-ignored)
 ├── data/                  # SQLite database (git-ignored)
@@ -294,15 +338,18 @@ Using dateless versions (e.g., `claude-sonnet-4-5`) automatically points to the 
 
 1. Navigate to http://localhost:3000 (Docker) or http://localhost:5173 (local)
 2. Click "Start Building"
-3. Describe your application idea
-4. Choose your onboarding path:
+3. **Choose your mode:**
+   - **Startup** - Build software with an AI dev team
+   - **Coaching** - Learn with personalized AI coaches
+4. Describe your app idea (Startup) or learning goals (Coaching)
+5. Choose your onboarding path:
    - **Just Launch!** - AI answers all questions and uses optimal defaults (fastest)
-   - **Create (Interactive)** - Answer refining questions, customize team and config
-5. Watch your team build!
+   - **Customize** - Answer refining questions, customize team and config
+6. Start working with your team!
 
 The "Just Launch!" option lets you go from idea to working team in seconds by having AI handle all the setup decisions automatically.
 
-## Chat Commands
+## Chat Commands (Startup Mode)
 
 | Command | Description |
 |---------|-------------|
@@ -334,13 +381,33 @@ The "Just Launch!" option lets you go from idea to working team in seconds by ha
 - Agents use colored initials avatars by default
 - You can still upload custom images at any time
 
-## Pause/Resume Kill Switch
+## Customizing Agent Personalities
+
+Each agent's personality is defined by two prompts stored in the workspace:
+
+```
+workspace/{project-id}/.agents/{agent-name}/
+├── soul.md      # Core personality, values, communication style
+└── skills.md    # Technical abilities, domain expertise
+```
+
+**Edit these files to customize how agents behave:**
+- Change their tone, formality, or teaching style
+- Add domain-specific knowledge
+- Adjust their approach to problem-solving
+
+Changes take effect on the agent's next message. You can edit via:
+- The **File Browser** in the app
+- The **Profile Modal** (click agent → Edit Personality)
+- Your favorite text editor (files are in `./workspace/`)
+
+## Pause/Resume Kill Switch (Startup Mode)
 
 Located in the Kanban board toolbar:
 - **Pause**: Immediately stop all running agents. Work in progress is saved.
 - **Resume**: Allow agents to continue. Restart tasks from the task board.
 
-## Executive Access (In-Browser Terminal)
+## Executive Access (Startup Mode)
 
 Access Claude Code or a terminal directly from the main navigation. Click the **Sparkles** icon (✨) in the header to open Executive Access, or use the **Claude Code** button in the Files view.
 
@@ -361,7 +428,7 @@ Agents automatically detect when Claude Code is:
 
 This prevents agents from getting stuck on interactive prompts while keeping API costs minimal.
 
-### Authentication Setup (Required)
+### Authentication Setup (Required for Startup Mode)
 
 Agents need your Claude authentication. Export your Claude config as base64:
 
@@ -390,6 +457,25 @@ docker build -t vteam/agent:latest -f docker/agent.Dockerfile .
 
 If the image isn't available, agents will fall back to local execution with a warning.
 
+## Progress Tracking (Coaching Mode)
+
+Coaches automatically track your learning progress in markdown files:
+
+```
+workspace/{project-id}/.coaching/{coach-name}/
+├── progress.md      # Current level, goals, session count
+├── learnings.md     # What you know about me, strengths, areas to improve
+├── vocabulary.md    # New words/terms with definitions (language learning)
+├── topics-covered.md # Topics reviewed with timestamps
+├── ratings.md       # Skill assessments over time
+└── summary.md       # Conversation summaries for long-term memory
+```
+
+View progress via:
+- **Progress Panel** - Click the chart icon in the navbar
+- **File Browser** - Browse the `.coaching/` folder directly
+- **Your text editor** - Files are in `./workspace/`
+
 ## Model Selection
 
 Control which Claude models your agents use via environment variables:
@@ -416,14 +502,16 @@ All code generated by your AI team is saved to the `workspace/` directory:
 ```
 workspace/
 └── {project-id}/          # UUID of your project
-    ├── src/               # Source code
+    ├── .agents/           # Agent personality prompts
+    ├── .coaching/         # Coaching progress (coaching mode)
+    ├── src/               # Source code (startup mode)
     ├── package.json       # Dependencies (if applicable)
     └── ...                # Other generated files
 ```
 
 View code in-app using the **Files** tab, or browse the folder directly.
 
-## Live Sessions & Takeover
+## Live Sessions & Takeover (Startup Mode)
 
 ### Watching Agents Work
 
@@ -454,7 +542,7 @@ This lets you collaborate with agents: fix a tricky bug, install a dependency, o
 - **Agent Logs**: Click an agent's profile → "Inspect Work Logs" to see all executions
 - **Code Diffs**: Click "View Changes" on completed tasks to see file modifications
 
-## PM Behaviors
+## PM Behaviors (Startup Mode)
 
 The Product Manager automatically:
 - Creates tasks when none exist
@@ -462,6 +550,15 @@ The Product Manager automatically:
 - Checks on blocked team members
 - Announces project completion
 - Provides periodic status updates
+
+## Personal Manager Behaviors (Coaching Mode)
+
+The Personal Manager automatically:
+- Coordinates between all coaches
+- Tracks your overall progress
+- Creates learning tasks on the Kanban board
+- Provides motivation and accountability
+- Helps you stay on track with your goals
 
 ## Development
 
@@ -510,7 +607,7 @@ docker-compose up --build
 | Data | Location | Contains |
 |------|----------|----------|
 | Database | `data/vteam.db` | Projects, agents, tasks, messages, activity logs |
-| Generated Code | `workspace/{project-id}/` | All code produced by agents |
+| Generated Code | `workspace/{project-id}/` | Code (startup) or coaching notes (coaching) |
 
 ### Docker Volume Mounts
 
@@ -518,7 +615,7 @@ Both directories are mounted outside the container to persist data:
 
 ```yaml
 volumes:
-  - ./workspace:/workspace    # Agent-generated code
+  - ./workspace:/workspace    # Agent-generated code / coaching notes
   - ./data:/app/data          # SQLite database
 ```
 

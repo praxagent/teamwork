@@ -47,6 +47,20 @@ async def init_db() -> None:
 
 async def _run_migrations(conn) -> None:
     """Run database migrations for new columns."""
+    # Migrate agents table
+    result = await conn.execute(text("PRAGMA table_info(agents)"))
+    agent_columns = {row[1] for row in result.fetchall()}
+
+    # Add specialization column if it doesn't exist
+    if "specialization" not in agent_columns:
+        try:
+            await conn.execute(
+                text("ALTER TABLE agents ADD COLUMN specialization VARCHAR(255)")
+            )
+            print("Migration: Added specialization column to agents table")
+        except Exception as e:
+            print(f"Migration warning: {e}")
+
     # Get existing columns in the tasks table
     result = await conn.execute(text("PRAGMA table_info(tasks)"))
     columns = {row[1] for row in result.fetchall()}

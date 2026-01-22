@@ -879,3 +879,196 @@ async def release_agent(
         "success": True,
         "message": f"Control released. Agent {agent.name} will resume working.",
     }
+
+
+# ============================================================================
+# Agent Prompts - Stored in workspace for easy editing
+# ============================================================================
+
+class AgentPromptsResponse(BaseModel):
+    """Agent prompts response."""
+    soul_prompt: str | None = None
+    skills_prompt: str | None = None
+    source: str = "database"  # "database" or "file"
+
+
+class UpdateAgentPromptsRequest(BaseModel):
+    """Request to update agent prompts."""
+    soul_prompt: str | None = None
+    skills_prompt: str | None = None
+
+
+def _slugify_agent_name(name: str) -> str:
+    """Convert agent name to a safe directory name."""
+    import re
+    slug = name.lower().strip()
+    slug = re.sub(r'[^a-z0-9\s-]', '', slug)
+    slug = re.sub(r'[\s_]+', '-', slug)
+    slug = re.sub(r'-+', '-', slug)
+    return slug.strip('-')
+
+
+def _get_agent_prompts_dir(project: Project, agent: Agent) -> "Path":
+    """Get the directory for an agent's prompts in the workspace."""
+    from pathlib import Path
+    from app.config import settings
+    
+    workspace_dir = project.workspace_dir or project.get_workspace_dir_name()
+    workspace_path = settings.workspace_path / workspace_dir
+    
+    agent_slug = _slugify_agent_name(agent.name)
+    return workspace_path / ".agents" / agent_slug
+
+
+@router.get("/{agent_id}/prompts")
+async def get_agent_prompts(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> AgentPromptsResponse:
+    """
+    Get an agent's prompts.
+    
+    Returns prompts from files if they exist in .agents/{agent-name}/,
+    otherwise returns prompts from the database.
+    """
+    from pathlib import Path
+    
+    # Get agent
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id)
+    )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Get project
+    project_result = await db.execute(
+        select(Project).where(Project.id == agent.project_id)
+    )
+    project = project_result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check for file-based prompts
+    prompts_dir = _get_agent_prompts_dir(project, agent)
+    soul_file = prompts_dir / "soul.md"
+    skills_file = prompts_dir / "skills.md"
+    
+    soul_prompt = None
+    skills_prompt = None
+    source = "database"
+    
+    if soul_file.exists():
+        soul_prompt = soul_file.read_text()
+        source = "file"
+    else:
+        soul_prompt = agent.soul_prompt
+    
+    if skills_file.exists():
+        skills_prompt = skills_file.read_text()
+        source = "file" if source == "file" else "mixed"
+    else:
+        skills_prompt = agent.skills_prompt
+    
+    return AgentPromptsResponse(
+        soul_prompt=soul_prompt,
+        skills_prompt=skills_prompt,
+        source=source,
+    )
+
+
+@router.put("/{agent_id}/prompts")
+async def update_agent_prompts(
+    agent_id: str,
+    request: UpdateAgentPromptsRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update an agent's prompts.
+    
+    Saves prompts to files in .agents/{agent-name}/ for easy editing.
+    Also updates the database for consistency.
+    """
+    # Get agent
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id)
+    )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Get project
+    project_result = await db.execute(
+        select(Project).where(Project.id == agent.project_id)
+    )
+    project = project_result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Create directory if needed
+    prompts_dir = _get_agent_prompts_dir(project, agent)
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Write files
+    if request.soul_prompt is not None:
+        (prompts_dir / "soul.md").write_text(request.soul_prompt)
+        agent.soul_prompt = request.soul_prompt
+    
+    if request.skills_prompt is not None:
+        (prompts_dir / "skills.md").write_text(request.skills_prompt)
+        agent.skills_prompt = request.skills_prompt
+    
+    await db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Prompts updated for {agent.name}",
+        "path": str(prompts_dir),
+    }
+
+
+@router.post("/{agent_id}/prompts/init")
+async def initialize_agent_prompts(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Initialize prompt files for an agent.
+    
+    Creates .agents/{agent-name}/soul.md and skills.md from the database.
+    """
+    # Get agent
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id)
+    )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Get project
+    project_result = await db.execute(
+        select(Project).where(Project.id == agent.project_id)
+    )
+    project = project_result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Create directory
+    prompts_dir = _get_agent_prompts_dir(project, agent)
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Write files from database
+    soul_file = prompts_dir / "soul.md"
+    skills_file = prompts_dir / "skills.md"
+    
+    if not soul_file.exists() and agent.soul_prompt:
+        soul_file.write_text(agent.soul_prompt)
+    
+    if not skills_file.exists() and agent.skills_prompt:
+        skills_file.write_text(agent.skills_prompt)
+    
+    return {
+        "success": True,
+        "message": f"Prompts initialized for {agent.name}",
+        "path": str(prompts_dir),
+    }

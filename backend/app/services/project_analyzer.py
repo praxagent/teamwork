@@ -6,45 +6,25 @@ import time
 import traceback
 from typing import Any
 
-from anthropic import AsyncAnthropic
-
-from app.config import settings
+from app.services.base import BaseAnalyzer
+from app.utils.text import strip_markdown_json
 
 logger = logging.getLogger(__name__)
 
 
-def strip_markdown_json(text: str) -> str:
-    """Strip markdown code block wrappers from JSON responses."""
-    text = text.strip()
-    if text.startswith("```"):
-        first_newline = text.find("\n")
-        if first_newline != -1:
-            text = text[first_newline + 1:]
-        else:
-            text = text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    return text.strip()
-
-
-class ProjectAnalyzer:
+class ProjectAnalyzer(BaseAnalyzer):
     """Analyzes project descriptions and creates breakdowns using Claude."""
 
-    def __init__(self) -> None:
-        api_key = settings.anthropic_api_key
-        if not api_key:
-            logger.error("[ProjectAnalyzer] No ANTHROPIC_API_KEY found!")
-            raise ValueError("ANTHROPIC_API_KEY is not set in environment variables")
-        
-        # Strip quotes if present (common .env issue)
-        api_key = api_key.strip('"').strip("'")
-        
-        # Log key presence (not the actual key)
-        logger.info(f"[ProjectAnalyzer] Initializing with API key: {api_key[:12]}...{api_key[-4:] if len(api_key) > 16 else ''}")
-        self.client = AsyncAnthropic(api_key=api_key, timeout=60.0)  # 60 second timeout
-        # Use configurable model for onboarding (default: Haiku for speed)
-        self.model = settings.model_onboarding
-        logger.info(f"[ProjectAnalyzer] Using model: {self.model}")
+    # Implement abstract methods from BaseAnalyzer
+    async def analyze(self, description: str) -> dict[str, Any]:
+        """Alias for analyze_description to satisfy base class."""
+        return await self.analyze_description(description)
+
+    async def generate_questions(
+        self, description: str, analysis: dict[str, Any]
+    ) -> list[str]:
+        """Alias for generate_clarifying_questions to satisfy base class."""
+        return await self.generate_clarifying_questions(description, analysis)
 
     async def analyze_description(self, description: str) -> dict[str, Any]:
         """

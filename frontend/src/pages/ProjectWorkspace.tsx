@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Code, ListTodo, Settings, ChevronLeft, Sparkles, Terminal } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Sparkles, Terminal, BarChart3, Moon, Sun } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -8,7 +8,7 @@ import {
   ThreadView,
 } from '@/components/chat';
 import { ProfileModal } from '@/components/profiles';
-import { FileBrowser, TaskBoard, SettingsPanel, ClaudePanel, LiveSessionsPanel } from '@/components/workspace';
+import { FileBrowser, TaskBoard, SettingsPanel, ClaudePanel, LiveSessionsPanel, ProgressPanel } from '@/components/workspace';
 import {
   useProject,
   useAgents,
@@ -34,8 +34,11 @@ export function ProjectWorkspace() {
   const [showSettings, setShowSettings] = useState(false);
   const [showClaudePanel, setShowClaudePanel] = useState(false);
   const [showLiveSessions, setShowLiveSessions] = useState(false);
+  const [showProgressPanel, setShowProgressPanel] = useState(false);
   // Track if Claude panel has ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(false);
+  // Track if profile modal should open in edit mode
+  const [profileEditMode, setProfileEditMode] = useState(false);
 
   // Stores
   const {
@@ -50,8 +53,17 @@ export function ProjectWorkspace() {
   } = useProjectStore();
 
   const { messagesByChannel, setMessages, addMessage } = useMessageStore();
-  const { selectedAgent, setSelectedAgent, unreadCounts, activeThreadId, setActiveThreadId } =
+  const { selectedAgent, setSelectedAgent, unreadCounts, activeThreadId, setActiveThreadId, darkMode, toggleDarkMode } =
     useUIStore();
+
+  // Check if this is a coaching project
+  const isCoachingProject = currentProject?.config?.project_type === 'coaching';
+  
+  // Set user role based on project type
+  const setUserRole = useUIStore((state) => state.setUserRole);
+  useEffect(() => {
+    setUserRole(isCoachingProject ? 'student' : 'ceo');
+  }, [isCoachingProject, setUserRole]);
 
   // API queries
   const { data: projectData, error: projectError, isError: isProjectError } = useProject(projectId || null);
@@ -117,6 +129,7 @@ export function ProjectWorkspace() {
     setShowTaskPanel(false);
     setShowFileBrowser(false);
     setShowSettings(false);
+    setShowProgressPanel(false);
     setShowClaudePanel(false);
   };
 
@@ -178,6 +191,7 @@ export function ProjectWorkspace() {
       setActiveThreadId(null);
       // Close any open panels to show chat view (but keep Claude panel mounted)
       setShowTaskPanel(false);
+      setShowProgressPanel(false);
       setShowFileBrowser(false);
       setShowSettings(false);
       setShowClaudePanel(false);
@@ -196,7 +210,7 @@ export function ProjectWorkspace() {
     : null;
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className={`flex h-screen ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
       {/* Sidebar */}
       <ChannelSidebar
         project={currentProject}
@@ -211,20 +225,21 @@ export function ProjectWorkspace() {
           setShowTaskPanel(false);
           setShowFileBrowser(false);
           setShowClaudePanel(false);
+          setShowProgressPanel(false);
         }}
         unreadCounts={unreadCounts}
       />
 
       {/* Main content area - shows either Chat, TaskBoard, FileBrowser, or Settings */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header - hidden when in Executive Access for maximum terminal space */}
-        {!showClaudePanel && (
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-white">
+      <div className={`flex-1 flex flex-col min-w-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+        {/* Header - hidden when in Executive Access or Progress panel for maximum space */}
+        {!showClaudePanel && !showProgressPanel && (
+        <div className={`flex items-center justify-between border-b px-4 py-3 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center gap-2">
             {/* Back to Projects */}
             <button
               onClick={() => navigate('/projects')}
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors mr-2"
+              className={`p-1.5 rounded transition-colors mr-2 ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-slate-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
               title="Back to Projects"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -232,38 +247,43 @@ export function ProjectWorkspace() {
             
             {showTaskPanel ? (
               <>
-                <ListTodo className="w-5 h-5 text-slack-purple" />
-                <h1 className="font-bold text-lg text-gray-900">Task Board</h1>
+                <ListTodo className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Task Board</h1>
               </>
             ) : showFileBrowser ? (
               <>
-                <Code className="w-5 h-5 text-slack-purple" />
-                <h1 className="font-bold text-lg text-gray-900">Files</h1>
+                <Code className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Files</h1>
               </>
             ) : showClaudePanel ? (
               <>
-                <Sparkles className="w-5 h-5 text-slack-purple" />
-                <h1 className="font-bold text-lg text-gray-900">Executive Access</h1>
+                <Sparkles className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Executive Access</h1>
               </>
             ) : showSettings ? (
               <>
-                <Settings className="w-5 h-5 text-slack-purple" />
-                <h1 className="font-bold text-lg text-gray-900">Settings</h1>
+                <Settings className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Settings</h1>
               </>
             ) : showLiveSessions ? (
               <>
-                <Terminal className="w-5 h-5 text-green-500" />
-                <h1 className="font-bold text-lg text-gray-900">Live Sessions</h1>
+                <Terminal className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-500'}`} />
+                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Live Sessions</h1>
+              </>
+            ) : showProgressPanel ? (
+              <>
+                <BarChart3 className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Progress</h1>
               </>
             ) : currentChannel ? (
               <>
-                <span className="text-gray-500">{currentChannel.type === 'dm' ? '@' : '#'}</span>
-                <h1 className="font-bold text-lg text-gray-900">
+                <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>{currentChannel.type === 'dm' ? '@' : '#'}</span>
+                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
                   {currentChannel.type === 'dm' 
                     ? agents.find(a => a.id === currentChannel.dm_participants)?.name || currentChannel.name
                     : currentChannel.name}
                 </h1>
-                <span className="text-sm text-gray-500 ml-2">
+                <span className={`text-sm ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   {currentChannel.type === 'dm' 
                     ? '2 members' 
                     : currentChannel.type === 'team'
@@ -272,14 +292,14 @@ export function ProjectWorkspace() {
                 </span>
               </>
             ) : (
-              <div className="h-6 bg-gray-100 rounded w-32 animate-pulse" />
+              <div className={`h-6 rounded w-32 animate-pulse ${darkMode ? 'bg-slate-700' : 'bg-gray-100'}`} />
             )}
           </div>
           
           {/* Panel Toggle Buttons */}
           <div className="flex items-center gap-1">
             {/* Back to Chat button when in a panel */}
-            {(showTaskPanel || showFileBrowser || showClaudePanel || showSettings || showLiveSessions) && (
+            {(showTaskPanel || showFileBrowser || showClaudePanel || showSettings || showLiveSessions || showProgressPanel) && (
               <button
                 onClick={() => {
                   setShowTaskPanel(false);
@@ -287,8 +307,9 @@ export function ProjectWorkspace() {
                   setShowClaudePanel(false);
                   setShowSettings(false);
                   setShowLiveSessions(false);
+                  setShowProgressPanel(false);
                 }}
-                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded mr-2"
+                className={`px-3 py-1.5 text-sm rounded mr-2 ${darkMode ? 'text-gray-300 hover:text-white hover:bg-slate-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
               >
                 ← Back to Chat
               </button>
@@ -304,8 +325,10 @@ export function ProjectWorkspace() {
                   setShowLiveSessions(false);
                 }
               }}
-              className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-                showTaskPanel ? 'bg-slack-purple text-white hover:bg-slack-purple/90' : 'text-gray-600'
+              className={`p-2 rounded transition-colors ${
+                showTaskPanel 
+                  ? 'bg-slack-purple text-white hover:bg-slack-purple/90' 
+                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
               }`}
               title="Tasks"
             >
@@ -321,32 +344,63 @@ export function ProjectWorkspace() {
                   setShowLiveSessions(false);
                 }
               }}
-              className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-                showFileBrowser ? 'bg-slack-purple text-white hover:bg-slack-purple/90' : 'text-gray-600'
+              className={`p-2 rounded transition-colors ${
+                showFileBrowser 
+                  ? 'bg-slack-purple text-white hover:bg-slack-purple/90' 
+                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
               }`}
               title="Files"
             >
               <Code className="w-5 h-5" />
             </button>
-            <button
-              onClick={() => {
-                const willShow = !showClaudePanel;
-                setShowClaudePanel(willShow);
-                if (willShow) {
-                  setClaudePanelMounted(true);
-                  setShowTaskPanel(false);
-                  setShowFileBrowser(false);
-                  setShowSettings(false);
-                  setShowLiveSessions(false);
-                }
-              }}
-              className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-                showClaudePanel ? 'bg-slack-purple text-white hover:bg-slack-purple/90' : 'text-gray-600'
-              }`}
-              title="Executive Access"
-            >
-              <Sparkles className="w-5 h-5" />
-            </button>
+            {/* Executive Access button - hidden for coaching projects */}
+            {!isCoachingProject && (
+              <button
+                onClick={() => {
+                  const willShow = !showClaudePanel;
+                  setShowClaudePanel(willShow);
+                  if (willShow) {
+                    setClaudePanelMounted(true);
+                    setShowTaskPanel(false);
+                    setShowFileBrowser(false);
+                    setShowSettings(false);
+                    setShowLiveSessions(false);
+                    setShowProgressPanel(false);
+                  }
+                }}
+                className={`p-2 rounded transition-colors ${
+                  showClaudePanel 
+                    ? 'bg-slack-purple text-white hover:bg-slack-purple/90' 
+                    : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Executive Access"
+              >
+                <Sparkles className="w-5 h-5" />
+              </button>
+            )}
+            {/* Progress button - shown only for coaching projects */}
+            {isCoachingProject && (
+              <button
+                onClick={() => {
+                  setShowProgressPanel(!showProgressPanel);
+                  if (!showProgressPanel) {
+                    setShowTaskPanel(false);
+                    setShowFileBrowser(false);
+                    setShowClaudePanel(false);
+                    setShowSettings(false);
+                    setShowLiveSessions(false);
+                  }
+                }}
+                className={`p-2 rounded transition-colors ${
+                  showProgressPanel 
+                    ? 'bg-purple-600 text-white hover:bg-purple-700' 
+                    : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Progress"
+              >
+                <BarChart3 className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={() => {
                 setShowSettings(!showSettings);
@@ -357,12 +411,23 @@ export function ProjectWorkspace() {
                   setShowLiveSessions(false);
                 }
               }}
-              className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-                showSettings ? 'bg-slack-purple text-white hover:bg-slack-purple/90' : 'text-gray-600'
+              className={`p-2 rounded transition-colors ${
+                showSettings 
+                  ? 'bg-slack-purple text-white hover:bg-slack-purple/90' 
+                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
               }`}
               title="Settings"
             >
               <Settings className="w-5 h-5" />
+            </button>
+            
+            {/* Dark mode toggle */}
+            <button
+              onClick={toggleDarkMode}
+              className={`p-2 rounded transition-colors ${darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'}`}
+              title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
             
             {/* Live Sessions toggle - shows running Claude Code sessions as full panel */}
@@ -376,8 +441,10 @@ export function ProjectWorkspace() {
                   setShowSettings(false);
                 }
               }}
-              className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-                showLiveSessions ? 'bg-green-600 text-white hover:bg-green-500' : 'text-gray-600'
+              className={`p-2 rounded transition-colors ${
+                showLiveSessions 
+                  ? 'bg-green-600 text-white hover:bg-green-500' 
+                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
               }`}
               title="Live Sessions - Watch agents work in real-time"
             >
@@ -402,6 +469,7 @@ export function ProjectWorkspace() {
           <TaskBoard
             projectId={projectId}
             agents={agents}
+            isCoachingProject={isCoachingProject}
             onWatchLive={(agentId) => {
               // Switch to Live Sessions panel when "Watch Live" is clicked
               setShowTaskPanel(false);
@@ -422,7 +490,7 @@ export function ProjectWorkspace() {
             }}
           />
         ) : showSettings && currentProject ? (
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className={`flex-1 overflow-y-auto p-4 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
             <SettingsPanel
               project={currentProject}
             />
@@ -435,8 +503,33 @@ export function ProjectWorkspace() {
             onClose={() => setShowLiveSessions(false)}
             fullPage={true}
           />
+        ) : showProgressPanel && projectId ? (
+          <div className={`flex-1 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+            <ProgressPanel
+              projectId={projectId}
+              onClose={() => setShowProgressPanel(false)}
+              onEditCoach={(coachSlug) => {
+                // Find the agent matching this coach slug and open profile in edit mode
+                const matchedAgent = agents.find((a) => {
+                  const agentSlug = a.name
+                    .toLowerCase()
+                    .trim()
+                    .replace(/[^a-z0-9\s-]/g, '')
+                    .replace(/[\s_]+/g, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-|-$/g, '');
+                  return agentSlug === coachSlug;
+                });
+                if (matchedAgent) {
+                  setShowProgressPanel(false);
+                  setProfileEditMode(true);
+                  setSelectedAgent(matchedAgent);
+                }
+              }}
+            />
+          </div>
         ) : !showClaudePanel ? (
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
             <MessageList
               messages={currentMessages}
               agents={agents}
@@ -471,11 +564,16 @@ export function ProjectWorkspace() {
         <ProfileModal
           agent={selectedAgent}
           activities={agentActivityData || []}
-          onClose={() => setSelectedAgent(null)}
+          onClose={() => {
+            setSelectedAgent(null);
+            setProfileEditMode(false);
+          }}
           onSendMessage={() => {
             handleDMSelect(selectedAgent.id);
             setSelectedAgent(null);
+            setProfileEditMode(false);
           }}
+          initialEditMode={profileEditMode}
         />
       )}
     </div>

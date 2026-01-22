@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import Project, Agent, Channel, Task, Message, get_db
-from app.services.project_analyzer import ProjectAnalyzer
-from app.services.personality_generator import PersonalityGenerator
 from app.services.image_generator import ImageGenerator
+from app.services.onboarding_strategy import get_onboarding_strategy, OnboardingStrategy
+from app.services.personality_generator import PersonalityGenerator, TeamMember as PersonalityTeamMember
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -51,6 +51,7 @@ class AppDescriptionRequest(BaseModel):
     """Initial app description from user."""
 
     description: str
+    team_type: str = "software"  # "software" | "coaching"
 
 
 class ClarifyingQuestionsResponse(BaseModel):
@@ -124,38 +125,41 @@ async def start_onboarding(
     """
     Start the onboarding process with an app description.
     Returns clarifying questions and initial analysis.
+    Supports both 'software' and 'coaching' team types.
     """
     import asyncio
     import sys
-    
+
     def log(msg: str):
         """Log to both stdout and logger."""
         print(f">>> {msg}", file=sys.stderr, flush=True)
         logger.info(msg)
-    
-    log(f"ONBOARDING START: {request.description[:80]}...")
+
+    team_type = request.team_type
+    log(f"ONBOARDING START ({team_type}): {request.description[:80]}...")
     total_start = time.time()
-    
+
     try:
-        analyzer = ProjectAnalyzer()
-        
-        # Step 1: Analyze description with 45 second timeout
-        log("Step 1/3: Calling Claude API to analyze description...")
+        # Get the appropriate strategy for this team type
+        strategy = get_onboarding_strategy(team_type)
+
+        # Step 1: Analyze description
+        log(f"Step 1/3: Analyzing {team_type} description...")
         try:
             analysis = await asyncio.wait_for(
-                analyzer.analyze_description(request.description),
+                strategy.analyze(request.description),
                 timeout=45.0
             )
-            log(f"Step 1/3 DONE: suggested_name={analysis.get('suggested_name')}")
+            log(f"Step 1/3 DONE: {analysis.get('suggested_name', analysis.get('topics', 'unknown'))}")
         except asyncio.TimeoutError:
             log("Step 1/3 TIMEOUT after 45s!")
             raise HTTPException(status_code=504, detail="Analysis timed out after 45 seconds")
-        
-        # Step 2: Generate questions with 45 second timeout
-        log("Step 2/3: Calling Claude API to generate questions...")
+
+        # Step 2: Generate questions
+        log("Step 2/3: Generating clarifying questions...")
         try:
             questions = await asyncio.wait_for(
-                analyzer.generate_clarifying_questions(request.description, analysis),
+                strategy.generate_questions(request.description, analysis),
                 timeout=45.0
             )
             log(f"Step 2/3 DONE: {len(questions)} questions generated")
@@ -168,31 +172,37 @@ async def start_onboarding(
         project = Project(
             name=analysis.get("suggested_name", "New Project"),
             description=request.description,
-            config={"status": "onboarding", "analysis": analysis},
+            config={
+                "status": "onboarding",
+                "analysis": analysis,
+                "project_type": team_type,
+                "coaching_topics": analysis.get("topics", []) if team_type == "coaching" else None,
+            },
         )
         db.add(project)
         await db.flush()
         await db.refresh(project)
         log(f"Step 3/3 DONE: project_id={project.id}")
 
-        # Store session data
+        # Store session data (including strategy type for later use)
         _onboarding_sessions[project.id] = {
             "description": request.description,
             "analysis": analysis,
             "questions": questions,
             "step": "questions",
+            "team_type": team_type,
         }
 
         total_elapsed = time.time() - total_start
         log(f"ONBOARDING COMPLETE in {total_elapsed:.1f}s")
-        
+
         return ClarifyingQuestionsResponse(
             questions=questions,
             initial_analysis={
                 "project_id": project.id,
                 "suggested_name": analysis.get("suggested_name"),
-                "app_type": analysis.get("app_type"),
-                "complexity": analysis.get("complexity"),
+                "app_type": analysis.get("app_type") if team_type == "software" else "coaching",
+                "complexity": analysis.get("complexity") if team_type == "software" else analysis.get("time_commitment", "moderate"),
             },
         )
     except HTTPException:
@@ -219,9 +229,10 @@ async def auto_answer_questions(
 ) -> AutoAnswerResponse:
     """
     Use AI to automatically answer the clarifying questions based on the project description.
+    Supports both software and coaching team types.
     """
     logger.info(f"[Onboarding] Auto-answer requested for project {project_id}")
-    
+
     session = _onboarding_sessions.get(project_id)
     if not session:
         logger.error(f"[Onboarding] Session not found for project {project_id}")
@@ -229,12 +240,13 @@ async def auto_answer_questions(
         raise HTTPException(status_code=404, detail="Onboarding session not found")
 
     logger.info(f"[Onboarding] Session found, has {len(session.get('questions', []))} questions")
-    
-    analyzer = ProjectAnalyzer()
 
-    # Generate answers using AI
+    team_type = session.get("team_type", "software")
+
+    # Generate answers using strategy
     try:
-        answers = await analyzer.auto_answer_questions(
+        strategy = get_onboarding_strategy(team_type)
+        answers = await strategy.auto_answer_questions(
             session["description"],
             session["analysis"],
             session["questions"],
@@ -255,6 +267,7 @@ async def submit_answers(
     """
     Submit answers to clarifying questions.
     Returns project breakdown and suggested team.
+    Supports both software and coaching team types.
     """
     session = _onboarding_sessions.get(request.project_id)
     if not session:
@@ -268,11 +281,11 @@ async def submit_answers(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    analyzer = ProjectAnalyzer()
-    personality_gen = PersonalityGenerator()
+    team_type = session.get("team_type", "software")
+    strategy = get_onboarding_strategy(team_type)
 
-    # Generate project breakdown with answers
-    breakdown = await analyzer.create_project_breakdown(
+    # Generate breakdown with answers
+    breakdown = await strategy.create_breakdown(
         session["description"],
         session["analysis"],
         session["questions"],
@@ -280,7 +293,7 @@ async def submit_answers(
     )
 
     # Generate team suggestions
-    team_suggestions = await personality_gen.suggest_team_composition(breakdown)
+    team_suggestions = await strategy.suggest_team(breakdown)
 
     # Update session
     session["answers"] = request.answers
@@ -294,12 +307,27 @@ async def submit_answers(
         "breakdown": breakdown,
         "team_suggestions": [t.model_dump() for t in team_suggestions],
     }
+    if team_type == "coaching":
+        project.config["coaching_topics"] = strategy.get_teams_from_breakdown(breakdown)
     await db.flush()
 
+    # Convert suggestions to TeamMember format
+    # Coaching suggestions have 'specialization' instead of 'team'
+    def to_team_member(suggestion) -> dict:
+        data = suggestion.model_dump() if hasattr(suggestion, "model_dump") else suggestion
+        return {
+            "name": data.get("name"),
+            "role": data.get("role"),
+            "team": data.get("team") or data.get("specialization"),  # Use specialization as team for coaches
+            "personality_summary": data.get("personality_summary"),
+            "profile_image_type": data.get("profile_image_type"),
+        }
+
+    # Return in ProjectBreakdown format
     return ProjectBreakdown(
         components=breakdown.get("components", []),
-        teams=breakdown.get("teams", []),
-        suggested_team_members=[t.model_dump() for t in team_suggestions],
+        teams=strategy.get_teams_from_breakdown(breakdown),
+        suggested_team_members=[to_team_member(t) for t in team_suggestions],
     )
 
 
@@ -325,6 +353,7 @@ async def shuffle_team_member(
 ) -> ShuffleMemberResponse:
     """
     Shuffle a single team member to get a new person with same role.
+    Works for both software and coaching teams.
     """
     session = _onboarding_sessions.get(request.project_id)
     if not session:
@@ -338,19 +367,51 @@ async def shuffle_team_member(
     old_member = team_suggestions[request.member_index]
     old_member_dict = old_member.model_dump() if hasattr(old_member, "model_dump") else old_member
     
-    personality_gen = PersonalityGenerator()
+    team_type = session.get("team_type", "software")
     
-    # Generate a new member with the same role and team
-    new_member = personality_gen._generate_random_team([old_member_dict.get("team") or "Full Stack"])[0]
-    
-    # Override with the correct role and team from the old member
-    new_member_dict = new_member.model_dump()
-    new_member_dict["role"] = old_member_dict["role"]
-    new_member_dict["team"] = old_member_dict["team"]
-    
-    # Create a new TeamMember with the correct data
-    from app.services.personality_generator import TeamMember
-    final_member = TeamMember(**new_member_dict)
+    if team_type == "coaching":
+        # Use coaching personality generator for coaches
+        from app.services.coaching_personality_generator import CoachingPersonalityGenerator, CoachSuggestion
+        import random
+        
+        personality_gen = CoachingPersonalityGenerator()
+        role = old_member_dict.get("role", "coach")
+        specialization = old_member_dict.get("specialization")
+        
+        # Generate a new coach/manager with fresh personality
+        used_names: set[str] = set()
+        new_name = personality_gen._get_unique_name(used_names)
+        
+        if role == "personal_manager":
+            new_personality = random.choice(personality_gen.manager_personalities)
+            teaching_style = "Supportive accountability and motivation"
+        else:
+            new_personality = random.choice(personality_gen.personality_summaries)
+            teaching_style = random.choice(personality_gen.teaching_styles)
+        
+        final_member = CoachSuggestion(
+            name=new_name,
+            role=role,
+            specialization=specialization,
+            personality_summary=new_personality,
+            profile_image_type=personality_gen._select_image_type(),
+            teaching_style=teaching_style,
+        )
+    else:
+        # Use software personality generator
+        from app.services.personality_generator import TeamMember
+        
+        personality_gen = PersonalityGenerator()
+        
+        # Generate a new member with the same role and team
+        new_member = personality_gen._generate_random_team([old_member_dict.get("team") or "Full Stack"])[0]
+        
+        # Override with the correct role and team from the old member
+        new_member_dict = new_member.model_dump()
+        new_member_dict["role"] = old_member_dict["role"]
+        new_member_dict["team"] = old_member_dict["team"]
+        
+        final_member = PersonalityTeamMember(**new_member_dict)
     
     # Update the session
     team_suggestions[request.member_index] = final_member
@@ -361,7 +422,7 @@ async def shuffle_team_member(
     return ShuffleMemberResponse(
         name=final_member.name,
         role=final_member.role,
-        team=final_member.team,
+        team=getattr(final_member, 'team', None) or getattr(final_member, 'specialization', None),
         personality_summary=final_member.personality_summary,
         profile_image_type=final_member.profile_image_type,
     )
@@ -487,7 +548,7 @@ async def finalize_project(
 ) -> OnboardingStatus:
     """
     Finalize project setup and create all agents and channels.
-    This starts the team generation process.
+    Supports both software and coaching team types.
     """
     session = _onboarding_sessions.get(request.project_id)
     if not session:
@@ -501,7 +562,11 @@ async def finalize_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    personality_gen = PersonalityGenerator()
+    team_type = session.get("team_type", "software")
+    is_coaching = team_type == "coaching"
+
+    # Get the strategy for this team type
+    strategy = get_onboarding_strategy(team_type)
     image_gen = ImageGenerator()
 
     # Update project config with user preferences
@@ -512,46 +577,36 @@ async def finalize_project(
         "auto_execute_tasks": request.config.auto_execute_tasks,
         "workspace_naming": request.config.workspace_naming,
         "status": "generating",
+        "project_type": team_type,
     }
     project.status = "generating"
-    
+
     # Set workspace directory name based on naming preference
     project.workspace_dir = project.get_workspace_dir_name()
     logger.info(f"[Onboarding] Set workspace_dir to: {project.workspace_dir}")
-    
+
     await db.flush()
 
     # Get team suggestions from session
     team_suggestions = session.get("team_suggestions", [])
 
-    # Create channels first
-    default_channels = [
-        ("general", "public", None, "General project updates and announcements"),
-        ("random", "public", None, "Off-topic discussions and team bonding"),
-    ]
-
-    # Add team-specific channels
+    # Create channels using strategy
     breakdown = session.get("breakdown", {})
-    teams = breakdown.get("teams", [])
-    logger.info(f"[Onboarding] Creating channels for project {project.id}")
-    logger.info(f"[Onboarding] Breakdown: {breakdown}")
-    logger.info(f"[Onboarding] Teams found: {teams}")
-    
-    # If no teams, add sensible defaults based on team suggestions
-    if not teams:
-        team_suggestions = session.get("team_suggestions", [])
+    default_channels = strategy.get_default_channels(breakdown)
+
+    # For software: check if we need to derive teams from suggestions
+    if not is_coaching and not breakdown.get("teams"):
         unique_teams = set()
         for suggestion in team_suggestions:
             team = suggestion.get("team") if isinstance(suggestion, dict) else getattr(suggestion, "team", None)
             if team:
                 unique_teams.add(team)
-        teams = list(unique_teams) if unique_teams else ["Development"]
-        logger.info(f"[Onboarding] No teams in breakdown, derived from suggestions: {teams}")
-    
-    for team in teams:
-        default_channels.append(
-            (team.lower().replace(" ", "-"), "team", team, f"{team} team discussions")
-        )
+        if unique_teams:
+            for team in unique_teams:
+                default_channels.append(
+                    (team.lower().replace(" ", "-"), "team", team, f"{team} team discussions")
+                )
+            logger.info(f"[Onboarding] Derived teams from suggestions: {list(unique_teams)}")
     
     logger.info(f"[Onboarding] Creating channels: {[c[0] for c in default_channels]}")
 
@@ -633,42 +688,52 @@ async def finalize_project(
 
     # Create agents from team suggestions - PARALLELIZED
     import asyncio
-    
+
     async def generate_agent_data(suggestion):
         """Generate persona and optionally image for one agent."""
         suggestion_dict = suggestion if isinstance(suggestion, dict) else suggestion.model_dump()
-        persona = await personality_gen.generate_full_persona(suggestion_dict)
-        
+
+        # Use strategy to generate persona
+        persona = await strategy.generate_persona(suggestion_dict)
+
         profile_image = None
         if request.generate_images:
             try:
                 profile_image = await image_gen.generate_profile_image(persona)
             except Exception as e:
                 logger.warning(f"[Onboarding] Image generation failed for {persona.get('name')}: {e}")
-        
-        return persona, profile_image
-    
+
+        return persona, profile_image, suggestion_dict
+
     # Run all persona+image generation in parallel
     logger.info(f"[Onboarding] Generating {len(team_suggestions)} agents in parallel...")
     agent_data_list = await asyncio.gather(
         *[generate_agent_data(s) for s in team_suggestions],
         return_exceptions=True
     )
-    
+
     created_agents = []
     for i, result in enumerate(agent_data_list):
         if isinstance(result, Exception):
             logger.error(f"[Onboarding] Failed to generate agent {i}: {result}")
             continue
-        
-        persona, profile_image = result
+
+        persona, profile_image, suggestion_dict = result
+
+        # Use strategy to generate prompts and get role/specialization
+        role = strategy.get_role_for_agent(persona, suggestion_dict)
+        specialization = strategy.get_specialization_for_agent(persona, suggestion_dict)
+        soul_prompt = strategy.generate_soul_prompt(persona)
+        skills_prompt = strategy.generate_skills_prompt(persona)
+
         agent = Agent(
             project_id=project.id,
             name=persona["name"],
-            role=persona["role"],
-            team=persona.get("team"),
-            soul_prompt=personality_gen.generate_soul_prompt(persona),
-            skills_prompt=personality_gen.generate_skills_prompt(persona),
+            role=role,
+            specialization=specialization,
+            team=persona.get("team") if not is_coaching else specialization,
+            soul_prompt=soul_prompt,
+            skills_prompt=skills_prompt,
             persona=persona,
             profile_image=profile_image,
             profile_image_type=persona.get("profile_image_type", "professional"),
@@ -679,82 +744,174 @@ async def finalize_project(
     await db.flush()
     logger.info(f"[Onboarding] Created {len(created_agents)} agents")
     
-    # Find the PM and general channel for welcome message
-    pm_agent = next((a for a in created_agents if a.role.lower() in ["pm", "product manager", "project manager"]), None)
+    # Find the right agent for welcome message based on project type
     general_channel = next((c for c in created_channels if c.name == "general"), None)
-    
-    # Create welcome message from PM in #general
-    if pm_agent and general_channel:
-        from app.models import Message
-        
-        welcome_content = f"""👋 Hey team! I'm {pm_agent.name}, and I'll be your PM for this project.
+
+    if is_coaching:
+        # For coaching: Personal Manager sends welcome message
+        manager_agent = next((a for a in created_agents if a.role == "personal_manager"), None)
+
+        if manager_agent and general_channel:
+            from app.models import Message
+
+            # Build coach introductions
+            coaches = [a for a in created_agents if a.role == "coach"]
+            coach_intros = "\n".join(
+                f"• **{a.name}** - Your {a.specialization} coach"
+                for a in coaches
+            )
+
+            welcome_content = f"""Welcome to your learning journey! I'm {manager_agent.name}, your Personal Manager.
+
+I'll be here to support you, celebrate your progress, and help keep you motivated. Think of me as your accountability partner and cheerleader!
+
+Let me introduce your coaches:
+{coach_intros}
+
+Each coach is an expert in their subject and excited to help you learn. You can chat with them anytime in their topic channels or here in #general.
+
+Here's how to get started:
+1. Check out the topic channels to start learning
+2. Visit #progress to see your learning dashboard
+3. Don't hesitate to reach out if you need encouragement!
+
+Remember: consistency beats intensity. Even 15 minutes a day adds up!
+
+Let's begin this journey together!"""
+
+            welcome_message = Message(
+                channel_id=general_channel.id,
+                agent_id=manager_agent.id,
+                content=welcome_content,
+                message_type="chat",
+            )
+            db.add(welcome_message)
+            await db.flush()
+            logger.info(f"[Onboarding] Created welcome message from Personal Manager in #general")
+
+        # Initialize progress tracking files
+        try:
+            from app.services.progress_tracker import ProgressTracker
+            tracker = ProgressTracker(project.id, project.workspace_dir)
+            topics = breakdown.get("topics", [])
+            coaching_style = breakdown.get("coaching_style", {})
+            
+            # Map coach names to topics based on specialization
+            # Also build agent_prompts dict for soul.md and skills.md files
+            coaches = [a for a in created_agents if a.role == "coach"]
+            agent_prompts: dict[str, dict[str, str]] = {}
+            
+            for topic in topics:
+                topic_name = topic.get("name", "").lower()
+                # Find the coach whose specialization matches this topic
+                for coach in coaches:
+                    if coach.specialization and coach.specialization.lower() in topic_name:
+                        topic["coach_name"] = coach.name
+                        # Store prompts for this coach
+                        agent_prompts[coach.name] = {
+                            "soul_prompt": coach.soul_prompt or "",
+                            "skills_prompt": coach.skills_prompt or "",
+                        }
+                        break
+                    elif topic_name in (coach.specialization or "").lower():
+                        topic["coach_name"] = coach.name
+                        agent_prompts[coach.name] = {
+                            "soul_prompt": coach.soul_prompt or "",
+                            "skills_prompt": coach.skills_prompt or "",
+                        }
+                        break
+                # Fallback: use topic name if no coach found
+                if "coach_name" not in topic:
+                    topic["coach_name"] = topic.get("name", "Coach")
+            
+            # Also add personal manager prompts if exists
+            personal_manager = next((a for a in created_agents if a.role == "personal_manager"), None)
+            if personal_manager:
+                agent_prompts[personal_manager.name] = {
+                    "soul_prompt": personal_manager.soul_prompt or "",
+                    "skills_prompt": personal_manager.skills_prompt or "",
+                }
+            
+            await tracker.initialize_files(topics, coaching_style, agent_prompts)
+            logger.info(f"[Onboarding] Initialized progress tracking files with {len(agent_prompts)} agent prompts")
+        except Exception as e:
+            logger.warning(f"[Onboarding] Failed to initialize progress files: {e}")
+
+        # No tasks for coaching projects
+        created_tasks = []
+        logger.info("[Onboarding] Coaching project - no tasks created")
+
+    else:
+        # For software: PM sends welcome message
+        pm_agent = next((a for a in created_agents if a.role.lower() in ["pm", "product manager", "project manager"]), None)
+
+        if pm_agent and general_channel:
+            from app.models import Message
+
+            welcome_content = f"""Hey team! I'm {pm_agent.name}, and I'll be your PM for this project.
 
 Let me introduce everyone:
 {chr(10).join(f"• **{a.name}** - {a.role.title()}" + (f" ({a.team})" if a.team else "") for a in created_agents)}
 
-I've reviewed our project scope and I'm excited to get started. Let's build something great together! 🚀
+I've reviewed our project scope and I'm excited to get started. Let's build something great together!
 
 Check the task board for our initial backlog. Let me know if you have any questions!"""
-        
-        welcome_message = Message(
-            channel_id=general_channel.id,
-            agent_id=pm_agent.id,
-            content=welcome_content,
-            message_type="chat",
-        )
-        db.add(welcome_message)
-        await db.flush()
-        logger.info(f"[Onboarding] Created welcome message from PM in #general")
 
-    # Create initial tasks from breakdown
-    # The breakdown now contains specific, actionable tasks (not vague components)
-    breakdown = session.get("breakdown", {})
-    created_tasks = []
-    for component in breakdown.get("components", []):
-        # Use the task name directly - it's already a specific task description
-        task_name = component.get("name", "Task")
-        # Don't prefix with "Implement" if it's already a specific task
-        if not any(task_name.lower().startswith(prefix) for prefix in 
-                   ["create", "build", "implement", "set up", "design", "write", "test", "add", "configure"]):
-            task_name = f"Implement {task_name}"
-        
-        task = Task(
-            project_id=project.id,
-            title=task_name,
-            description=component.get("description"),
-            team=component.get("team"),
-            priority=component.get("priority", 0),
-            config={
-                "task_type": component.get("task_type", "development"),
-                "estimated_complexity": component.get("estimated_complexity", "moderate"),
-                "dependencies": component.get("dependencies", []),
-            },
-        )
-        db.add(task)
-        created_tasks.append(task)
-    
-    logger.info(f"[Onboarding] Created {len(created_tasks)} initial tasks")
-    await db.flush()
-    
-    # Broadcast task creation via WebSocket so frontend updates immediately
-    from app.websocket import manager as ws_manager, WebSocketEvent, EventType
-    for task in created_tasks:
-        await ws_manager.broadcast_to_project(
-            project.id,
-            WebSocketEvent(
-                type=EventType.TASK_NEW,
-                data={
-                    "id": str(task.id),
-                    "title": task.title,
-                    "description": task.description,
-                    "status": task.status,
-                    "priority": task.priority,
-                    "team": task.team,
-                    "project_id": str(project.id),
+            welcome_message = Message(
+                channel_id=general_channel.id,
+                agent_id=pm_agent.id,
+                content=welcome_content,
+                message_type="chat",
+            )
+            db.add(welcome_message)
+            await db.flush()
+            logger.info(f"[Onboarding] Created welcome message from PM in #general")
+
+        # Create initial tasks from breakdown (software projects only)
+        created_tasks = []
+        for component in breakdown.get("components", []):
+            task_name = component.get("name", "Task")
+            if not any(task_name.lower().startswith(prefix) for prefix in
+                       ["create", "build", "implement", "set up", "design", "write", "test", "add", "configure"]):
+                task_name = f"Implement {task_name}"
+
+            task = Task(
+                project_id=project.id,
+                title=task_name,
+                description=component.get("description"),
+                team=component.get("team"),
+                priority=component.get("priority", 0),
+                config={
+                    "task_type": component.get("task_type", "development"),
+                    "estimated_complexity": component.get("estimated_complexity", "moderate"),
+                    "dependencies": component.get("dependencies", []),
                 },
-            ),
-        )
-    logger.info(f"[Onboarding] Broadcast {len(created_tasks)} task creation events")
+            )
+            db.add(task)
+            created_tasks.append(task)
+
+        logger.info(f"[Onboarding] Created {len(created_tasks)} initial tasks")
+        await db.flush()
+
+        # Broadcast task creation via WebSocket
+        from app.websocket import manager as ws_manager, WebSocketEvent, EventType
+        for task in created_tasks:
+            await ws_manager.broadcast_to_project(
+                project.id,
+                WebSocketEvent(
+                    type=EventType.TASK_NEW,
+                    data={
+                        "id": str(task.id),
+                        "title": task.title,
+                        "description": task.description,
+                        "status": task.status,
+                        "priority": task.priority,
+                        "team": task.team,
+                        "project_id": str(project.id),
+                    },
+                ),
+            )
+        logger.info(f"[Onboarding] Broadcast {len(created_tasks)} task creation events")
 
     # Update project status to active
     project.status = "active"
@@ -766,13 +923,12 @@ Check the task board for our initial backlog. Let me know if you have any questi
     await db.commit()  # Final commit for all data
     logger.info(f"[Onboarding] Project finalized and committed: {project.id}")
 
-    # Start PM monitoring for active project management
+    # Start monitoring using strategy
     try:
-        from app.services.pm_manager import start_pm_monitoring
-        start_pm_monitoring(project.id)
-        logger.info(f"[Onboarding] PM monitoring started for project {project.id}")
+        strategy.start_monitoring(project.id)
+        logger.info(f"[Onboarding] Monitoring started for {team_type} project {project.id}")
     except Exception as e:
-        logger.warning(f"[Onboarding] Failed to start PM monitoring: {e}")
+        logger.warning(f"[Onboarding] Failed to start monitoring: {e}")
 
     # Clean up session
     del _onboarding_sessions[request.project_id]

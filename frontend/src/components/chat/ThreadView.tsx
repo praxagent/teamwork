@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import { useUIStore } from '@/stores';
 import type { Message, Agent } from '@/types';
 
 interface ThreadViewProps {
@@ -20,23 +21,31 @@ export function ThreadView({
   onClose,
   loading,
 }: ThreadViewProps) {
+  const darkMode = useUIStore((state) => state.darkMode);
+  
   if (!parentMessage) return null;
 
   const allMessages = [parentMessage, ...replies];
+  
+  // Explicit colors based on dark mode
+  const containerBg = darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200';
+  const titleColor = darkMode ? 'text-gray-100' : 'text-gray-900';
+  const subtitleColor = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const buttonColor = darkMode ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-500 hover:bg-gray-100';
 
   return (
-    <div className="w-96 border-l border-gray-200 flex flex-col h-full bg-white">
+    <div className={`w-96 border-l flex flex-col h-full ${containerBg}`}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+      <div className={`px-4 py-3 border-b flex items-center justify-between ${containerBg}`}>
         <div>
-          <h2 className="font-bold text-gray-900">Thread</h2>
-          <p className="text-sm text-gray-500">
-            {parentMessage.agent_name || 'CEO'} started this thread
+          <h2 className={`font-bold ${titleColor}`}>Thread</h2>
+          <p className={`text-sm ${subtitleColor}`}>
+            {parentMessage.agent_name || 'You'} started this thread
           </p>
         </div>
         <button
           onClick={onClose}
-          className="p-1 hover:bg-gray-100 rounded text-gray-500"
+          className={`p-1 rounded ${buttonColor}`}
         >
           <X className="w-5 h-5" />
         </button>

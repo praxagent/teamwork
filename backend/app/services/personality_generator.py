@@ -6,30 +6,12 @@ import logging
 import re
 from typing import Any
 
-from anthropic import AsyncAnthropic
 from pydantic import BaseModel
 
-from app.config import settings
+from app.services.base import BasePersonalityGenerator
+from app.utils.text import strip_markdown_json
 
 logger = logging.getLogger(__name__)
-
-
-def strip_markdown_json(text: str) -> str:
-    """Strip markdown code block wrappers from JSON responses."""
-    # Remove ```json or ``` at the start and ``` at the end
-    text = text.strip()
-    # Match ```json or ```JSON or just ```
-    if text.startswith("```"):
-        # Find the end of the first line (after ```json or ```)
-        first_newline = text.find("\n")
-        if first_newline != -1:
-            text = text[first_newline + 1:]
-        else:
-            text = text[3:]  # Just remove ```
-    # Remove trailing ```
-    if text.endswith("```"):
-        text = text[:-3]
-    return text.strip()
 
 
 class TeamMember(BaseModel):
@@ -42,37 +24,13 @@ class TeamMember(BaseModel):
     profile_image_type: str
 
 
-class PersonalityGenerator:
+class PersonalityGenerator(BasePersonalityGenerator):
     """Generates unique personalities for AI agents."""
 
     def __init__(self) -> None:
-        self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-        self.model = settings.model_onboarding  # Configurable via .env
-
-        # Name pools for diverse random team generation
-        self.first_names = [
-            "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Quinn", "Avery",
-            "Emma", "Olivia", "Ava", "Sophia", "Isabella", "Mia", "Charlotte", "Luna",
-            "Liam", "Noah", "Oliver", "James", "William", "Benjamin", "Lucas", "Henry",
-            "Aisha", "Yuki", "Mei", "Priya", "Fatima", "Zara", "Ananya", "Lakshmi",
-            "Wei", "Hiroshi", "Kenji", "Raj", "Arjun", "Omar", "Ahmed", "Hassan",
-            "Carlos", "Diego", "Miguel", "Sofia", "Maria", "Ana", "Elena", "Carmen",
-            "Nneka", "Amara", "Kofi", "Kwame", "Zainab", "Chioma", "Oluwaseun", "Adaeze",
-            "Erik", "Lars", "Ingrid", "Astrid", "Viktor", "Dmitri", "Natasha", "Katya",
-        ]
+        super().__init__()
         
-        self.last_names = [
-            "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis",
-            "Chen", "Wang", "Li", "Zhang", "Liu", "Yang", "Huang", "Wu",
-            "Kim", "Park", "Lee", "Choi", "Tanaka", "Yamamoto", "Sato", "Suzuki",
-            "Patel", "Singh", "Kumar", "Sharma", "Gupta", "Mehta", "Rao", "Reddy",
-            "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Santos", "Silva", "Costa",
-            "Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer", "Wagner", "Becker",
-            "Okafor", "Adeyemi", "Mensah", "Diallo", "Traore", "Nkosi", "Mwangi", "Osei",
-            "Anderson", "Taylor", "Thomas", "Jackson", "White", "Harris", "Thompson", "Clark",
-            "Johansson", "Nielsen", "Petrov", "Ivanov", "Kowalski", "Novak", "Dubois", "Martin",
-        ]
-        
+        # Software-specific personality summaries
         self.personality_summaries = [
             "Energetic and creative problem-solver who thrives in fast-paced environments. Known for bringing fresh ideas to the table.",
             "Calm and methodical worker who excels at breaking down complex problems. Great at mentoring junior team members.",
@@ -88,33 +46,6 @@ class PersonalityGenerator:
             "Passionate advocate for code quality and best practices. Enjoys code reviews and pair programming.",
         ]
 
-        # Diversity pools for random selection
-        self.locations = [
-            ("San Francisco", "USA"),
-            ("London", "UK"),
-            ("Toronto", "Canada"),
-            ("Berlin", "Germany"),
-            ("Tokyo", "Japan"),
-            ("Sydney", "Australia"),
-            ("Amsterdam", "Netherlands"),
-            ("Stockholm", "Sweden"),
-            ("Singapore", "Singapore"),
-            ("Dublin", "Ireland"),
-            ("Austin", "USA"),
-            ("Barcelona", "Spain"),
-            ("Bangalore", "India"),
-            ("São Paulo", "Brazil"),
-            ("Tel Aviv", "Israel"),
-        ]
-
-        self.profile_image_types = [
-            ("professional", 40),  # Professional headshot
-            ("vacation", 20),  # Travel/vacation photo
-            ("hobby", 15),  # Doing a hobby
-            ("pet", 15),  # With their pet
-            ("artistic", 10),  # Artistic/abstract
-        ]
-
         self.hobbies = [
             "hiking", "photography", "cooking", "gaming", "reading",
             "cycling", "yoga", "music", "painting", "gardening",
@@ -123,16 +54,14 @@ class PersonalityGenerator:
             "dancing", "volunteering", "podcasting", "film", "crafts",
         ]
 
-    def _select_image_type(self) -> str:
-        """Select a profile image type based on weighted probabilities."""
-        total = sum(w for _, w in self.profile_image_types)
-        r = random.randint(1, total)
-        current = 0
-        for img_type, weight in self.profile_image_types:
-            current += weight
-            if r <= current:
-                return img_type
-        return "professional"
+    # Implement abstract methods from BasePersonalityGenerator
+    async def suggest_team(self, breakdown: dict[str, Any]) -> list[BaseModel]:
+        """Alias for suggest_team_composition to satisfy base class."""
+        return await self.suggest_team_composition(breakdown)
+
+    async def generate_persona(self, suggestion: dict[str, Any]) -> dict[str, Any]:
+        """Alias for generate_full_persona to satisfy base class."""
+        return await self.generate_full_persona(suggestion)
 
     async def suggest_team_composition(
         self, breakdown: dict[str, Any]
@@ -187,25 +116,14 @@ Return ONLY a JSON array of exactly 4 team members, no explanation."""
         """Generate a random team with unique names."""
         used_names: set[str] = set()
         members: list[TeamMember] = []
-        image_types = ["professional", "vacation", "hobby", "pet", "artistic"]
-        
-        def get_unique_name() -> str:
-            for _ in range(100):  # Prevent infinite loop
-                first = random.choice(self.first_names)
-                last = random.choice(self.last_names)
-                name = f"{first} {last}"
-                if name not in used_names:
-                    used_names.add(name)
-                    return name
-            return f"Agent {random.randint(1000, 9999)}"
         
         # PM
         members.append(TeamMember(
-            name=get_unique_name(),
+            name=self._get_unique_name(used_names),
             role="pm",
             team=None,
             personality_summary=random.choice(self.personality_summaries),
-            profile_image_type=random.choice(image_types),
+            profile_image_type=self._select_image_type(),
         ))
         
         # Developers (2 for a team of 4)
@@ -214,20 +132,20 @@ Return ONLY a JSON array of exactly 4 team members, no explanation."""
         for i in range(dev_count):
             team = dev_teams[i % len(dev_teams)] if dev_teams else "Full Stack"
             members.append(TeamMember(
-                name=get_unique_name(),
+                name=self._get_unique_name(used_names),
                 role="developer",
                 team=team,
                 personality_summary=random.choice(self.personality_summaries),
-                profile_image_type=random.choice(image_types),
+                profile_image_type=self._select_image_type(),
             ))
         
         # QA (1)
         members.append(TeamMember(
-            name=get_unique_name(),
+            name=self._get_unique_name(used_names),
             role="qa",
             team=None,
             personality_summary=random.choice(self.personality_summaries),
-            profile_image_type=random.choice(image_types),
+            profile_image_type=self._select_image_type(),
         ))
         
         logger.info(f"[PersonalityGenerator] Generated random team: {[m.name for m in members]}")
@@ -239,7 +157,7 @@ Return ONLY a JSON array of exactly 4 team members, no explanation."""
         """
         Generate a complete persona from a team member suggestion.
         """
-        location = random.choice(self.locations)
+        location = self._random_location()
         selected_hobbies = random.sample(self.hobbies, min(3, len(self.hobbies)))
 
         prompt = f"""Create a detailed persona for this team member:

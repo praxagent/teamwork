@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
+import { TeamTypeStep } from './TeamTypeStep';
 import { AppDescriptionStep } from './AppDescriptionStep';
 import { ClarifyingQuestions } from './ClarifyingQuestions';
 import { TeamPreview } from './TeamPreview';
+import { CoachPreview } from './CoachPreview';
 import { ConfigOptions, type ConfigValues } from './ConfigOptions';
 import {
   useStartOnboarding,
@@ -17,16 +19,18 @@ import {
 } from '@/hooks/useApi';
 import type { TeamMemberSuggestion } from '@/types';
 
-type OnboardingStep = 'description' | 'questions' | 'team' | 'config';
+type TeamType = 'software' | 'coaching';
+type OnboardingStep = 'type' | 'description' | 'questions' | 'team' | 'config';
 
 interface OnboardingState {
+  teamType: TeamType;
   projectId: string | null;
   projectName: string;
   projectDescription: string;
   questions: string[];
   teamMembers: TeamMemberSuggestion[];        // Currently visible team
   allGeneratedMembers: TeamMemberSuggestion[]; // All members ever generated (for restore on slider up)
-  teams: string[];
+  teams: string[];  // For software: team names; For coaching: topic names
   error: string | null;
   statusMessage: string | null;
   recommendedTeamSize: number;
@@ -35,8 +39,9 @@ interface OnboardingState {
 
 export function OnboardingWizard() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<OnboardingStep>('description');
+  const [step, setStep] = useState<OnboardingStep>('type');
   const [state, setState] = useState<OnboardingState>({
+    teamType: 'software',
     projectId: null,
     projectName: '',
     projectDescription: '',
@@ -49,6 +54,11 @@ export function OnboardingWizard() {
     recommendedTeamSize: 5,
     desiredTeamSize: 5,
   });
+
+  const handleTeamTypeSelect = (type: TeamType) => {
+    setState(s => ({ ...s, teamType: type }));
+    setStep('description');
+  };
 
   const startOnboarding = useStartOnboarding();
   const submitAnswers = useSubmitAnswers();
@@ -66,12 +76,18 @@ export function OnboardingWizard() {
 
   const handleDescriptionSubmit = async (description: string) => {
     try {
-      setState(s => ({ ...s, error: null, statusMessage: 'Analyzing your project description...' }));
-      console.log('[Onboarding] Starting analysis...');
-      
-      const result = await startOnboarding.mutateAsync(description);
+      const statusMsg = state.teamType === 'coaching'
+        ? 'Analyzing your learning goals...'
+        : 'Analyzing your project description...';
+      setState(s => ({ ...s, error: null, statusMessage: statusMsg }));
+      console.log(`[Onboarding] Starting ${state.teamType} analysis...`);
+
+      const result = await startOnboarding.mutateAsync({
+        description,
+        team_type: state.teamType,
+      });
       console.log('[Onboarding] Analysis complete:', result);
-      
+
       setState({
         ...state,
         projectId: result.initial_analysis.project_id,
@@ -85,8 +101,8 @@ export function OnboardingWizard() {
     } catch (error) {
       console.error('[Onboarding] Failed to start onboarding:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      setState(s => ({ 
-        ...s, 
+      setState(s => ({
+        ...s,
         error: `Failed to analyze project: ${errorMessage}. Please check that ANTHROPIC_API_KEY is set correctly.`,
         statusMessage: null,
       }));
@@ -97,13 +113,19 @@ export function OnboardingWizard() {
   // Visually progresses through each step for better UX
   const handleQuickLaunch = async (description: string) => {
     setQuickLaunching(true);
-    
+
     try {
       // Step 1: Start onboarding (stay on description step)
-      setState(s => ({ ...s, error: null, statusMessage: 'Analyzing your project...' }));
-      console.log('[Onboarding] Quick launch - starting analysis...');
-      
-      const startResult = await startOnboarding.mutateAsync(description);
+      const statusMsg = state.teamType === 'coaching'
+        ? 'Analyzing your learning goals...'
+        : 'Analyzing your project...';
+      setState(s => ({ ...s, error: null, statusMessage: statusMsg }));
+      console.log(`[Onboarding] Quick launch (${state.teamType}) - starting analysis...`);
+
+      const startResult = await startOnboarding.mutateAsync({
+        description,
+        team_type: state.teamType,
+      });
       const projectId = startResult.initial_analysis.project_id;
       console.log('[Onboarding] Quick launch - project created:', projectId);
       
@@ -404,8 +426,18 @@ export function OnboardingWizard() {
     }
   };
 
-  const stepIndicators = ['description', 'questions', 'team', 'config'];
-  const currentStepIndex = stepIndicators.indexOf(step);
+  // Step indicators differ based on team type and current step
+  const getStepIndicators = () => {
+    if (step === 'type') {
+      // On type selection, show generic 4 steps
+      return ['type', 'description', 'questions', 'team'];
+    }
+    // After type is selected, show the 4-step flow
+    return ['description', 'questions', 'team', 'config'];
+  };
+
+  const stepIndicators = getStepIndicators();
+  const currentStepIndex = step === 'type' ? 0 : stepIndicators.indexOf(step);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -468,12 +500,18 @@ export function OnboardingWizard() {
 
       {/* Step content */}
       <div className="py-12 px-4">
+        {step === 'type' && (
+          <TeamTypeStep onSelect={handleTeamTypeSelect} />
+        )}
+
         {step === 'description' && (
           <AppDescriptionStep
             onSubmit={handleDescriptionSubmit}
             onQuickLaunch={handleQuickLaunch}
+            onBack={() => setStep('type')}
             loading={startOnboarding.isPending}
             quickLaunching={quickLaunching}
+            teamType={state.teamType}
           />
         )}
 
@@ -490,7 +528,18 @@ export function OnboardingWizard() {
           />
         )}
 
-        {step === 'team' && (
+        {step === 'team' && state.teamType === 'coaching' && (
+          <CoachPreview
+            teamMembers={state.teamMembers}
+            topics={state.teams}
+            onContinue={() => setStep('config')}
+            onBack={() => setStep('questions')}
+            onShuffleMember={handleShuffleMember}
+            quickLaunching={quickLaunching}
+          />
+        )}
+
+        {step === 'team' && state.teamType === 'software' && (
           <TeamPreview
             teamMembers={state.teamMembers}
             teams={state.teams}

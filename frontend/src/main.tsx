@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import './index.css'
+// Import store early to ensure dark mode is initialized on page load
+import './stores/uiStore'
 
 const queryClient = new QueryClient({
   defaultOptions: {

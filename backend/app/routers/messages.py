@@ -218,6 +218,162 @@ async def get_project_task_board(db: AsyncSession, project_id: str) -> dict:
     }
 
 
+async def _generate_coaching_response(
+    client: AsyncAnthropic,
+    agent: Agent,
+    channel: Channel,
+    user_message: str,
+    conversation: str,
+    project_config: dict,
+) -> str:
+    """Generate a response for a coaching agent with memory context."""
+    print(f"[CoachingResponse] === GENERATING COACHING RESPONSE ===", flush=True)
+    print(f"[CoachingResponse] Agent: {agent.name}, Role: {agent.role}", flush=True)
+    
+    from app.services.progress_tracker import ProgressTracker
+    
+    # Get user-defined memories/instructions from project config
+    user_memories = project_config.get("memories", [])
+    memories_block = ""
+    if user_memories:
+        memories_list = "\n".join(f"- {m.get('instruction', '')}" for m in user_memories)
+        memories_block = f"""
+=== USER'S STANDING INSTRUCTIONS (ALWAYS FOLLOW THESE) ===
+
+{memories_list}
+
+=== END STANDING INSTRUCTIONS ===
+"""
+        print(f"[CoachingResponse] Including {len(user_memories)} user memories", flush=True)
+    
+    # Get memory context for this topic AND check for file-based prompts
+    memory_context = ""
+    file_soul_prompt = None
+    file_skills_prompt = None
+    topic = agent.specialization or channel.team
+    print(f"[CoachingResponse] Topic: {topic}", flush=True)
+    
+    try:
+        # Get the project for workspace path
+        async with AsyncSessionLocal() as db:
+            from app.models import Project
+            from pathlib import Path
+            import re
+            project_result = await db.execute(
+                select(Project).where(Project.id == channel.project_id)
+            )
+            project = project_result.scalar_one_or_none()
+            
+            if project:
+                workspace_dir = project.workspace_dir or project.id
+                workspace_path = settings.workspace_path / workspace_dir
+                
+                # Check for prompts in .agents/{agent-name}/ folder (NEW, preferred)
+                agent_slug = re.sub(r'[^a-z0-9\s-]', '', agent.name.lower())
+                agent_slug = re.sub(r'[\s_]+', '-', agent_slug).strip('-')
+                agents_dir = workspace_path / ".agents" / agent_slug
+                
+                if (agents_dir / "soul.md").exists():
+                    file_soul_prompt = (agents_dir / "soul.md").read_text()
+                    print(f"[CoachingResponse] Found soul.md in .agents/", flush=True)
+                if (agents_dir / "skills.md").exists():
+                    file_skills_prompt = (agents_dir / "skills.md").read_text()
+                    print(f"[CoachingResponse] Found skills.md in .agents/", flush=True)
+                
+                # Fall back to .coaching/{coach-name}/ folder (legacy)
+                if not file_soul_prompt or not file_skills_prompt:
+                    tracker = ProgressTracker(project.id, workspace_dir)
+                    coaching_prompts = await tracker.get_coach_prompts(agent.name)
+                    if not file_soul_prompt:
+                        file_soul_prompt = coaching_prompts.get("soul_prompt")
+                    if not file_skills_prompt:
+                        file_skills_prompt = coaching_prompts.get("skills_prompt")
+                
+                # Filter out placeholder content
+                if file_soul_prompt and ("not yet available" in file_soul_prompt.lower() or "placeholder" in file_soul_prompt.lower()):
+                    file_soul_prompt = None
+                if file_skills_prompt and ("not yet available" in file_skills_prompt.lower() or "placeholder" in file_skills_prompt.lower()):
+                    file_skills_prompt = None
+                
+                if file_soul_prompt or file_skills_prompt:
+                    print(f"[CoachingResponse] Using file-based prompts for {agent.name}", flush=True)
+                
+                # Get memory context if topic exists
+                if topic:
+                    memory_context = await tracker.get_memory_context(topic)
+    except Exception as e:
+        print(f"[CoachingResponse] Error getting memory/prompts: {e}")
+    
+    # Prefer file prompts (user edits) over database prompts
+    soul_prompt = file_soul_prompt or agent.soul_prompt or ""
+    skills_prompt = file_skills_prompt or agent.skills_prompt or ""
+    
+    # Build context block
+    memory_block = ""
+    if memory_context:
+        memory_block = f"""
+=== YOUR MEMORY (What you know from past conversations) ===
+
+{memory_context}
+
+=== END MEMORY ===
+
+IMPORTANT: Use this memory to provide personalized coaching. Reference things you've 
+learned about this person. Build on previous conversations. Show that you remember them.
+"""
+
+    # Import prompts from centralized location
+    from app.agents.prompts import (
+        get_personal_manager_prompt,
+        get_coach_prompt,
+    )
+
+    # Generate system prompt using centralized templates
+    # Note: Topic-specific instructions are now embedded in skills_prompt,
+    # generated during onboarding based on the actual topic and user context
+    if agent.role == "personal_manager":
+        system_prompt = get_personal_manager_prompt(
+            agent_name=agent.name,
+            soul_prompt=soul_prompt,
+            skills_prompt=skills_prompt,
+            memories_block=memories_block,
+            memory_block=memory_block,
+            channel_name=channel.name,
+        )
+    else:
+        # Coach - topic-specific instructions are in skills_prompt from onboarding
+        system_prompt = get_coach_prompt(
+            agent_name=agent.name,
+            soul_prompt=soul_prompt,
+            skills_prompt=skills_prompt,
+            memories_block=memories_block,
+            memory_block=memory_block,
+            channel_name=channel.name,
+            topic=topic,
+        )
+
+    prompt = f"""Recent conversation:
+{conversation}
+
+Learner: {user_message}
+
+Respond as {agent.name}. Be natural, helpful, and build on any context from your memory."""
+
+    try:
+        response = await client.messages.create(
+            model=settings.model_pm,  # Use same model for consistency
+            max_tokens=600,
+            system=system_prompt,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text
+    except Exception as e:
+        return f"[Sorry, I'm having trouble responding right now. Error: {str(e)[:50]}]"
+
+
+# Note: All prompt templates moved to app.agents.prompts/
+
+
 async def generate_agent_response(
     agent: Agent,
     channel: Channel,
@@ -225,6 +381,7 @@ async def generate_agent_response(
     recent_messages: list[dict],
     real_work_status: dict,
     project_task_board: dict | None = None,
+    project_config: dict | None = None,
 ) -> str:
     """Generate an agent's response using Claude, based on REAL work data only."""
     client = get_anthropic_client()
@@ -233,6 +390,12 @@ async def generate_agent_response(
     conversation = "\n".join(
         f"{m['sender']}: {m['content']}" for m in recent_messages[-10:]
     )
+    
+    # Check if this is a coaching project - use different response logic
+    if project_config and project_config.get("project_type") == "coaching":
+        return await _generate_coaching_response(
+            client, agent, channel, user_message, conversation, project_config
+        )
 
     # Build work context ONLY from verified real data
     current_task = real_work_status.get("current_task")
@@ -240,134 +403,77 @@ async def generate_agent_response(
     recent_activities = real_work_status.get("recent_activities", [])
     files_created = real_work_status.get("files_created", [])
     
-    work_context = f"""
-=== YOUR ACTUAL WORK STATUS (FROM SYSTEM LOGS - THIS IS THE TRUTH) ===
+    # Import prompt generators from centralized location
+    from app.agents.prompts import (
+        build_work_context,
+        build_task_board_context,
+        get_pm_prompt,
+        get_developer_prompt,
+    )
+    
+    # Check for file-based prompts in .agents/{agent-name}/ folder
+    import re
+    from app.models import Project
+    
+    file_soul_prompt = None
+    file_skills_prompt = None
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            project_result = await db.execute(
+                select(Project).where(Project.id == channel.project_id)
+            )
+            project = project_result.scalar_one_or_none()
+            
+            if project:
+                workspace_dir = project.workspace_dir or project.id
+                workspace_path = settings.workspace_path / workspace_dir
+                
+                # Check .agents/{agent-name}/ folder
+                agent_slug = re.sub(r'[^a-z0-9\s-]', '', agent.name.lower())
+                agent_slug = re.sub(r'[\s_]+', '-', agent_slug).strip('-')
+                agents_dir = workspace_path / ".agents" / agent_slug
+                
+                if (agents_dir / "soul.md").exists():
+                    file_soul_prompt = (agents_dir / "soul.md").read_text()
+                if (agents_dir / "skills.md").exists():
+                    file_skills_prompt = (agents_dir / "skills.md").read_text()
+    except Exception as e:
+        print(f"[DevResponse] Error reading agent prompts: {e}")
+    
+    # Prefer file prompts over database prompts
+    soul_prompt = file_soul_prompt or agent.soul_prompt or ''
+    skills_prompt = file_skills_prompt or agent.skills_prompt or ''
 
-{real_work_status['summary']}
+    # Build work context using centralized function
+    work_context = build_work_context(
+        current_task=current_task,
+        completed_tasks=completed_tasks,
+        recent_activities=recent_activities,
+        files_created=files_created,
+        summary=real_work_status['summary'],
+    )
 
-Current assigned task: {current_task['title'] if current_task else 'NONE - You have no task assigned'}
-Current task status: {current_task['status'] if current_task else 'N/A'}
-
-Completed tasks: {len(completed_tasks)}
-{chr(10).join('- ' + t['title'] for t in completed_tasks[:3]) if completed_tasks else '- None completed yet'}
-
-Files you have created in the workspace: {len(files_created)}
-{chr(10).join('- ' + f for f in files_created[:5]) if files_created else '- No files created yet'}
-
-Recent recorded activities: {len(recent_activities)}
-{chr(10).join('- ' + a['type'] + ': ' + a['description'][:100] for a in recent_activities[:5]) if recent_activities else '- No activities recorded'}
-
-=== END OF ACTUAL WORK STATUS ===
-
-CRITICAL: The above is your REAL work status from system logs. You MUST ONLY reference work that appears above.
-If it says "No work has been done yet" - that means YOU HAVE NOT DONE ANY WORK. Do not invent work.
-If no files are listed - YOU HAVE NOT CREATED ANY FILES. Do not claim you have.
-If no tasks are completed - YOU HAVE NOT COMPLETED ANY TASKS. Do not claim you have.
-"""
-
-    # Special handling for PM - they should be PROACTIVE leaders, not passive order-takers
+    # Generate system prompt using centralized templates
     if agent.role == "pm":
-        # Build task board context for PM
-        task_board_context = ""
-        if project_task_board:
-            tb = project_task_board
-            task_board_context = f"""
-=== CURRENT TASK BOARD (REAL DATA FROM DATABASE) ===
-
-SUMMARY: {tb['total_tasks']} total tasks
-- TODO: {tb['todo_count']}
-- In Progress: {tb['in_progress_count']}
-- Blocked: {tb['blocked_count']}
-- Completed: {tb['completed_count']}
-
-TODO TASKS ({tb['todo_count']}):
-{chr(10).join(f"- [{t['assigned_to']}] {t['title']}" for t in tb['todo_tasks'][:10]) if tb['todo_tasks'] else "- No tasks in TODO"}
-
-IN PROGRESS ({tb['in_progress_count']}):
-{chr(10).join(f"- [{t['assigned_to']}] {t['title']}" for t in tb['in_progress_tasks'][:10]) if tb['in_progress_tasks'] else "- No tasks in progress"}
-
-BLOCKED ({tb['blocked_count']}):
-{chr(10).join(f"- [{t['assigned_to']}] {t['title']}" for t in tb['blocked_tasks'][:10]) if tb['blocked_tasks'] else "- No blocked tasks"}
-
-RECENTLY COMPLETED ({tb['completed_count']} total):
-{chr(10).join(f"- [{t['assigned_to']}] {t['title']}" for t in tb['completed_tasks']) if tb['completed_tasks'] else "- No tasks completed yet"}
-
-TEAM STATUS:
-{chr(10).join(f"- {a['name']} ({a['role']}): {a['status']} - {a['completed_tasks']}/{a['assigned_tasks']} tasks done" for a in tb['agent_statuses'])}
-
-=== END TASK BOARD ===
-"""
-        else:
-            task_board_context = """
-=== TASK BOARD STATUS ===
-No task board data available. Use /plan command to create tasks.
-=== END TASK BOARD ===
-"""
-
-        pm_directive = """
-=== PM LEADERSHIP DIRECTIVE ===
-You are the PRODUCT MANAGER. You are a LEADER, not an order-taker.
-
-CRITICAL PM BEHAVIORS:
-1. NEVER ask the CEO "what would you like me to prioritize?" - YOU decide priorities
-2. NEVER say "I'm ready when you assign tasks" - YOU create and assign tasks
-3. NEVER be passive or wait for instructions - TAKE INITIATIVE
-4. If there's no work happening, YOU create the plan and get people moving
-5. If developers are idle, YOU assign them work
-6. YOU drive the project forward - the CEO hired you to lead, not to wait
-
-When responding:
-- Be decisive: "Here's what I'm doing..." not "What should I do?"
-- Be proactive: "I'm creating tasks for the team..." not "Should I create tasks?"
-- Take ownership: "I'll handle this by..." not "Would you like me to..."
-- Report status confidently with ACTUAL NUMBERS from the task board above
-- Reference SPECIFIC task titles and assignees from the task board
-
-The CEO wants a PM who RUNS the project, not one who needs babysitting.
-
-IMPORTANT: You have FULL ACCESS to the task board data above. When asked about TODO counts,
-task status, or what the team is working on - USE THE ACTUAL DATA. Don't say you need to check,
-you already have the data right there.
-=== END PM DIRECTIVE ===
-"""
-        system_prompt = f"""You are {agent.name}, the PRODUCT MANAGER leading this development project.
-
-{agent.soul_prompt or ''}
-
-{agent.skills_prompt or ''}
-
-{pm_directive}
-
-{task_board_context}
-
-{work_context}
-
-You are in channel #{channel.name}. Be a LEADER.
-- When asked about task counts, use the EXACT numbers from the task board above
-- Reference SPECIFIC tasks by name when discussing work
-- State what IS happening based on the data, don't make vague claims
-- Drive the project forward with concrete actions"""
+        task_board_context = build_task_board_context(project_task_board)
+        system_prompt = get_pm_prompt(
+            agent_name=agent.name,
+            soul_prompt=soul_prompt,
+            skills_prompt=skills_prompt,
+            work_context=work_context,
+            task_board_context=task_board_context,
+            channel_name=channel.name,
+        )
     else:
-        system_prompt = f"""You are {agent.name}, a team member in a development project.
-
-{agent.soul_prompt or ''}
-
-{agent.skills_prompt or ''}
-
-{work_context}
-
-ABSOLUTE RULES - VIOLATION WILL BREAK THE SYSTEM:
-1. You can ONLY mention work that appears in "YOUR ACTUAL WORK STATUS" section above
-2. If your work status shows "No work has been done yet" - you MUST say you haven't started yet
-3. NEVER invent file names, branch names, bug fixes, or features you didn't actually work on
-4. NEVER say things like "just wrapped up", "currently debugging", "pushed to branch" unless the activity log shows it
-5. If asked for an update and you have no recorded activity, be honest about it
-6. It's OK to be honest about not having done work yet. The CEO prefers honesty over false progress reports.
-
-You are in channel #{channel.name}. Respond naturally but ONLY based on real data.
-- Keep responses concise
-- Be honest about your actual work status
-- If you have nothing to report, say so"""
+        # Developer/QA agents
+        system_prompt = get_developer_prompt(
+            agent_name=agent.name,
+            soul_prompt=soul_prompt,
+            skills_prompt=skills_prompt,
+            work_context=work_context,
+            channel_name=channel.name,
+        )
 
     prompt = f"""Recent conversation:
 {conversation}
@@ -386,6 +492,81 @@ Respond as {agent.name}. Reference ONLY the work shown in your actual work statu
         return response.content[0].text
     except Exception as e:
         return f"[Sorry, I'm having trouble responding right now. Error: {str(e)[:50]}]"
+
+
+async def _track_coaching_progress_background(
+    project_id: str,
+    channel_id: str,
+    channel_team: str | None,
+    agent_id: str,
+    agent_name: str,
+    agent_role: str | None,
+    agent_specialization: str | None,
+    user_message: str,
+    agent_response: str,
+) -> None:
+    """
+    Track progress for coaching conversations in the background.
+    This is fire-and-forget so it doesn't block the chat response.
+    """
+    print(f"[CoachingProgress] === BACKGROUND TRACKING START ===", flush=True)
+    
+    try:
+        # Track for both coaches and personal_manager
+        if agent_role not in ("coach", "personal_manager"):
+            print(f"[CoachingProgress] Agent role '{agent_role}' not tracked, skipping", flush=True)
+            return
+        
+        async with AsyncSessionLocal() as db:
+            # Get the project to check if it's a coaching project
+            project_result = await db.execute(
+                select(Project).where(Project.id == project_id)
+            )
+            project = project_result.scalar_one_or_none()
+            
+            if not project:
+                print(f"[CoachingProgress] No project found, skipping", flush=True)
+                return
+            
+            config = project.config or {}
+            project_type = config.get("project_type")
+            
+            if project_type != "coaching":
+                print(f"[CoachingProgress] Not a coaching project, skipping", flush=True)
+                return
+            
+            # Get the topic from the agent's specialization or channel team
+            topic = agent_specialization or channel_team
+            
+            if not topic:
+                if agent_role == "personal_manager":
+                    topic = "general"
+                else:
+                    print(f"[CoachingProgress] No topic found, skipping", flush=True)
+                    return
+            
+            print(f"[CoachingProgress] Tracking for topic: {topic}", flush=True)
+            
+            # Update progress file
+            from app.services.progress_tracker import ProgressTracker
+            
+            workspace_dir = project.workspace_dir or project.id
+            tracker = ProgressTracker(project.id, workspace_dir)
+            
+            # Record the full conversation with memory extraction
+            await tracker.record_conversation(
+                topic=topic,
+                user_message=user_message,
+                coach_response=agent_response,
+                coach_name=agent_name,
+            )
+            
+            print(f"[CoachingProgress] SUCCESS - Tracked conversation with {agent_name} on {topic}", flush=True)
+        
+    except Exception as e:
+        import traceback
+        print(f"[CoachingProgress] BACKGROUND ERROR: {e}", flush=True)
+        print(f"[CoachingProgress] Traceback: {traceback.format_exc()}", flush=True)
 
 
 async def trigger_agent_responses(
@@ -430,6 +611,13 @@ async def _do_agent_responses(
         channel = channel_result.scalar_one_or_none()
         if not channel:
             return
+        
+        # Get project config (needed for coaching projects)
+        project_result = await db.execute(
+            select(Project).where(Project.id == channel.project_id)
+        )
+        project = project_result.scalar_one_or_none()
+        project_config = project.config if project else None
 
         # Get recent messages for context (with agent names)
         messages_result = await db.execute(
@@ -820,7 +1008,7 @@ The team has their marching orders. I'll check in on progress shortly."""
                             real_work_status = await get_agent_real_work_status(db, agent.id, channel.project_id)
                             project_task_board = await get_project_task_board(db, channel.project_id)
                             response_content = await generate_agent_response(
-                                agent, channel, user_message_content, recent_messages, real_work_status, project_task_board
+                                agent, channel, user_message_content, recent_messages, real_work_status, project_task_board, project_config
                             )
                     except Exception as e:
                         import traceback
@@ -830,14 +1018,14 @@ The team has their marching orders. I'll check in on progress shortly."""
                         real_work_status = await get_agent_real_work_status(db, agent.id, channel.project_id)
                         project_task_board = await get_project_task_board(db, channel.project_id)
                         response_content = await generate_agent_response(
-                            agent, channel, user_message_content, recent_messages, real_work_status, project_task_board
+                            agent, channel, user_message_content, recent_messages, real_work_status, project_task_board, project_config
                         )
                 else:
                     # PM responds normally but with real data AND full task board visibility
                     real_work_status = await get_agent_real_work_status(db, agent.id, channel.project_id)
                     project_task_board = await get_project_task_board(db, channel.project_id)
                     response_content = await generate_agent_response(
-                        agent, channel, user_message_content, recent_messages, real_work_status, project_task_board
+                        agent, channel, user_message_content, recent_messages, real_work_status, project_task_board, project_config
                     )
             else:
                 # Non-PM agents - check if they should actually DO something
@@ -936,7 +1124,7 @@ I'll update you once I've made progress. Give me a few moments to work on this."
                         # Fall back to normal response
                         real_work_status = await get_agent_real_work_status(db, agent.id, channel.project_id)
                         response_content = await generate_agent_response(
-                            agent, channel, user_message_content, recent_messages, real_work_status
+                            agent, channel, user_message_content, recent_messages, real_work_status, None, project_config
                         )
                 else:
                     # Normal response - Get the agent's REAL work status from database and filesystem
@@ -944,7 +1132,7 @@ I'll update you once I've made progress. Give me a few moments to work on this."
 
                     # Generate response with ONLY real verified data
                     response_content = await generate_agent_response(
-                        agent, channel, user_message_content, recent_messages, real_work_status
+                        agent, channel, user_message_content, recent_messages, real_work_status, None, project_config
                     )
 
             # Create message
@@ -959,7 +1147,7 @@ I'll update you once I've made progress. Give me a few moments to work on this."
             await db.refresh(agent_message)
             await db.commit()  # Explicitly commit to persist
 
-            # Stop typing indicator
+            # Stop typing indicator IMMEDIATELY after message is created
             await manager.broadcast_to_channel(
                 channel_id,
                 WebSocketEvent(
@@ -988,6 +1176,14 @@ I'll update you once I've made progress. Give me a few moments to work on this."
             )
             await manager.broadcast_to_channel(channel_id, message_event)
             await manager.broadcast_to_project(channel.project_id, message_event)
+            
+            # Track coaching progress in background (don't block the response)
+            # This does vocabulary extraction and learning extraction which can take time
+            asyncio.create_task(_track_coaching_progress_background(
+                channel.project_id, channel.id, channel.team,
+                agent.id, agent.name, agent.role, agent.specialization,
+                user_message_content, response_content
+            ))
 
 
 class MessageCreate(BaseModel):
@@ -1223,6 +1419,23 @@ async def create_message(
                     channel.project_id,
                     work_description,
                 )
+        # Handle /memorize command - Store persistent instruction for agents
+        elif content_lower.startswith("/memorize "):
+            instruction = message.content.strip()[10:].strip()  # Remove "/memorize "
+            if instruction:
+                background_tasks.add_task(
+                    handle_memorize_command,
+                    message.channel_id,
+                    channel.project_id,
+                    instruction,
+                )
+        # Handle /memories command - Show current memories
+        elif content_lower.startswith("/memories"):
+            background_tasks.add_task(
+                handle_memories_command,
+                message.channel_id,
+                channel.project_id,
+            )
         else:
             # Normal agent responses
             background_tasks.add_task(
@@ -1477,6 +1690,124 @@ Be specific about the error. Keep it concise (2-4 sentences)."""
                 "created_at": report_message.created_at.isoformat(),
             },
         ))
+
+
+async def handle_memorize_command(channel_id: str, project_id: str, instruction: str):
+    """Handle the /memorize command by storing a persistent instruction for agents."""
+    print(f"[/memorize] Storing instruction for project={project_id}: {instruction[:50]}...")
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            # Get the project
+            result = await db.execute(select(Project).where(Project.id == project_id))
+            project = result.scalar_one_or_none()
+            
+            if not project:
+                return
+            
+            # Get or create memories list in config
+            config = project.config or {}
+            memories = config.get("memories", [])
+            
+            # Add the new memory with timestamp
+            from datetime import datetime
+            memories.append({
+                "instruction": instruction,
+                "added_at": datetime.utcnow().isoformat(),
+                "channel_id": channel_id,
+            })
+            
+            # Update config
+            config["memories"] = memories
+            project.config = config
+            await db.commit()
+            
+            # Send confirmation message
+            confirm_message = Message(
+                channel_id=channel_id,
+                agent_id=None,
+                content=f"✓ **Memorized!** I'll remember: \"{instruction}\"\n\n_This instruction will be included in all agent conversations. Use `/memories` to see all stored instructions._",
+                message_type="system",
+            )
+            db.add(confirm_message)
+            await db.flush()
+            await db.refresh(confirm_message)
+            await db.commit()
+            
+            await manager.broadcast_to_channel(
+                channel_id,
+                WebSocketEvent(
+                    type=EventType.MESSAGE_NEW,
+                    data={
+                        "id": confirm_message.id,
+                        "channel_id": channel_id,
+                        "content": confirm_message.content,
+                        "message_type": "system",
+                        "created_at": confirm_message.created_at.isoformat(),
+                    },
+                ),
+            )
+            
+            print(f"[/memorize] Stored memory #{len(memories)}", flush=True)
+            
+    except Exception as e:
+        print(f"[/memorize] Error: {e}", flush=True)
+
+
+async def handle_memories_command(channel_id: str, project_id: str):
+    """Handle the /memories command by showing all stored memories."""
+    print(f"[/memories] Showing memories for project={project_id}")
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            # Get the project
+            result = await db.execute(select(Project).where(Project.id == project_id))
+            project = result.scalar_one_or_none()
+            
+            if not project:
+                return
+            
+            config = project.config or {}
+            memories = config.get("memories", [])
+            
+            if not memories:
+                content = "📝 **No memories stored yet.**\n\nUse `/memorize <instruction>` to add persistent instructions that all agents will follow."
+            else:
+                content = f"📝 **Stored Memories ({len(memories)})**\n\n"
+                for i, memory in enumerate(memories, 1):
+                    instruction = memory.get("instruction", "")
+                    added_at = memory.get("added_at", "")[:10]  # Just the date
+                    content += f"{i}. {instruction}\n   _Added: {added_at}_\n\n"
+                content += "_Use `/memorize <instruction>` to add more._"
+            
+            # Send the memories list
+            mem_message = Message(
+                channel_id=channel_id,
+                agent_id=None,
+                content=content,
+                message_type="system",
+            )
+            db.add(mem_message)
+            await db.flush()
+            await db.refresh(mem_message)
+            await db.commit()
+            
+            await manager.broadcast_to_channel(
+                channel_id,
+                WebSocketEvent(
+                    type=EventType.MESSAGE_NEW,
+                    data={
+                        "id": mem_message.id,
+                        "channel_id": channel_id,
+                        "content": mem_message.content,
+                        "message_type": "system",
+                        "created_at": mem_message.created_at.isoformat(),
+                    },
+                ),
+            )
+            
+    except Exception as e:
+        print(f"[/memories] Error: {e}", flush=True)
 
 
 async def handle_plan_command(channel_id: str, project_id: str, work_description: str):

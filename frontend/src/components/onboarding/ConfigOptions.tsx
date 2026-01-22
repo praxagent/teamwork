@@ -204,32 +204,28 @@ export function ConfigOptions({
         {/* Workspace Type */}
         <div>
           <h2 className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-3">
-            Code Workspace
+            Version Control
           </h2>
           <div className="space-y-3">
             <OptionCard
               selected={config.workspace_type === 'local_git'}
               onClick={() => setConfig({ ...config, workspace_type: 'local_git' })}
               icon={FolderGit}
-              title="Local Directory with Git"
-              description="Code saved to ./workspace/ with git version control. Open in your IDE while agents work."
+              title="Git Version Control"
+              description="Initialize a git repository in the workspace. Track changes and revert if needed."
               badge="Recommended"
             />
             <OptionCard
               selected={config.workspace_type === 'browser'}
               onClick={() => setConfig({ ...config, workspace_type: 'browser' })}
               icon={Globe}
-              title="In-Browser Sandbox"
-              description="View and edit code directly in the browser."
-            />
-            <OptionCard
-              selected={config.workspace_type === 'hybrid'}
-              onClick={() => setConfig({ ...config, workspace_type: 'hybrid' })}
-              icon={Layers}
-              title="Hybrid"
-              description="Local git repo with in-browser code viewer. Best of both worlds."
+              title="No Version Control"
+              description="Plain file storage without git. Simpler but no change history."
             />
           </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Files are saved to ./workspace/ and viewable in both the browser and your local IDE.
+          </p>
         </div>
 
         {/* Task Execution */}

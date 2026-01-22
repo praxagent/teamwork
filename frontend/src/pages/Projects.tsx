@@ -67,7 +67,7 @@ export function Projects() {
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+            className="flex items-center gap-2 text-white/80 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
             Back to Home
@@ -87,12 +87,12 @@ export function Projects() {
         <h1 className="text-3xl font-bold text-white mb-8">My Projects</h1>
         
         {isLoading ? (
-          <div className="text-center py-20 text-white/60">
+          <div className="text-center py-20 text-white/70">
             Loading projects...
           </div>
         ) : projects.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-white/60 mb-6">You don't have any projects yet.</p>
+            <p className="text-white/70 mb-6">You don't have any projects yet.</p>
             <Button
               onClick={() => navigate('/new')}
               className="!bg-yellow-400 !text-purple-900 hover:!bg-yellow-300"
@@ -107,82 +107,79 @@ export function Projects() {
               const isEditing = editingProject === project.id;
               
               return (
-                <Card
+                <div
                   key={project.id}
-                  hoverable={!isEditing}
                   onClick={() => !isEditing && navigate(`/project/${project.id}`)}
-                  className={`bg-white/10 border-white/20 group relative ${!isEditing ? 'hover:bg-white/20' : ''}`}
+                  className={`bg-slate-800 border border-slate-600 rounded-lg p-4 group relative cursor-pointer transition-all ${!isEditing ? 'hover:bg-slate-700 hover:border-slate-500' : ''}`}
                 >
-                  <CardContent>
-                    {isEditing ? (
-                      // Edit mode
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          className="w-full bg-white/20 border border-white/30 rounded px-2 py-1 text-white font-bold text-lg mb-2 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                          placeholder="Project name"
-                          autoFocus
-                        />
-                        <textarea
-                          value={editDescription}
-                          onChange={(e) => setEditDescription(e.target.value)}
-                          className="w-full bg-white/20 border border-white/30 rounded px-2 py-1 text-white/90 text-sm mb-3 resize-none focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                          placeholder="Project description"
-                          rows={2}
-                        />
-                        <div className="flex items-center justify-end gap-2">
+                  {isEditing ? (
+                    // Edit mode
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-500 rounded px-2 py-1 text-white font-bold text-lg mb-2 focus:outline-none focus:ring-2 focus:ring-yellow-400 placeholder-slate-400"
+                        placeholder="Project name"
+                        autoFocus
+                      />
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-500 rounded px-2 py-1 text-white text-sm mb-3 resize-none focus:outline-none focus:ring-2 focus:ring-yellow-400 placeholder-slate-400"
+                        placeholder="Project description"
+                        rows={2}
+                      />
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={handleCancelEdit}
+                          className="p-1.5 rounded bg-slate-600 hover:bg-slate-500 text-white"
+                          title="Cancel"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={handleSaveEdit}
+                          disabled={updateProject.isPending}
+                          className="p-1.5 rounded bg-green-500 hover:bg-green-400 text-white"
+                          title="Save"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    // View mode
+                    <>
+                      <div className="flex items-start justify-between">
+                        <h3 className="font-bold text-white text-lg mb-1 flex-1">{project.name}</h3>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button
-                            onClick={handleCancelEdit}
-                            className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-white/70"
-                            title="Cancel"
+                            onClick={(e) => handleEditClick(project, e)}
+                            className="p-1.5 rounded hover:bg-slate-600 text-slate-300 hover:text-white"
+                            title="Edit project"
                           >
-                            <X className="w-4 h-4" />
+                            <Pencil className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={handleSaveEdit}
-                            disabled={updateProject.isPending}
-                            className="p-1.5 rounded bg-green-500/80 hover:bg-green-500 text-white"
-                            title="Save"
+                            onClick={(e) => handleDeleteClick(project, e)}
+                            className="p-1.5 rounded hover:bg-red-900/50 text-slate-300 hover:text-red-400"
+                            title="Delete project"
                           >
-                            <Check className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                    ) : (
-                      // View mode
-                      <>
-                        <div className="flex items-start justify-between">
-                          <h3 className="font-bold text-white text-lg mb-1 flex-1">{project.name}</h3>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                            <button
-                              onClick={(e) => handleEditClick(project, e)}
-                              className="p-1.5 rounded hover:bg-white/20 text-white/70 hover:text-white"
-                              title="Edit project"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteClick(project, e)}
-                              className="p-1.5 rounded hover:bg-red-500/20 text-white/70 hover:text-red-400"
-                              title="Delete project"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-white/70 text-sm line-clamp-2 mb-3">
-                          {project.description || 'No description'}
-                        </p>
-                        <div className="flex items-center justify-between text-white/50 text-sm">
-                          <span className="capitalize">{project.status}</span>
-                          <ArrowRight className="w-4 h-4" />
-                        </div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
+                      <p className="text-slate-300 text-sm line-clamp-2 mb-3">
+                        {project.description || 'No description'}
+                      </p>
+                      <div className="flex items-center justify-between text-slate-400 text-sm">
+                        <span className="capitalize">{project.status}</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </div>
+                    </>
+                  )}
+                </div>
               );
             })}
           </div>
