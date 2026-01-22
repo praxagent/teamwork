@@ -143,7 +143,7 @@ export function Home() {
               <ArrowRight className="w-5 h-5 text-white/40" />
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">3</span>
-                <span>Watch them build it</span>
+                <span>Manage the build</span>
               </div>
               <RotateCcw className="w-5 h-5 text-white/40" />
               <div className="flex items-center gap-2">
