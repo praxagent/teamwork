@@ -13,6 +13,12 @@ from app.services.onboarding_strategy import (
 )
 from app.services.coaching_personality_generator import CoachingPersonalityGenerator
 from app.services.image_generator import ImageGenerator
+from app.services.memory_store import (
+    MemoryStore,
+    MemoryTypes,
+    MemoryExtractor,
+    get_relevant_memories,
+)
 from app.services.personality_generator import PersonalityGenerator
 from app.services.pm_manager import PMManager, get_pm_manager
 from app.services.progress_tracker import ProgressTracker
@@ -37,6 +43,11 @@ __all__ = [
     "CoachingManager",
     "CoachingPersonalityGenerator",
     "ProgressTracker",
+    # Memory services
+    "MemoryStore",
+    "MemoryTypes",
+    "MemoryExtractor",
+    "get_relevant_memories",
     # Onboarding strategies
     "OnboardingStrategy",
     "SoftwareOnboardingStrategy",

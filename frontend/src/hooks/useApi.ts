@@ -817,7 +817,7 @@ export function useAgentLogs(agentId: string | null) {
 export interface LiveOutputResponse {
   agent_id: string;
   agent_name: string;
-  status: 'running' | 'completed' | 'timeout' | 'error' | 'idle' | 'initializing' | 'preparing' | 'invoking' | 'stale_reset';
+  status: 'running' | 'completed' | 'timeout' | 'error' | 'idle' | 'initializing' | 'preparing' | 'invoking' | 'stale_reset' | 'stopped' | 'failed' | 'retry_loop' | 'startup_failed';
   output: string | null;
   last_update: string | null;
   started_at: string | null;

@@ -168,7 +168,7 @@ export function ConfigOptions({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slack-active focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-slack-active focus:border-transparent"
                 placeholder="My Awesome Project"
               />
             </div>
@@ -179,7 +179,7 @@ export function ConfigOptions({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slack-active focus:border-transparent resize-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-slack-active focus:border-transparent resize-none"
                 placeholder="A brief description of your project..."
                 rows={2}
               />

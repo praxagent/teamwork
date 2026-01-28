@@ -226,8 +226,12 @@ export function AgentLogViewer({ agent, onClose }: AgentLogViewerProps) {
   const [autoScroll, setAutoScroll] = useState(true);
   const { data: logsData, isLoading, error, refetch } = useAgentLogs(agent.id);
   const isWorking = agent.status === 'working';
-  // Always fetch live output if agent appears to be working - this helps detect stale states
-  const { data: liveOutput, refetch: refetchLiveOutput } = useAgentLiveOutput(agent.id, isWorking);
+  // Always fetch live output - this preserves session history even after agent goes idle
+  const { data: liveOutput, refetch: refetchLiveOutput } = useAgentLiveOutput(agent.id, true);
+  
+  // Show live output section if agent is working OR if we have recent session output
+  const hasLiveOutput = liveOutput?.output && liveOutput.output.length > 50;
+  const showLiveSection = isWorking || hasLiveOutput;
   
   // When we detect a stale reset, invalidate the agents query so the UI updates
   useEffect(() => {
@@ -310,34 +314,61 @@ export function AgentLogViewer({ agent, onClose }: AgentLogViewerProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Live Output Section (when agent is working) */}
-          {isWorking && (
+          {/* Live Output Section (when agent is working or has recent session history) */}
+          {showLiveSection && (
             <div className={`mb-6 border rounded-lg overflow-hidden ${
               liveOutput?.status === 'stale_reset' ? 'border-yellow-200' :
-              liveOutput?.status === 'error' ? 'border-red-300' :
+              liveOutput?.status === 'error' || liveOutput?.status === 'failed' ? 'border-red-300' :
+              liveOutput?.status === 'completed' ? 'border-green-200' :
+              liveOutput?.status === 'stopped' ? 'border-gray-300' :
+              liveOutput?.status === 'timeout' || liveOutput?.status === 'retry_loop' ? 'border-yellow-300' :
               'border-red-200'
             }`}>
               <div className={`flex items-center gap-2 px-4 py-2 border-b ${
                 liveOutput?.status === 'stale_reset' ? 'bg-yellow-50 border-yellow-200' :
-                liveOutput?.status === 'error' ? 'bg-red-100 border-red-200' :
+                liveOutput?.status === 'error' || liveOutput?.status === 'failed' ? 'bg-red-100 border-red-200' :
+                liveOutput?.status === 'completed' ? 'bg-green-50 border-green-200' :
+                liveOutput?.status === 'stopped' ? 'bg-gray-100 border-gray-200' :
+                liveOutput?.status === 'timeout' || liveOutput?.status === 'retry_loop' ? 'bg-yellow-50 border-yellow-200' :
                 'bg-red-50 border-red-200'
               }`}>
                 {liveOutput?.status === 'stale_reset' ? (
                   <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                ) : liveOutput?.status === 'completed' ? (
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                ) : liveOutput?.status === 'stopped' ? (
+                  <AlertTriangle className="w-4 h-4 text-gray-500" />
+                ) : liveOutput?.status === 'failed' || liveOutput?.status === 'error' ? (
+                  <AlertTriangle className="w-4 h-4 text-red-500" />
+                ) : liveOutput?.status === 'timeout' || liveOutput?.status === 'retry_loop' ? (
+                  <Clock className="w-4 h-4 text-yellow-500" />
                 ) : (
                   <Radio className="w-4 h-4 text-red-500 animate-pulse" />
                 )}
                 <span className={`text-sm font-medium ${
-                  liveOutput?.status === 'stale_reset' ? 'text-yellow-700' : 'text-red-700'
+                  liveOutput?.status === 'stale_reset' ? 'text-yellow-700' :
+                  liveOutput?.status === 'completed' ? 'text-green-700' :
+                  liveOutput?.status === 'stopped' ? 'text-gray-700' :
+                  liveOutput?.status === 'failed' || liveOutput?.status === 'error' ? 'text-red-700' :
+                  liveOutput?.status === 'timeout' || liveOutput?.status === 'retry_loop' ? 'text-yellow-700' :
+                  'text-red-700'
                 }`}>
-                  {liveOutput?.status === 'stale_reset' ? 'Stale State Detected' : 'Live Claude Code Output'}
+                  {liveOutput?.status === 'stale_reset' ? 'Stale State Detected' :
+                   liveOutput?.status === 'completed' ? 'Task Completed - Session Log' :
+                   liveOutput?.status === 'stopped' ? 'Agent Stopped - Session Log' :
+                   liveOutput?.status === 'failed' ? 'Task Failed - Session Log' :
+                   liveOutput?.status === 'timeout' ? 'Task Timed Out - Session Log' :
+                   liveOutput?.status === 'retry_loop' ? 'Retry Loop Detected - Session Log' :
+                   'Live Claude Code Output'}
                 </span>
                 {liveOutput?.status && (
                   <span className={`text-xs px-2 py-0.5 rounded ${
                     liveOutput.status === 'running' ? 'bg-green-100 text-green-700' :
-                    liveOutput.status === 'error' ? 'bg-red-100 text-red-700' :
-                    liveOutput.status === 'timeout' ? 'bg-yellow-100 text-yellow-700' :
+                    liveOutput.status === 'completed' ? 'bg-green-100 text-green-700' :
+                    liveOutput.status === 'error' || liveOutput.status === 'failed' ? 'bg-red-100 text-red-700' :
+                    liveOutput.status === 'timeout' || liveOutput.status === 'retry_loop' || liveOutput.status === 'startup_failed' ? 'bg-yellow-100 text-yellow-700' :
                     liveOutput.status === 'stale_reset' ? 'bg-yellow-100 text-yellow-700' :
+                    liveOutput.status === 'stopped' ? 'bg-gray-100 text-gray-700' :
                     liveOutput.status === 'idle' ? 'bg-gray-100 text-gray-700' :
                     'bg-blue-100 text-blue-700'
                   }`}>
@@ -356,7 +387,13 @@ export function AgentLogViewer({ agent, onClose }: AgentLogViewerProps) {
                   className="p-4 bg-gray-900 text-green-400 text-xs font-mono whitespace-pre-wrap"
                 >
                   {liveOutput?.output ? (
-                    <span className={liveOutput?.status === 'stale_reset' ? 'text-yellow-400' : 'text-green-400'}>
+                    <span className={
+                      liveOutput?.status === 'stale_reset' ? 'text-yellow-400' :
+                      liveOutput?.status === 'completed' ? 'text-green-400' :
+                      liveOutput?.status === 'error' || liveOutput?.status === 'failed' ? 'text-red-300' :
+                      liveOutput?.status === 'timeout' || liveOutput?.status === 'retry_loop' ? 'text-yellow-300' :
+                      'text-green-400'
+                    }>
                       {liveOutput.output}
                     </span>
                   ) : liveOutput?.status === 'running' ? (
@@ -371,8 +408,18 @@ export function AgentLogViewer({ agent, onClose }: AgentLogViewerProps) {
                     <span className="text-yellow-400">Agent was in a stale state and has been reset. Try starting a new task.</span>
                   ) : liveOutput?.error ? (
                     <span className="text-red-400">Error: {liveOutput.error}</span>
-                  ) : liveOutput?.status === 'error' ? (
+                  ) : liveOutput?.status === 'error' || liveOutput?.status === 'failed' ? (
                     <span className="text-red-400">An error occurred. Check agent logs for details.</span>
+                  ) : liveOutput?.status === 'completed' ? (
+                    <span className="text-green-400">Task completed successfully.</span>
+                  ) : liveOutput?.status === 'stopped' ? (
+                    <span className="text-gray-400">Agent was stopped.</span>
+                  ) : liveOutput?.status === 'timeout' ? (
+                    <span className="text-yellow-400">Task timed out.</span>
+                  ) : liveOutput?.status === 'retry_loop' ? (
+                    <span className="text-yellow-400">Task stopped due to retry loop detection.</span>
+                  ) : liveOutput?.status === 'startup_failed' ? (
+                    <span className="text-red-400">Claude Code failed to start. Check API connectivity.</span>
                   ) : liveOutput?.status === 'idle' ? (
                     <span className="text-gray-400">Agent is idle. No active task execution.</span>
                   ) : (

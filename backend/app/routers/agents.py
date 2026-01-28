@@ -681,8 +681,12 @@ async def get_project_live_sessions(
             "preparing": 2,
             "initializing": 3,
             "completed": 4,
-            "error": 5,
-            "timeout": 6,
+            "stopped": 5,
+            "failed": 6,
+            "retry_loop": 7,
+            "startup_failed": 8,
+            "error": 9,
+            "timeout": 10,
         }
         return (status_order.get(s.status, 99), s.last_update or "")
     
@@ -709,29 +713,40 @@ async def agent_terminal_websocket(
     Send text messages to provide input to the terminal.
     """
     from app.services.agent_manager import get_agent_manager
+    from starlette.websockets import WebSocketDisconnect
     
     await websocket.accept()
     
     agent_manager = get_agent_manager()
     terminal = agent_manager.get_agent_terminal(agent_id)
     
-    if not terminal:
-        # No active terminal - send current output if available
+    try:
+        if not terminal:
+            # No active terminal - send current output if available
+            live_output = agent_manager.get_live_output(agent_id)
+            if live_output and live_output.get("output"):
+                await websocket.send_text(live_output["output"])
+                await websocket.send_text("\n[No active terminal session]\n")
+            else:
+                await websocket.send_text("[No active terminal session for this agent]\n")
+            await websocket.close()
+            return
+        
+        # Send existing parsed output (not raw terminal buffer which is JSON)
         live_output = agent_manager.get_live_output(agent_id)
         if live_output and live_output.get("output"):
             await websocket.send_text(live_output["output"])
-            await websocket.send_text("\n[No active terminal session]\n")
-        else:
-            await websocket.send_text("[No active terminal session for this agent]\n")
-        await websocket.close()
+        
+        # Attach to terminal for live updates
+        agent_manager.attach_websocket_to_terminal(agent_id, websocket)
+    except WebSocketDisconnect:
+        # Client disconnected before we could send - this is normal
+        print(f">>> Terminal WebSocket client disconnected early for agent {agent_id}", flush=True)
         return
-    
-    # Send existing output buffer
-    if terminal.output_buffer:
-        await websocket.send_text(terminal.output_buffer)
-    
-    # Attach to terminal for live updates
-    agent_manager.attach_websocket_to_terminal(agent_id, websocket)
+    except Exception as e:
+        # Handle any other send errors gracefully
+        print(f">>> Terminal WebSocket send error for agent {agent_id}: {e}", flush=True)
+        return
     
     try:
         # Handle incoming messages (user input for takeover)

@@ -235,6 +235,15 @@ Create a breakdown with 6-12 SPECIFIC tasks. IMPORTANT RULES:
 - Testing tasks should be assigned to QA team
 - Order tasks by dependency (things that need to be done first get higher priority)
 
+CRITICAL - SPLIT LARGE TASKS INTO SMALLER FOCUSED TASKS:
+- "Set up project with dependencies" should be SEPARATE from "Create folder structure"
+- "Install and configure tooling" should be SEPARATE from "Create sample components"
+- "Write tests" should be SEPARATE from "Set up testing infrastructure"
+- Each task should focus on ONE clear deliverable, not a multi-step workflow
+- If a task has multiple distinct phases (install, configure, create, verify), split it into multiple tasks
+- Tasks involving both setup AND verification/testing should be split into separate tasks
+- Avoid bundling "set up X and create sample Y" into one task - these are two tasks
+
 Create a breakdown with:
 1. components: Array of SPECIFIC tasks (NOT vague features), each with:
    - name: Specific task name (e.g., "Create user registration form with email validation", NOT "Implement User Auth")
@@ -245,19 +254,23 @@ Create a breakdown with:
    - estimated_complexity: simple, moderate, complex
    - dependencies: Array of other task names this depends on
 
-EXAMPLE GOOD TASKS:
-- "Set up project structure with React and TypeScript" (priority 5, Frontend)
-- "Create database schema for users and tasks" (priority 5, Backend)  
-- "Build login form with email/password inputs" (priority 4, Frontend)
-- "Implement JWT authentication endpoint" (priority 4, Backend)
-- "Write unit tests for authentication flow" (priority 3, QA)
-- "Create task list component with drag-drop" (priority 3, Frontend)
-- "End-to-end testing of complete user flow" (priority 2, QA)
+EXAMPLE GOOD TASKS (focused, single-deliverable):
+- "Initialize project with package manager and dependencies" (priority 5)
+- "Create folder structure for components, utils, and services" (priority 5)
+- "Create database schema for users table" (priority 5)
+- "Build login form UI component" (priority 4)
+- "Implement authentication API endpoint" (priority 4)
+- "Set up testing framework and configuration" (priority 4)
+- "Write unit tests for authentication" (priority 3, QA)
+- "Create reusable button and input components" (priority 3)
+- "End-to-end testing of login flow" (priority 2, QA)
 
 EXAMPLE BAD TASKS (DO NOT DO THIS):
 - "Implement Core Application" (too vague)
 - "Build the frontend" (too vague)
 - "Handle backend logic" (too vague)
+- "Set up project structure with tooling and create sample components" (BUNDLED - split into separate tasks!)
+- "Install dependencies, configure linting, and write tests" (BUNDLED - split into 3 tasks!)
 
 2. teams: Array of team names needed
 

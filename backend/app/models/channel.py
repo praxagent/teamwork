@@ -40,9 +40,10 @@ class Channel(Base):
     )
 
     # Relationships
+    # passive_deletes=True tells SQLAlchemy to let the database CASCADE handle deletes
     project: Mapped["Project"] = relationship("Project", back_populates="channels")
     messages: Mapped[list["Message"]] = relationship(
-        "Message", back_populates="channel", cascade="all, delete-orphan"
+        "Message", back_populates="channel", cascade="all, delete-orphan", passive_deletes=True
     )
 
     def __repr__(self) -> str:

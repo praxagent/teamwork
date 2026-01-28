@@ -542,20 +542,57 @@ async def reset_project(
     
     # Clear workspace directory (use project.workspace_dir, not config)
     workspace_dir_name = project.workspace_dir or project.get_workspace_dir_name()
+    files_deleted = 0
     if workspace_dir_name:
         workspace_path = settings.workspace_path / workspace_dir_name
+        print(f">>> Reset: Looking for workspace at {workspace_path}", flush=True)
         if workspace_path.exists() and workspace_path.is_dir():
             print(f">>> Reset: Clearing workspace {workspace_path}", flush=True)
-            # Don't delete, just clear contents (keep .git for history)
-            for item in workspace_path.iterdir():
-                if item.name not in [".git"]:  # Keep git history
-                    try:
-                        if item.is_dir():
-                            shutil.rmtree(item)
-                        else:
-                            item.unlink()
-                    except Exception as e:
-                        print(f">>> Reset: Could not delete {item}: {e}", flush=True)
+            items_to_delete = [item for item in workspace_path.iterdir() if item.name not in [".git"]]
+            print(f">>> Reset: Found {len(items_to_delete)} items to delete (excluding .git)", flush=True)
+            
+            # First try: use Python's shutil (works for files we own)
+            for item in items_to_delete:
+                try:
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                    else:
+                        item.unlink()
+                    files_deleted += 1
+                    print(f">>> Reset: Deleted {item.name}", flush=True)
+                except PermissionError as e:
+                    print(f">>> Reset: Permission denied for {item.name}, will try Docker cleanup", flush=True)
+                except Exception as e:
+                    print(f">>> Reset: Could not delete {item}: {e}", flush=True)
+            
+            # Second try: if files remain, use Docker to clean (handles root-owned files)
+            remaining = [item for item in workspace_path.iterdir() if item.name not in [".git"]]
+            if remaining:
+                print(f">>> Reset: {len(remaining)} items remain, using Docker to clean root-owned files", flush=True)
+                try:
+                    # Use a minimal Docker container to rm -rf the workspace contents
+                    # Mount the workspace and delete everything except .git
+                    docker_clean_cmd = [
+                        "docker", "run", "--rm",
+                        "-v", f"{workspace_path}:/workspace",
+                        "alpine:latest",
+                        "sh", "-c",
+                        "cd /workspace && find . -maxdepth 1 ! -name '.' ! -name '.git' -exec rm -rf {} +"
+                    ]
+                    result_clean = subprocess.run(docker_clean_cmd, capture_output=True, timeout=30)
+                    if result_clean.returncode == 0:
+                        remaining_after = [item for item in workspace_path.iterdir() if item.name not in [".git"]]
+                        cleaned = len(remaining) - len(remaining_after)
+                        print(f">>> Reset: Docker cleaned {cleaned} more items", flush=True)
+                        files_deleted += cleaned
+                    else:
+                        print(f">>> Reset: Docker clean failed: {result_clean.stderr.decode()}", flush=True)
+                except Exception as e:
+                    print(f">>> Reset: Docker cleanup failed: {e}", flush=True)
+        else:
+            print(f">>> Reset: Workspace path does not exist: {workspace_path}", flush=True)
+    else:
+        print(f">>> Reset: No workspace_dir found for project", flush=True)
     
     # Make sure project is not paused so tasks can be picked up
     project.status = "active"
@@ -600,11 +637,11 @@ async def reset_project(
         except Exception as e:
             print(f">>> Reset: Error creating coaching files: {e}", flush=True)
     
-    print(f">>> Reset complete: {tasks_reset} tasks, {messages_cleared} messages, {activities_cleared} activities cleared", flush=True)
+    print(f">>> Reset complete: {tasks_reset} tasks, {messages_cleared} messages, {activities_cleared} activities, {files_deleted} files cleared", flush=True)
     
     return ResetResponse(
         success=True,
-        message=f"Project reset. {tasks_reset} tasks reset, {messages_cleared} messages cleared.",
+        message=f"Project reset. {tasks_reset} tasks reset, {messages_cleared} messages cleared, {files_deleted} files deleted.",
         tasks_reset=tasks_reset,
         activities_cleared=activities_cleared,
         messages_cleared=messages_cleared,

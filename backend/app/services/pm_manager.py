@@ -1367,9 +1367,19 @@ Break this goal into 3-7 specific, actionable tasks. IMPORTANT:
 - Assign development tasks to developers
 - Assign testing/QA tasks to QA engineers
 
+CRITICAL - SPLIT LARGE TASKS INTO SMALLER FOCUSED TASKS:
+- Each task should focus on ONE clear deliverable, not a multi-step workflow
+- "Set up project with dependencies" should be SEPARATE from "Create folder structure"
+- "Install and configure tooling" should be SEPARATE from "Create components"
+- "Write tests" should be SEPARATE from "Set up testing infrastructure"
+- If a task has multiple distinct phases (install, configure, create, verify), split it
+- Tasks involving both setup AND testing/verification should be split into separate tasks
+- Avoid bundling "set up X and create sample Y" into one task - these are two tasks
+- Each task should be completable in 15-30 minutes, not hours
+
 Each task should be:
-- Clear and specific
-- Achievable by one person
+- Clear and specific - ONE deliverable only
+- Achievable by one person in under 30 minutes
 - Have a descriptive title (max 100 chars)
 - Have a brief description of what needs to be done
 - Specify the task_type: "development" or "testing"

@@ -49,15 +49,16 @@ class Agent(Base):
     )
 
     # Relationships
+    # passive_deletes=True tells SQLAlchemy to let the database CASCADE handle deletes
     project: Mapped["Project"] = relationship("Project", back_populates="agents")
     messages: Mapped[list["Message"]] = relationship(
-        "Message", back_populates="agent", cascade="all, delete-orphan"
+        "Message", back_populates="agent", cascade="all, delete-orphan", passive_deletes=True
     )
     assigned_tasks: Mapped[list["Task"]] = relationship(
         "Task", back_populates="assigned_agent", foreign_keys="Task.assigned_to"
     )
     activities: Mapped[list["ActivityLog"]] = relationship(
-        "ActivityLog", back_populates="agent", cascade="all, delete-orphan"
+        "ActivityLog", back_populates="agent", cascade="all, delete-orphan", passive_deletes=True
     )
 
     def __repr__(self) -> str:

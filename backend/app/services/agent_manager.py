@@ -10,7 +10,7 @@ import struct
 import subprocess
 import termios
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -288,7 +288,7 @@ class AgentManager:
             agent_id=agent_id,
             master_fd=master_fd,
             process=process,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         self._agent_terminals[agent_id] = terminal
@@ -328,10 +328,51 @@ class AgentManager:
             for block in content:
                 if isinstance(block, dict):
                     if block.get("type") == "text":
-                        texts.append(block.get("text", ""))
+                        text = block.get("text", "")
+                        if text:
+                            texts.append(text)
                     elif block.get("type") == "tool_use":
                         tool_name = block.get("name", "unknown")
-                        texts.append(f"\n🔧 Using tool: {tool_name}")
+                        tool_input = block.get("input", {})
+                        # Format tool usage with input preview
+                        if tool_name == "Bash":
+                            cmd = tool_input.get("command", "")[:100]
+                            texts.append(f"\n🔧 Running: {cmd}")
+                        elif tool_name == "Write":
+                            path = tool_input.get("file_path", tool_input.get("path", ""))
+                            texts.append(f"\n📝 Writing: {path}")
+                        elif tool_name == "Edit":
+                            path = tool_input.get("file_path", tool_input.get("path", ""))
+                            texts.append(f"\n✏️ Editing: {path}")
+                        elif tool_name == "Read":
+                            path = tool_input.get("file_path", tool_input.get("path", ""))
+                            texts.append(f"\n📖 Reading: {path}")
+                        elif tool_name == "TodoWrite":
+                            texts.append(f"\n📋 Updating todos")
+                        else:
+                            texts.append(f"\n🔧 Using: {tool_name}")
+            return "\n".join(texts) if texts else None
+        
+        elif msg_type == "user":
+            # Tool results - show what the tool returned
+            content = data.get("message", {}).get("content", [])
+            texts = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "tool_result":
+                        result_content = block.get("content", "")
+                        is_error = block.get("is_error", False)
+                        if is_error:
+                            # Show first 200 chars of error
+                            preview = result_content[:200] if isinstance(result_content, str) else str(result_content)[:200]
+                            texts.append(f"\n❌ Error: {preview}...")
+                        elif result_content:
+                            # Show brief preview of result
+                            preview = result_content[:150] if isinstance(result_content, str) else str(result_content)[:150]
+                            if len(result_content) > 150:
+                                texts.append(f"   ↳ {preview}...")
+                            else:
+                                texts.append(f"   ↳ {preview}")
             return "\n".join(texts) if texts else None
         
         elif msg_type == "content_block_delta":
@@ -346,7 +387,7 @@ class AgentManager:
             block = data.get("content_block", {})
             if block.get("type") == "tool_use":
                 tool_name = block.get("name", "unknown")
-                return f"\n🔧 Using tool: {tool_name}\n"
+                return f"\n🔧 Starting: {tool_name}\n"
             elif block.get("type") == "text":
                 return ""  # Text block starting
         
@@ -370,7 +411,7 @@ class AgentManager:
             if message:
                 return f"ℹ️ {message}\n"
         
-        # Skip other message types
+        # Skip other message types (like raw tool input JSON)
         return None
 
     def _detect_and_respond_to_prompts(self, agent_id: str, terminal: 'AgentTerminal') -> str | None:
@@ -861,6 +902,7 @@ For suggested_input (VERY IMPORTANT):
         
         terminal = self._agent_terminals.get(agent_id)
         if not terminal:
+            print(f">>> Reader: No terminal for agent {agent_id[:8]}", flush=True)
             return
         
         # UTF-8 decoder that buffers incomplete sequences
@@ -870,14 +912,19 @@ For suggested_input (VERY IMPORTANT):
         started_at = terminal.started_at.isoformat()
         
         # Track when we last responded to avoid rapid-fire responses
-        last_response_time = datetime.min
+        last_response_time = datetime.min.replace(tzinfo=timezone.utc)
         response_cooldown = 0.5  # Seconds between auto-responses (reduced for faster handling)
         
         # Track what prompts we've already responded to
         responded_prompts = set()
         
+        loop_count = 0
         try:
             while terminal.is_running:
+                loop_count += 1
+                # Only log occasionally to avoid spam
+                if loop_count == 1 or loop_count % 500 == 0:
+                    print(f">>> Reader loop #{loop_count} for agent {agent_id[:8]}, buffer={len(terminal.output_buffer)}", flush=True)
                 try:
                     # Check if there's data to read
                     r, _, _ = select_module.select([terminal.master_fd], [], [], 0.1)
@@ -888,25 +935,41 @@ For suggested_input (VERY IMPORTANT):
                             if text:
                                 # Store raw output
                                 terminal.output_buffer += text
-                                terminal.last_output_at = datetime.utcnow()
+                                terminal.last_output_at = datetime.now(timezone.utc)
+                                
                                 
                                 # Parse stream-json lines for human-readable display
                                 # This makes the Live Sessions view more useful
                                 display_text = ""
+                                raw_lines_shown = 0
                                 for line in text.split('\n'):
-                                    if line.strip():
-                                        parsed = self._parse_stream_json_line(line)
+                                    stripped_line = line.strip()
+                                    if stripped_line:
+                                        parsed = self._parse_stream_json_line(stripped_line)
                                         if parsed:
                                             display_text += parsed
-                                        elif not line.startswith('{'):
-                                            # Not JSON, show as-is
+                                        elif not stripped_line.startswith('{'):
+                                            # Not JSON, show as-is (shell output, errors, etc.)
                                             display_text += line + '\n'
+                                            raw_lines_shown += 1
+                                        # If it's JSON but we couldn't parse it meaningfully, 
+                                        # at least show a snippet for debugging
+                                        elif raw_lines_shown < 3:  # Limit noise
+                                            preview = stripped_line[:80]
+                                            # Only show if it looks like it has content
+                                            if '"content"' in preview or '"text"' in preview or '"error"' in preview:
+                                                display_text += f"[JSON] {preview}...\n"
+                                                raw_lines_shown += 1
                                 
-                                # If we got readable text, use it; otherwise fall back to raw
-                                output_for_display = display_text if display_text.strip() else text
+                                # ALWAYS fall back to raw if parsing produced nothing
+                                # This ensures we see SOMETHING in the logs
+                                if display_text.strip():
+                                    output_for_display = display_text
+                                else:
+                                    output_for_display = text  # Show raw output
                                 
                                 # Check for prompts and auto-respond (for non-interactive automation)
-                                now = datetime.utcnow()
+                                now = datetime.now(timezone.utc)
                                 if (now - last_response_time).total_seconds() > response_cooldown:
                                     response = self._detect_and_respond_to_prompts(agent_id, terminal)
                                     if response:
@@ -918,14 +981,19 @@ For suggested_input (VERY IMPORTANT):
                                             print(f">>> Failed to send auto-response: {e}", flush=True)
                                 
                                 # Update live output for the frontend (use parsed output for better display)
-                                current_output = self._live_output.get(agent_id, {}).get("output", "")
-                                self._live_output[agent_id] = {
-                                    "status": "running",
-                                    "output": current_output + output_for_display,
-                                    "last_update": datetime.utcnow().isoformat(),
-                                    "started_at": started_at,
-                                    "has_terminal": True,
-                                }
+                                # Use update() to preserve other fields that may have been set
+                                if agent_id not in self._live_output:
+                                    self._live_output[agent_id] = {
+                                        "status": "running",
+                                        "output": "",
+                                        "started_at": started_at,
+                                        "has_terminal": True,
+                                    }
+                                
+                                self._live_output[agent_id]["output"] = self._live_output[agent_id].get("output", "") + output_for_display
+                                self._live_output[agent_id]["status"] = "running"
+                                self._live_output[agent_id]["last_update"] = datetime.now(timezone.utc).isoformat()
+                                self._live_output[agent_id]["has_terminal"] = True
                                 
                                 # Send to attached WebSocket clients (parsed for readability)
                                 for ws in terminal.attached_websockets:
@@ -945,7 +1013,7 @@ For suggested_input (VERY IMPORTANT):
                     # NOTE: This runs every iteration, not just when idle
                     # Detects: stuck prompts, task completion, errors
                     # ============================================================
-                    now = datetime.utcnow()
+                    now = datetime.now(timezone.utc)
                     idle_threshold_seconds = 10  # Consider idle after 10 seconds
                     pty_check_threshold_seconds = 3  # Check PTY state after 3 seconds of no output
                     llm_check_cooldown_seconds = 15  # Don't check LLM more than once per 15s
@@ -975,7 +1043,7 @@ For suggested_input (VERY IMPORTANT):
                         if is_waiting:
                             pty_is_waiting = True
                             # Only log occasionally to avoid spam
-                            if terminal.llm_check_count == 0 or (now - (terminal.last_llm_check_at or datetime.min)).total_seconds() > 5:
+                            if terminal.llm_check_count == 0 or (now - (terminal.last_llm_check_at or datetime.min.replace(tzinfo=timezone.utc))).total_seconds() > 5:
                                 print(f">>> Agent {agent_id}: PTY state check: {reason}", flush=True)
                     
                     # Determine if we should run LLM check
@@ -1058,13 +1126,21 @@ For suggested_input (VERY IMPORTANT):
                         
                         terminal.is_running = False
                         
-                        self._live_output[agent_id] = {
-                            "status": "completed" if terminal.process.returncode == 0 else "error",
-                            "output": terminal.output_buffer,
-                            "last_update": datetime.utcnow().isoformat(),
-                            "started_at": started_at,
-                            "has_terminal": True,
-                        }
+                        # IMPORTANT: Don't overwrite the accumulated parsed output!
+                        # Just update the status, preserving what was collected
+                        if agent_id in self._live_output:
+                            self._live_output[agent_id]["status"] = "completed" if terminal.process.returncode == 0 else "error"
+                            self._live_output[agent_id]["last_update"] = datetime.now(timezone.utc).isoformat()
+                            self._live_output[agent_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+                        else:
+                            # Fallback if somehow _live_output was cleared
+                            self._live_output[agent_id] = {
+                                "status": "completed" if terminal.process.returncode == 0 else "error",
+                                "output": terminal.output_buffer,
+                                "last_update": datetime.now(timezone.utc).isoformat(),
+                                "started_at": started_at,
+                                "has_terminal": True,
+                            }
                         break
                         
                 except OSError as e:
@@ -1276,7 +1352,7 @@ For suggested_input (VERY IMPORTANT):
             agent_id=agent.id,
             project_id=project_id,
             is_running=True,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             workspace_dir=workspace_dir,
         )
         
@@ -1299,9 +1375,15 @@ For suggested_input (VERY IMPORTANT):
             print(f">>> Stopping agent {agent_id}: closing terminal", flush=True)
             self._close_agent_terminal(agent_id)
         
-        # Clean up live output
+        # PRESERVE live output for viewing after stop (don't delete it)
+        # Mark it as stopped so frontend knows it's historical
         if agent_id in self._live_output:
-            del self._live_output[agent_id]
+            self._live_output[agent_id]["stopped_at"] = datetime.now(timezone.utc).isoformat()
+            # If status was still running, mark as stopped
+            if self._live_output[agent_id].get("status") == "running":
+                self._live_output[agent_id]["status"] = "stopped"
+            # Add separator to output
+            self._live_output[agent_id]["output"] += "\n\n--- Agent Stopped ---\n"
 
         # Clean up queue
         if agent_id in self._message_queues:
@@ -1391,7 +1473,7 @@ For suggested_input (VERY IMPORTANT):
                         agent_id=agent_id,
                         project_id=agent.project_id,
                         is_running=True,
-                        started_at=datetime.utcnow(),
+                        started_at=datetime.now(timezone.utc),
                         workspace_dir=workspace_dir,
                     )
         
@@ -1751,20 +1833,91 @@ PROMPT_EOF'''
                 self._live_output[agent.id]["output"] += f">>> Output will stream as JSON and be parsed for display <<<\n\n"
             
             # Wait for the PTY process to complete (output is captured by background reader)
-            timeout_seconds = 600  # 10 minutes
-            start_time = datetime.utcnow()
+            timeout_seconds = 900  # 15 minutes - allows time for complex setup tasks
+            start_time = datetime.now(timezone.utc)
             last_log_time = start_time
+            
+            # Retry loop detection - track error patterns to detect debugging loops
+            last_error_check_len = 0
+            error_pattern_counts: dict[str, int] = {}
+            retry_loop_threshold = 3  # Number of times same error pattern must appear
+            min_elapsed_for_loop_check = 180  # Only check after 3 minutes
+            
+            # Stuck on startup detection - if output stays minimal for too long, it's hung
+            startup_stuck_threshold = 120  # 2 minutes with minimal output = stuck
+            min_expected_output = 200  # Expect at least this many chars after startup
             
             while terminal.is_running:
                 await asyncio.sleep(0.5)
                 
                 # Log progress every 30 seconds
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 elapsed = (now - start_time).total_seconds()
                 if (now - last_log_time).total_seconds() > 30:
                     output_len = len(terminal.output_buffer)
                     print(f">>> Claude Code still running, elapsed: {int(elapsed)}s, output: {output_len} chars", flush=True)
                     last_log_time = now
+                    
+                    # Detect stuck on startup - if output is minimal after threshold time
+                    if elapsed > startup_stuck_threshold and output_len < min_expected_output:
+                        print(f">>> Claude Code appears stuck on startup!", flush=True)
+                        print(f">>> Only {output_len} chars of output after {int(elapsed)}s", flush=True)
+                        print(f">>> This usually means API connection issues or rate limiting", flush=True)
+                        self._close_agent_terminal(agent.id)
+                        self._live_output[agent.id]["status"] = "startup_failed"
+                        self._live_output[agent.id]["error"] = (
+                            f"Claude Code stuck on startup - only {output_len} chars after {int(elapsed)}s. "
+                            f"This usually indicates API connection issues, rate limiting, or network problems."
+                        )
+                        return (
+                            f"[Claude Code failed to start - stuck with minimal output after {int(elapsed)}s. "
+                            f"Check API connectivity and rate limits.]",
+                            None
+                        )
+                    
+                    # Check for retry loop patterns after minimum elapsed time
+                    if elapsed > min_elapsed_for_loop_check and output_len > last_error_check_len:
+                        new_output = terminal.output_buffer[last_error_check_len:]
+                        last_error_check_len = output_len
+                        
+                        # Look for error patterns that indicate retry loops
+                        import re
+                        error_patterns = [
+                            r'FAIL\s+[\w/]+\.(?:test|spec)\.',  # Test file failures
+                            r'Error:\s+[^\n]{10,50}',  # Error messages
+                            r'AssertionError:\s+[^\n]{10,50}',  # Assertion errors
+                            r'TypeError:\s+[^\n]{10,50}',  # Type errors
+                            r'ReferenceError:\s+[^\n]{10,50}',  # Reference errors
+                            r'SyntaxError:\s+[^\n]{10,50}',  # Syntax errors
+                            r'npm ERR!\s+[^\n]{10,50}',  # npm errors
+                            r'ModuleNotFoundError:\s+[^\n]{10,50}',  # Python import errors
+                            r'ImportError:\s+[^\n]{10,50}',  # Python import errors
+                        ]
+                        
+                        for pattern in error_patterns:
+                            matches = re.findall(pattern, new_output)
+                            for match in matches:
+                                # Normalize the match to group similar errors
+                                normalized = match[:60] if len(match) > 60 else match
+                                error_pattern_counts[normalized] = error_pattern_counts.get(normalized, 0) + 1
+                        
+                        # Check if any error pattern has repeated too many times
+                        for error_msg, count in error_pattern_counts.items():
+                            if count >= retry_loop_threshold:
+                                print(f">>> Detected retry loop: '{error_msg[:40]}...' appeared {count} times", flush=True)
+                                print(f">>> Stopping agent early to prevent wasted time", flush=True)
+                                self._close_agent_terminal(agent.id)
+                                self._live_output[agent.id]["status"] = "retry_loop"
+                                self._live_output[agent.id]["error"] = (
+                                    f"Detected retry loop - same error repeated {count} times: {error_msg[:80]}. "
+                                    f"Consider breaking this task into smaller subtasks."
+                                )
+                                return (
+                                    f"[Task stopped - detected retry loop after {int(elapsed)}s. "
+                                    f"The same error kept recurring: {error_msg[:80]}. "
+                                    f"This task may need to be broken into smaller pieces.]",
+                                    None
+                                )
                 
                 # Check for timeout
                 if elapsed > timeout_seconds:
@@ -1944,6 +2097,26 @@ PROMPT_EOF'''
         
         return None  # Use Claude Code default
 
+    def _cleanup_old_live_outputs(self, max_age_hours: int = 1) -> None:
+        """Clean up live outputs from stopped agents older than max_age_hours."""
+        now = datetime.now(timezone.utc)
+        agents_to_cleanup = []
+        
+        for agent_id, output_data in self._live_output.items():
+            stopped_at = output_data.get("stopped_at")
+            if stopped_at:
+                try:
+                    stopped_time = datetime.fromisoformat(stopped_at.replace('Z', '+00:00'))
+                    age_hours = (now - stopped_time).total_seconds() / 3600
+                    if age_hours > max_age_hours:
+                        agents_to_cleanup.append(agent_id)
+                except (ValueError, TypeError):
+                    pass  # Skip if can't parse timestamp
+        
+        for agent_id in agents_to_cleanup:
+            print(f">>> Cleaning up old live output for stopped agent {agent_id}", flush=True)
+            del self._live_output[agent_id]
+
     async def execute_task(
         self,
         agent_id: str,
@@ -1966,9 +2139,13 @@ PROMPT_EOF'''
         max_retries = settings.max_task_retries
         print(f">>> execute_task called: agent_id={agent_id}, task_id={task_id}, attempt={retry_attempt + 1}/{max_retries}", flush=True)
         
+        # Cleanup old stopped sessions (older than 1 hour)
+        self._cleanup_old_live_outputs(max_age_hours=1)
+        
         # Get existing output to preserve history, or start fresh
+        now = datetime.now(timezone.utc)
         existing_output = ""
-        started_at = datetime.utcnow().isoformat()
+        started_at = now.isoformat()
         if agent_id in self._live_output:
             existing_output = self._live_output[agent_id].get("output", "")
             # Add separator if there's existing content
@@ -1976,9 +2153,9 @@ PROMPT_EOF'''
                 existing_output += "\n\n"
             existing_output += f"{'='*50}\n"
             if retry_attempt > 0:
-                existing_output += f"[{datetime.utcnow().strftime('%H:%M:%S')}] RETRY ATTEMPT {retry_attempt + 1}/{max_retries}\n"
+                existing_output += f"[{now.strftime('%H:%M:%S')}] RETRY ATTEMPT {retry_attempt + 1}/{max_retries}\n"
             else:
-                existing_output += f"[{datetime.utcnow().strftime('%H:%M:%S')}] NEW TASK EXECUTION\n"
+                existing_output += f"[{now.strftime('%H:%M:%S')}] NEW TASK EXECUTION\n"
             existing_output += f"{'='*50}\n"
             started_at = self._live_output[agent_id].get("started_at", started_at)
         
@@ -1986,7 +2163,7 @@ PROMPT_EOF'''
         self._live_output[agent_id] = {
             "status": "initializing",
             "output": existing_output + f"Preparing to execute task {task_id}...\n",
-            "last_update": datetime.utcnow().isoformat(),
+            "last_update": now.isoformat(),
             "started_at": started_at,
         }
         
@@ -2199,7 +2376,7 @@ PROMPT_EOF'''
             self._live_output[agent_id]["output"] += f"Task: {task.title}\n"
             self._live_output[agent_id]["output"] += f"Agent: {agent.name}\n"
             self._live_output[agent_id]["status"] = "preparing"
-            self._live_output[agent_id]["last_update"] = datetime.utcnow().isoformat()
+            self._live_output[agent_id]["last_update"] = datetime.now(timezone.utc).isoformat()
             
             # Fetch chat context
             chat_context = ""
@@ -2226,7 +2403,7 @@ PROMPT_EOF'''
                 self._live_output[agent_id]["output"] += f"Start commit: {start_commit[:8]}\n"
             
             await db.commit()
-            self._live_output[agent_id]["last_update"] = datetime.utcnow().isoformat()
+            self._live_output[agent_id]["last_update"] = datetime.now(timezone.utc).isoformat()
             
             # Build the prompt for the task with chat context FIRST (before logging)
             chat_section = ""
@@ -2347,7 +2524,7 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
             if selected_model:
                 self._live_output[agent_id]["output"] += f"Model: {selected_model}\n"
             self._live_output[agent_id]["status"] = "invoking"
-            self._live_output[agent_id]["last_update"] = datetime.utcnow().isoformat()
+            self._live_output[agent_id]["last_update"] = datetime.now(timezone.utc).isoformat()
             print(f">>> Invoking Claude Code for agent {agent.name}, task: {task.title}, model: {selected_model}", flush=True)
 
             # Get Claude Code mode from project config (default to terminal for best experience)
@@ -2381,6 +2558,11 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
             # Check if agent was killed/paused - DON'T mark task complete
             if response and "[KILLED:" in response:
                 print(f">>> Agent {agent_id}: Was killed/paused - task stays in progress", flush=True)
+                # Mark live output as stopped (preserve the output for viewing)
+                if agent_id in self._live_output:
+                    self._live_output[agent_id]["status"] = "stopped"
+                    self._live_output[agent_id]["stopped_at"] = datetime.now(timezone.utc).isoformat()
+                    self._live_output[agent_id]["output"] += f"\n\n--- Agent Stopped/Paused ---\n"
                 agent.status = "idle"
                 task.status = "pending"  # Return to pending for retry
                 task.assigned_to = None  # Unassign so it can be picked up again
@@ -2404,11 +2586,19 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
             execution_log = self._live_output.get(agent_id, {}).get("output", "")
             
             # Check for evidence of actual work in the execution log
+            # Support both old format and new parsed stream-json format
             work_indicators = [
+                # Old format (non-stream-json)
                 '⏵ Write(', '⏵ Edit(', '⏵ Bash(',  # Tool usage
                 '✓ Write', '✓ Edit', '✓ Bash',  # Completed tools
                 'Created file', 'Updated file', 'Modified file',
                 'git commit', '[main ',
+                # New parsed stream-json format
+                '🔧 Running:', '🔧 Using:', '🔧 Starting:',  # Tool usage
+                '📝 Writing:', '✏️ Editing:', '📖 Reading:',  # File operations
+                '📋 Updating todos',  # Todo updates
+                '✅ Task completed',  # Completion marker
+                '"tool_use"', '"Write"', '"Edit"', '"Bash"',  # Raw JSON indicators
             ]
             has_work_in_log = any(ind in execution_log for ind in work_indicators)
             
@@ -2424,6 +2614,14 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
                 if not is_review_task:
                     # Not a review task but no work done - mark as failed!
                     print(f">>> Agent {agent_id}: Task marked FAILED - no code was produced!", flush=True)
+                    
+                    # Mark live output as failed (preserve the output for viewing)
+                    if agent_id in self._live_output:
+                        self._live_output[agent_id]["status"] = "failed"
+                        self._live_output[agent_id]["failed_at"] = datetime.now(timezone.utc).isoformat()
+                        self._live_output[agent_id]["error"] = "No code produced - task failed"
+                        self._live_output[agent_id]["output"] += f"\n\n--- Task Failed: No code was produced ---\n"
+                    
                     task.status = "pending"  # Reset to pending for retry
                     task.retry_count = (task.retry_count or 0) + 1
                     task.last_error = "Task failed: Claude Code exited without producing any code. Check work log for details."
@@ -2446,6 +2644,12 @@ When done, provide a summary of what you created, INCLUDING the tests you wrote.
             # Update task status
             task.status = "completed"
             await db.commit()
+            
+            # Mark live output as completed (preserve the output for viewing)
+            if agent_id in self._live_output:
+                self._live_output[agent_id]["status"] = "completed"
+                self._live_output[agent_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+                self._live_output[agent_id]["output"] += f"\n\n--- Task Completed: {task.title} ---\n"
             
             # Log completion with full execution log and Claude Code response
             full_execution_log = self._live_output.get(agent_id, {}).get("output", "")
@@ -2976,7 +3180,7 @@ Implement the request now."""
         
         This ensures the frontend sees output right away instead of "Agent is starting up..."
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self._live_output[agent_id] = {
             "status": "initializing",
             "output": f"[{now.strftime('%H:%M:%S')}] Starting task: {task_title}\nAgent: {agent_name}\nInitializing...\n",
