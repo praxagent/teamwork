@@ -2,9 +2,11 @@
 
 import asyncio
 import json
+import logging
 import random
 from typing import Any
 
+import httpx
 from anthropic import AsyncAnthropic
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -16,7 +18,57 @@ from app.config import settings
 from app.models import Message, Channel, Agent, Project, Task, get_db, AsyncSessionLocal
 from app.websocket import manager, WebSocketEvent, EventType
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/messages", tags=["messages"])
+
+
+async def _forward_to_external_webhook(
+    webhook_url: str,
+    project_id: str,
+    channel_id: str,
+    content: str,
+    message_id: str,
+):
+    """Forward a user message to the external orchestrator's webhook."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            await client.post(webhook_url, json={
+                "project_id": project_id,
+                "channel_id": channel_id,
+                "content": content,
+                "message_id": message_id,
+                "type": "user_message",
+            })
+    except Exception as e:
+        logger.error("Failed to forward message to webhook %s: %s", webhook_url, e)
+        # Post an error message back to the channel so the user knows
+        try:
+            async with AsyncSessionLocal() as db:
+                error_msg = Message(
+                    channel_id=channel_id,
+                    content=f"[System] Failed to reach external agent: {e}",
+                    message_type="system",
+                )
+                db.add(error_msg)
+                await db.flush()
+                await db.refresh(error_msg)
+                await db.commit()
+                await manager.broadcast_to_channel(
+                    channel_id,
+                    WebSocketEvent(
+                        type=EventType.MESSAGE_NEW,
+                        data={
+                            "id": error_msg.id,
+                            "channel_id": channel_id,
+                            "content": error_msg.content,
+                            "message_type": "system",
+                            "created_at": error_msg.created_at.isoformat(),
+                        },
+                    ),
+                )
+        except Exception:
+            pass
 
 # Anthropic client for agent responses
 _anthropic_client: AsyncAnthropic | None = None
@@ -1392,6 +1444,24 @@ async def create_message(
 
     # If this is a user message (not from an agent), handle commands or trigger responses
     if message.agent_id is None:
+        # External mode: forward to webhook instead of internal agent processing
+        project_result = await db.execute(
+            select(Project).where(Project.id == channel.project_id)
+        )
+        project = project_result.scalar_one_or_none()
+        if project and (project.config or {}).get("project_type") == "external":
+            webhook_url = (project.config or {}).get("webhook_url")
+            if webhook_url:
+                background_tasks.add_task(
+                    _forward_to_external_webhook,
+                    webhook_url,
+                    project.id,
+                    message.channel_id,
+                    message.content,
+                    db_message.id,
+                )
+            return response
+
         content_lower = message.content.strip().lower()
         
         # Handle /update command - PM provides status update

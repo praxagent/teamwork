@@ -157,11 +157,10 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
   });
 
   const isFromUser = !message.agent_id;
-  // For students, just show "Name (You)" or "You". For CEO, show "Name (You)" or "CEO (You)"
   const getUserDisplayName = () => {
     const name = userProfile.name || 'You';
     if (name === 'You' || name === 'CEO') {
-      return userRole === 'student' ? 'You' : 'CEO (You)';
+      return 'You';
     }
     return `${name} (You)`;
   };

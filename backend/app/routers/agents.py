@@ -561,40 +561,60 @@ async def get_agent_live_output(
     live_output = agent_manager.get_live_output(agent_id)
     
     if not live_output:
-        # Check if agent is marked as "working" in DB but has no live output
-        # This can happen if backend was restarted while agent was working
+        # Check if agent is marked as "working" in DB but has no live output.
+        # This can happen if backend was restarted while agent was working.
+        # BUT: skip this for external-mode projects where the external
+        # orchestrator (e.g. Prax) manages agent status directly.
         if agent.status == "working":
-            # This is a stale state - reset the agent
-            agent.status = "idle"
-            await db.commit()
-            
-            # Also try to reset any "in_progress" tasks for this agent
-            from app.models import Task
-            tasks_result = await db.execute(
-                select(Task).where(
-                    Task.assigned_to == agent_id,
-                    Task.status == "in_progress"
-                )
+            from app.models import Project
+            proj_result = await db.execute(
+                select(Project).where(Project.id == agent.project_id)
             )
-            stale_tasks = tasks_result.scalars().all()
-            for task in stale_tasks:
-                task.status = "pending"
-            if stale_tasks:
+            project = proj_result.scalar_one_or_none()
+            is_external = (project and (project.config or {}).get("project_type") == "external")
+
+            if not is_external:
+                # Internal project: this is a stale state — reset the agent.
+                agent.status = "idle"
                 await db.commit()
-            
-            return LiveOutputResponse(
-                agent_id=agent_id,
-                agent_name=agent.name,
-                status="stale_reset",
-                output=f"Agent was marked as 'working' but no execution was found.\n"
-                       f"This can happen after a server restart.\n"
-                       f"Agent status has been reset to 'idle'.\n"
-                       f"Reset {len(stale_tasks)} stale task(s) to 'pending'.",
-                last_update=None,
-                started_at=None,
-                error="Stale working state detected and reset",
-            )
-        
+
+                from app.models import Task
+                tasks_result = await db.execute(
+                    select(Task).where(
+                        Task.assigned_to == agent_id,
+                        Task.status == "in_progress"
+                    )
+                )
+                stale_tasks = tasks_result.scalars().all()
+                for task in stale_tasks:
+                    task.status = "pending"
+                if stale_tasks:
+                    await db.commit()
+
+                return LiveOutputResponse(
+                    agent_id=agent_id,
+                    agent_name=agent.name,
+                    status="stale_reset",
+                    output=f"Agent was marked as 'working' but no execution was found.\n"
+                           f"This can happen after a server restart.\n"
+                           f"Agent status has been reset to 'idle'.\n"
+                           f"Reset {len(stale_tasks)} stale task(s) to 'pending'.",
+                    last_update=None,
+                    started_at=None,
+                    error="Stale working state detected and reset",
+                )
+            else:
+                # External project: status is managed by the orchestrator.
+                # Return working status without resetting.
+                return LiveOutputResponse(
+                    agent_id=agent_id,
+                    agent_name=agent.name,
+                    status="working",
+                    output="Agent is working (managed by external orchestrator).",
+                    last_update=None,
+                    started_at=None,
+                )
+
         return LiveOutputResponse(
             agent_id=agent_id,
             agent_name=agent.name,

@@ -78,7 +78,7 @@ function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }:
 
     // Connect to WebSocket
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.hostname}:8000/api/terminal/ws/${projectId}?mode=${mode}&start_claude=${startClaude}`;
+    const wsUrl = `${wsProtocol}//${window.location.host}/api/terminal/ws/${projectId}?mode=${mode}&start_claude=${startClaude}`;
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

@@ -166,6 +166,7 @@ export type WebSocketEventType =
   | 'message:update'
   | 'agent:status'
   | 'agent:activity'
+  | 'agent:typing'
   | 'task:update'
   | 'task:new'
   | 'project:update'

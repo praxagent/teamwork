@@ -23,6 +23,26 @@ TERMINAL_IMAGE = "vteam-terminal:latest"
 TERMINAL_DOCKERFILE = Path(__file__).parent.parent.parent.parent / "docker" / "terminal.Dockerfile"
 
 
+def _host_volume_path(container_workspace: Path) -> str:
+    """Convert a container-internal workspace path to a host path for Docker -v mounts.
+
+    When running inside Docker, ``settings.workspace_path`` (e.g. ``/workspace``)
+    is a bind-mount of a host directory (e.g. ``/Users/.../workspaces``).  Child
+    containers need the **host** path, not the container path.  If
+    ``HOST_WORKSPACE_PATH`` is set we translate; otherwise we pass through as-is
+    (works for local dev where paths are the same).
+    """
+    host_base = settings.host_workspace_path
+    if not host_base:
+        return str(container_workspace.absolute())
+    container_base = str(settings.workspace_path)
+    container_abs = str(container_workspace.absolute())
+    # Replace the container prefix with the host prefix
+    if container_abs.startswith(container_base):
+        return host_base.rstrip("/") + container_abs[len(container_base):]
+    return str(container_workspace.absolute())
+
+
 def ensure_terminal_image() -> tuple[bool, str]:
     """Ensure the custom terminal image is built. Returns (success, message)."""
     # Check if image exists
@@ -325,19 +345,65 @@ async def run_docker_terminal(
     project_id: str,
     start_claude: bool = False,
 ):
-    """Run a terminal session inside a Docker container."""
+    """Run a terminal session inside a Docker container.
+
+    If ``SANDBOX_CONTAINER`` is configured, we exec directly into that
+    existing container (e.g. the Prax sandbox that already has all tools
+    installed).  Otherwise we spin up a disposable container per project.
+    """
     import shutil
-    
+
     if not shutil.which("docker"):
         await websocket.send_text("\x1b[31mError: Docker is not installed or not in PATH\x1b[0m\r\n")
         return
-    
-    # Container name for this project
+
+    # ---- Prefer the shared sandbox if configured ----
+    if settings.sandbox_container:
+        container_name = settings.sandbox_container
+        # Verify it's running
+        check = subprocess.run(
+            ["docker", "ps", "--filter", f"name={container_name}", "--format", "{{.Names}}"],
+            capture_output=True, text=True,
+        )
+        if container_name not in check.stdout:
+            await websocket.send_text(f"\x1b[31mSandbox container '{container_name}' is not running.\x1b[0m\r\n")
+            return
+
+        # Determine the workspace dir inside the sandbox.
+        # The sandbox mounts workspaces at /workspaces (note the 's').
+        ws_subdir = workspace_path.name  # e.g. "12678093704"
+        sandbox_ws = f"/workspaces/{ws_subdir}"
+
+        api_key = settings.anthropic_api_key_clean
+        if start_claude:
+            inner_cmd = (
+                f"docker exec -it -w {sandbox_ws}"
+                f" -e ANTHROPIC_API_KEY={api_key} -e IS_SANDBOX=1 -e TERM=xterm-256color"
+                f" {container_name} claude --dangerously-skip-permissions"
+            )
+        else:
+            inner_cmd = (
+                f"docker exec -it -w {sandbox_ws} -e TERM=xterm-256color"
+                f" {container_name} bash"
+            )
+
+        await websocket.send_text(f"\x1b[32mConnecting to sandbox ({container_name})...\x1b[0m\r\n")
+        cmd = ["script", "-q", "-c", inner_cmd, "/dev/null"]
+        print(f">>> Terminal (sandbox): {cmd}", flush=True)
+
+        master_fd, slave_fd = pty.openpty()
+        process = subprocess.Popen(cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, close_fds=True)
+        os.close(slave_fd)
+
+        await _terminal_io_loop(websocket, process, master_fd)
+        return
+
+    # ---- Fallback: per-project disposable container ----
     container_name = f"vteam-terminal-{project_id[:8]}"
-    
+
     # Config volume for Claude Code settings persistence
     config_volume = f"vteam-claude-config-{project_id[:8]}"
-    
+
     # Check if container exists and is running
     check_result = subprocess.run(
         ["docker", "ps", "-a", "--filter", f"name=^{container_name}$", "--format", "{{.Names}} {{.Status}}"],
@@ -369,7 +435,7 @@ async def run_docker_terminal(
         docker_run_cmd = [
             "docker", "run", "-d",
             "--name", container_name,
-            "-v", f"{workspace_path.absolute()}:/workspace",
+            "-v", f"{_host_volume_path(workspace_path)}:/workspace",
             "-w", "/workspace",
         ]
         
@@ -430,7 +496,7 @@ async def run_docker_terminal(
             fallback_cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
-                "-v", f"{workspace_path.absolute()}:/workspace",
+                "-v", f"{_host_volume_path(workspace_path)}:/workspace",
                 "-w", "/workspace",
             ]
             
@@ -522,7 +588,7 @@ async def run_docker_terminal(
     
     # Create PTY for docker exec
     master_fd, slave_fd = pty.openpty()
-    
+
     process = subprocess.Popen(
         cmd,
         stdin=slave_fd,
@@ -536,13 +602,22 @@ async def run_docker_terminal(
         },
         preexec_fn=os.setsid,
     )
-    
+
     os.close(slave_fd)
+
+    await _terminal_io_loop(websocket, process, master_fd)
+
+
+async def _terminal_io_loop(
+    websocket: WebSocket,
+    process: subprocess.Popen,
+    master_fd: int,
+) -> None:
+    """Shared PTY ↔ WebSocket bridge used by all terminal modes."""
+
     os.set_blocking(master_fd, False)
-    
-    # UTF-8 decoder that buffers incomplete sequences
     utf8_decoder = codecs.getincrementaldecoder('utf-8')('replace')
-    
+
     try:
         async def read_pty():
             nonlocal utf8_decoder
@@ -552,33 +627,31 @@ async def run_docker_terminal(
                     if r:
                         data = os.read(master_fd, 4096)
                         if data:
-                            # Decode with incremental decoder to handle partial UTF-8 sequences
                             text = utf8_decoder.decode(data)
                             if text:
                                 await websocket.send_text(text)
                     else:
                         await asyncio.sleep(0.01)
-                    
+
                     if process.poll() is not None:
-                        # Flush any remaining buffered bytes
                         remaining = utf8_decoder.decode(b'', final=True)
                         if remaining:
                             await websocket.send_text(remaining)
-                        await websocket.send_text("\r\n\x1b[33m[Session ended]\x1b[0m\r\n")
+                        await websocket.send_text(
+                            "\r\n\x1b[33m[Session ended]\x1b[0m\r\n"
+                        )
                         break
                 except OSError:
                     break
                 except Exception:
                     break
-        
+
         async def write_pty():
             while True:
                 try:
                     data = await websocket.receive()
-                    print(f">>> Terminal WS received: {data.keys()}", flush=True)
                     if "text" in data:
                         text = data["text"]
-                        print(f">>> Terminal text input: {repr(text[:50] if len(text) > 50 else text)}", flush=True)
                         if text.startswith("\x1b[8;"):
                             try:
                                 parts = text[4:-1].split(";")
@@ -589,47 +662,41 @@ async def run_docker_terminal(
                                     import termios
                                     winsize = struct.pack("HHHH", rows, cols, 0, 0)
                                     fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
-                            except:
+                            except Exception:
                                 pass
                         else:
-                            # Text input (fallback) - use UTF-8
                             os.write(master_fd, text.encode('utf-8'))
                     elif "bytes" in data:
-                        # Binary input - write directly (preserves control chars like Ctrl+C)
-                        raw_bytes = data["bytes"]
-                        print(f">>> Terminal bytes input: {repr(raw_bytes)}", flush=True)
-                        bytes_written = os.write(master_fd, raw_bytes)
-                        print(f">>> Terminal wrote {bytes_written} bytes to PTY", flush=True)
+                        os.write(master_fd, data["bytes"])
                 except WebSocketDisconnect:
                     break
                 except Exception:
                     break
-        
+
         read_task = asyncio.create_task(read_pty())
         write_task = asyncio.create_task(write_pty())
-        
+
         done, pending = await asyncio.wait(
             [read_task, write_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
-        
+
         for task in pending:
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 pass
-    
+
     finally:
         try:
             process.terminate()
             process.wait(timeout=2)
-        except:
+        except Exception:
             process.kill()
-        
         try:
             os.close(master_fd)
-        except:
+        except Exception:
             pass
 
 

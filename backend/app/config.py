@@ -93,6 +93,16 @@ class Settings(BaseSettings):
     # Workspace - where generated code is stored
     # Both local and Docker use ./workspace at project root
     workspace_path: Path = _project_root / "workspace"
+
+    # Host workspace path — the REAL host-filesystem path to the workspace.
+    # Required when running in Docker-in-Docker: terminal containers need the
+    # host path (not the container-internal path) for -v bind mounts.
+    host_workspace_path: str = ""
+
+    # If set, the terminal will exec into this existing container instead of
+    # spinning up a new one.  Set to the Docker Compose service name or
+    # container name (e.g. "prax-sandbox-1").
+    sandbox_container: str = ""
     
     def __init__(self, **data):
         super().__init__(**data)
@@ -135,6 +145,9 @@ class Settings(BaseSettings):
     model_agent_simple: str = "claude-haiku-4-5"  # Simple agent tasks
     model_agent_moderate: str = "claude-sonnet-4-5"  # Moderate complexity tasks
     model_agent_complex: str = "claude-opus-4-5"  # Complex tasks
+
+    # External agent API
+    external_api_key: str = ""  # API key for external agent access (empty = no auth required)
 
     # CORS - includes Docker default port
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:80"]
