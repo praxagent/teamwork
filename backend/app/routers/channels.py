@@ -251,6 +251,7 @@ async def get_or_create_dm_channel(
     db.add(dm_channel)
     await db.flush()
     await db.refresh(dm_channel)
+    await db.commit()
 
     return channel_to_response(dm_channel)
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Memory Store service for long-term memory management.
 
 Provides a LangChain-inspired memory store with:

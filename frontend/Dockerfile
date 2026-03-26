@@ -14,8 +14,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application (skip tsc — Vite handles transpilation)
+RUN npx vite build
 
 # Stage 2: Production
 FROM nginx:alpine

@@ -8,12 +8,14 @@ from app.routers.onboarding import router as onboarding_router
 from app.routers.projects import router as projects_router
 from app.routers.tasks import router as tasks_router
 from app.routers.terminal import router as terminal_router
+from app.routers.external import router as external_router
 from app.routers.workspace import router as workspace_router
 
 __all__ = [
     "agents_router",
     "channels_router",
     "coaching_router",
+    "external_router",
     "messages_router",
     "onboarding_router",
     "projects_router",

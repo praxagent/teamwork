@@ -29,6 +29,7 @@ from app.routers import (
     agents_router,
     channels_router,
     coaching_router,
+    external_router,
     messages_router,
     onboarding_router,
     projects_router,
@@ -69,10 +70,11 @@ async def random_chat_background_task():
                     select(Project).where(Project.status == "active")
                 )
                 projects = list(projects_result.scalars().all())
-                
+                projects = [p for p in projects if (p.config or {}).get("project_type") != "external"]
+
                 if not projects:
                     continue
-                
+
                 # Pick a random project
                 project = random.choice(projects)
                 
@@ -207,8 +209,8 @@ async def pm_checkin_background_task():
             async with AsyncSessionLocal() as db:
                 # Get all active projects
                 projects_result = await db.execute(select(Project))
-                projects = projects_result.scalars().all()
-                
+                projects = [p for p in projects_result.scalars().all() if (p.config or {}).get("project_type") != "external"]
+
                 for project in projects:
                     pm_manager = get_pm_manager(lambda: db)
                     pm = await pm_manager.get_pm_for_project(db, project.id)
@@ -705,6 +707,7 @@ app.include_router(tasks_router, prefix="/api")
 app.include_router(onboarding_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(terminal_router, prefix="/api")
+app.include_router(external_router, prefix="/api")
 
 
 @app.get("/")

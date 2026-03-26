@@ -4,6 +4,8 @@ import type { Agent } from '@/types';
 interface TypingAgent {
   agent_id: string;
   agent_name: string;
+  /** Epoch ms when last refreshed — auto-cleared if stale. */
+  lastSeen?: number;
 }
 
 interface UserProfile {
@@ -86,7 +88,7 @@ export const getUserLabel = (role: UserRole, name?: string): string => {
       return displayName === 'You' ? 'You' : `${displayName} (You)`;
     case 'ceo':
     default:
-      return displayName === 'You' ? 'CEO (You)' : `${displayName} (You)`;
+      return displayName === 'You' ? 'You' : `${displayName} (You)`;
   }
 };
 
@@ -198,17 +200,38 @@ export const useUIStore = create<UIState>((set) => ({
   setAgentTyping: (channelId, agentId, agentName, isTyping) =>
     set((state) => {
       const currentTyping = state.typingAgents[channelId] || [];
-      
+
       if (isTyping) {
-        // Add agent if not already typing
-        if (!currentTyping.some((a) => a.agent_id === agentId)) {
+        const now = Date.now();
+        const existing = currentTyping.find((a) => a.agent_id === agentId);
+        if (existing) {
+          // Refresh the timestamp so the auto-clear timer resets.
           return {
             typingAgents: {
               ...state.typingAgents,
-              [channelId]: [...currentTyping, { agent_id: agentId, agent_name: agentName }],
+              [channelId]: currentTyping.map((a) =>
+                a.agent_id === agentId ? { ...a, lastSeen: now } : a
+              ),
             },
           };
         }
+        // Add new typing agent with timestamp.
+        const updated = {
+          typingAgents: {
+            ...state.typingAgents,
+            [channelId]: [...currentTyping, { agent_id: agentId, agent_name: agentName, lastSeen: now }],
+          },
+        };
+        // Auto-clear after 8s if no refresh arrives (safety net).
+        setTimeout(() => {
+          const s = useUIStore.getState();
+          const agents = s.typingAgents[channelId] || [];
+          const stale = agents.filter((a) => a.agent_id === agentId && (a.lastSeen || 0) <= now);
+          if (stale.length > 0) {
+            s.setAgentTyping(channelId, agentId, agentName, false);
+          }
+        }, 8000);
+        return updated;
       } else {
         // Remove agent from typing
         return {
@@ -218,6 +241,5 @@ export const useUIStore = create<UIState>((set) => ({
           },
         };
       }
-      return state;
     }),
 }));
