@@ -20,7 +20,7 @@ async def browser_info():
     url = f"http://{settings.chrome_cdp_host}:{settings.chrome_cdp_port}/json/version"
     try:
         async with httpx.AsyncClient(timeout=3) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers={"Host": f"127.0.0.1:{settings.chrome_cdp_port}"})
             data = resp.json()
             return {"available": True, "browser": data.get("Browser", "unknown")}
     except Exception as e:
@@ -36,7 +36,7 @@ async def _discover_cdp_ws_url() -> str | None:
     url = f"http://{settings.chrome_cdp_host}:{settings.chrome_cdp_port}/json"
     try:
         async with httpx.AsyncClient(timeout=3) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers={"Host": f"127.0.0.1:{settings.chrome_cdp_port}"})
             targets = resp.json()
     except Exception:
         return None

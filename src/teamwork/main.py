@@ -27,6 +27,7 @@ from teamwork.routers import (
     messages_router,
     projects_router,
     tasks_router,
+    terminal_router,
     workspace_router,
 )
 from teamwork.websocket import manager, WebSocketEvent, EventType
@@ -91,6 +92,7 @@ app.include_router(browser_router, prefix="/api")
 app.include_router(channels_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
+app.include_router(terminal_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
 
@@ -151,13 +153,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # Static file serving for bundled React frontend — MUST be after all route
-# definitions because app.mount("/") is a catch-all that shadows later routes.
+# definitions because mounts and catch-all routes shadow later definitions.
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+    # Serve hashed JS/CSS/font bundles directly
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """SPA catch-all: serve the file if it exists, otherwise index.html."""
+        file_path = STATIC_DIR / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(STATIC_DIR / "index.html")
 
 
 if __name__ == "__main__":

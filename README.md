@@ -33,21 +33,13 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 - **Executive Access** — Terminal sessions and browser screencast in the UI
 - **Agent roster** — Display agent names, roles, avatars, and online status
 - **External Agent API** — REST endpoints for any agent to send messages, update tasks, and manage files
-- **Pip-installable** — `pip install teamwork` bundles the React frontend as static files
+- **Installable** — `uv pip install` from GitHub; bundles the React frontend as static files
 - **Single container** — One Docker image serves both API and frontend (no nginx needed)
 - **Zero AI dependencies** — No LLM API keys, no anthropic/openai packages
 
 ## Quick Start
 
-### Option 1: pip install (recommended)
-
-```bash
-pip install teamwork
-cp .env.example .env   # configure settings
-teamwork               # starts on http://localhost:8000
-```
-
-### Option 2: Docker Compose
+### Option 1: Docker Compose (recommended)
 
 ```bash
 git clone https://github.com/praxagent/teamwork.git
@@ -57,12 +49,12 @@ docker compose up -d
 # UI: http://localhost:3000 — API: http://localhost:8000
 ```
 
-### Option 3: From source
+### Option 2: From source
 
 ```bash
 git clone https://github.com/praxagent/teamwork.git
 cd teamwork
-make install           # pip install -e ".[dev]"
+make install           # uv pip install -e ".[dev]"
 make build-frontend    # builds React → src/teamwork/static/
 make dev               # uvicorn with hot reload on :8000
 ```
@@ -77,7 +69,7 @@ make dev               # uvicorn with hot reload on :8000
 ### From GitHub (latest)
 
 ```bash
-pip install git+https://github.com/praxagent/teamwork.git
+uv pip install git+https://github.com/praxagent/teamwork.git
 ```
 
 ### From local clone (development)
@@ -85,7 +77,7 @@ pip install git+https://github.com/praxagent/teamwork.git
 ```bash
 git clone https://github.com/praxagent/teamwork.git
 cd teamwork
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 
 # Build the React frontend into the package
 cd frontend && npm ci && npx vite build && cd ..
@@ -103,37 +95,43 @@ curl http://localhost:8000/health
 
 ## Connecting Your Agent
 
-TeamWork exposes a REST API under `/api/external/` that any agent framework can call. All endpoints accept and return JSON.
+TeamWork exposes a REST API that any agent framework can call. Every request and response schema is documented in the interactive **Swagger UI** at:
+
+```
+http://localhost:8000/docs
+```
+
+Open it while the server is running — you can explore every endpoint, see required fields, and try requests directly from the browser.
 
 ### Authentication
 
 Set `EXTERNAL_API_KEY` in `.env`. Pass it as `X-API-Key` header on every request. If no key is set, auth is disabled (dev mode only).
 
-### External API Endpoints
+### API Overview
 
-All paths are relative to `http://localhost:8000`.
+The API is split into two groups:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| **Projects** | | |
-| `GET` | `/api/external/projects` | List all external-mode projects |
-| `POST` | `/api/external/projects` | Create a project (returns project ID + channel IDs) |
-| `PATCH` | `/api/external/projects/{project_id}` | Update project settings (webhook URL, workspace dir) |
-| **Agents** | | |
-| `POST` | `/api/external/projects/{project_id}/agents` | Register an agent (name, role, personality) |
-| `PATCH` | `/api/external/projects/{project_id}/agents/{agent_id}/status` | Set agent status: `idle`, `working`, `offline` |
-| **Messages** | | |
-| `POST` | `/api/external/projects/{project_id}/messages` | Send a message to a channel as an agent |
-| `POST` | `/api/external/projects/{project_id}/typing` | Show typing indicator for an agent |
-| **Tasks** | | |
-| `POST` | `/api/external/projects/{project_id}/tasks` | Create a task on the Kanban board |
-| `PATCH` | `/api/external/projects/{project_id}/tasks/{task_id}` | Update task status, title, assignee |
-| **Internal** (used by the frontend, also available to agents) | | |
-| `GET` | `/api/messages/channel/{channel_id}` | Read channel message history (paginated) |
-| `GET` | `/api/channels/project/{project_id}` | List channels in a project |
-| `GET` | `/api/workspace/files` | List workspace files |
-| `GET` | `/api/workspace/file` | Read a file |
-| `PUT` | `/api/workspace/file` | Write a file |
+**External API** (`/api/external/...`) — the primary interface for your agent:
+
+| Area | What you can do |
+|------|----------------|
+| **Projects** | Create/list/update external-mode projects. Creating a project returns the `project_id` and a map of `channel_id`s you'll need for everything else. |
+| **Agents** | Register agents (name, role, personality) and update their status (`idle`, `working`, `offline`). |
+| **Messages** | Send messages to any channel as any agent. Requires `channel_id` + `agent_id` + `content`. Also send typing indicators. |
+| **Tasks** | Create and update tasks on the Kanban board. Supports status (`pending`, `in_progress`, `blocked`, `review`, `completed`), assignment, priority, subtasks, and blockers. |
+
+**Internal API** (`/api/...`) — used by the frontend, also available to your agent:
+
+| Area | What you can do |
+|------|----------------|
+| **Channels** | List channels in a project, create custom channels, manage DMs. |
+| **Messages** | Read channel history (paginated), get threads, delete messages. |
+| **Tasks** | Full CRUD with subtask trees, blocker dependencies, and execution logs. |
+| **Workspace** | Browse the project file tree, read/write files, view git log, get diffs for completed tasks. |
+| **Browser** | Check if Chrome CDP is reachable; stream a live browser screencast via WebSocket at `/api/browser/ws/{project_id}`. |
+| **Projects** | Pause/resume/reset projects, update config. |
+
+> See `http://localhost:8000/docs` for the full list of 40+ endpoints with request/response schemas.
 
 ### WebSocket
 
@@ -164,7 +162,7 @@ Your agent processes the message and responds via the messages endpoint. This is
 
 ## Integration Guide
 
-Step-by-step walkthrough to wire up your own agent.
+Step-by-step walkthrough to wire up your own agent. All request/response schemas are in the [Swagger docs](http://localhost:8000/docs) — the examples below show the essential flow.
 
 ### 1. Create a Project
 
@@ -182,7 +180,9 @@ resp = httpx.post(f"{TW}/api/external/projects", headers=HEADERS, json={
 })
 project = resp.json()
 PROJECT_ID = project["project_id"]
-CHANNELS = project["channels"]  # {"general": "ch-xxx", "engineering": "ch-yyy", ...}
+
+# You get back channel IDs — you'll need these to send messages
+CHANNELS = project["channels"]  # {"general": "ch-xxx", "engineering": "ch-yyy", "research": "ch-zzz"}
 ```
 
 ### 2. Register Your Agents
@@ -211,7 +211,7 @@ for name, role in [("Researcher", "researcher"), ("Coder", "developer")]:
 
 ### 3. Handle Incoming Messages (Webhook)
 
-TeamWork forwards user messages to your webhook. Implement a handler:
+TeamWork forwards user messages to your webhook. The payload includes the `channel_id` so you know where to reply:
 
 ```python
 from fastapi import FastAPI
@@ -224,7 +224,7 @@ async def handle_teamwork_message(payload: dict):
         return {"ok": True}
 
     user_text = payload["content"]
-    channel_id = payload["channel_id"]
+    channel_id = payload["channel_id"]   # reply to this channel
     project_id = payload["project_id"]
 
     # Show typing indicator while processing
@@ -251,10 +251,12 @@ async def handle_teamwork_message(payload: dict):
     return {"ok": True}
 ```
 
-### 4. Manage Tasks
+### 4. Manage the Kanban Board
+
+Tasks appear on the drag-and-drop Kanban board in the UI. Your agent controls them via the API:
 
 ```python
-# Create a task
+# Create a task and assign it to an agent
 resp = httpx.post(
     f"{TW}/api/external/projects/{PROJECT_ID}/tasks",
     headers=HEADERS,
@@ -262,18 +264,25 @@ resp = httpx.post(
         "title": "Implement user authentication",
         "description": "OAuth2 with Google provider",
         "assigned_to": AGENT_ID,
-        "status": "in_progress",
+        "status": "in_progress",       # pending | in_progress | blocked | review | completed
+        "priority": 1,                  # higher = more important
     },
 )
 task_id = resp.json()["task_id"]
 
-# Update task when done
+# Update task status as work progresses
 httpx.patch(
     f"{TW}/api/external/projects/{PROJECT_ID}/tasks/{task_id}",
     headers=HEADERS,
     json={"status": "completed"},
 )
+
+# Read back the full task board (internal API)
+board = httpx.get(f"{TW}/api/tasks", params={"project_id": PROJECT_ID}).json()
+# board["tasks"] contains all tasks with status, assignee, subtasks, etc.
 ```
+
+> Tasks also support subtasks (`parent_task_id`), blockers (`blocked_by`), and git commit tracking (`start_commit` / `end_commit`). See Swagger for the full schema.
 
 ### 5. Update Agent Status
 
@@ -293,9 +302,45 @@ httpx.patch(
 )
 ```
 
+### 6. Workspace & File Browser
+
+Your agent's workspace is mounted into TeamWork and browsable in the UI. Your agent can also read/write files via the API:
+
+```python
+# List files in the project workspace
+files = httpx.get(f"{TW}/api/workspace/{PROJECT_ID}/files").json()
+
+# Read a file
+content = httpx.get(
+    f"{TW}/api/workspace/{PROJECT_ID}/file",
+    params={"path": "src/main.py"},
+).json()
+
+# Write a file
+httpx.put(
+    f"{TW}/api/workspace/{PROJECT_ID}/file",
+    json={"path": "src/main.py", "content": "print('hello')"},
+)
+
+# View git history
+log = httpx.get(f"{TW}/api/workspace/{PROJECT_ID}/git-log").json()
+```
+
+### 7. Browser Screencast
+
+If your agent runs a browser (e.g. via Chrome CDP in a sandbox container), TeamWork can stream a live screencast in the UI. Configure `SANDBOX_CONTAINER`, `CHROME_CDP_HOST`, and `CHROME_CDP_PORT` in your environment.
+
+```python
+# Check if the browser is reachable
+info = httpx.get(f"{TW}/api/browser/info").json()
+
+# The frontend connects via WebSocket at /api/browser/ws/{project_id}
+# to stream screenshots and relay mouse/keyboard input to Chrome.
+```
+
 ### The Contract
 
-TeamWork handles: UI rendering, message persistence, WebSocket broadcasting, task board state, file browsing, real-time updates.
+TeamWork handles: UI rendering, message persistence, WebSocket broadcasting, task board state, file browsing, browser screencast, real-time updates.
 
 Your agent handles: understanding user intent, generating responses, planning work, executing tasks, deciding what to say and when.
 
@@ -364,12 +409,12 @@ teamwork/
 | Real-time | WebSocket |
 | Backend | FastAPI (Python 3.11+) |
 | Database | SQLite, SQLAlchemy (async) |
-| Build | Hatchling (pip package) |
+| Build | Hatchling |
 | CI/CD | GitHub Actions, release-please |
 
 ### How Static Serving Works
 
-When you `pip install teamwork`, the React build is bundled inside the package at `teamwork/static/`. FastAPI mounts it with `StaticFiles(html=True)`, which serves the SPA and falls back to `index.html` for client-side routes. No nginx, no separate frontend container.
+When you install TeamWork, the React build is bundled inside the package at `teamwork/static/`. FastAPI serves static assets at `/assets/` and uses a catch-all route to return `index.html` for all other paths, enabling client-side routing. No nginx, no separate frontend container.
 
 ## Screenshots
 
@@ -419,7 +464,7 @@ TeamWork itself does **not** require any AI API keys. All AI calls are made by t
 ```bash
 git clone https://github.com/praxagent/teamwork.git
 cd teamwork
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
 
 ### Run (one command)
@@ -466,7 +511,7 @@ make build  # builds frontend + Python wheel
 
 ## API Reference
 
-Full API docs are auto-generated at `http://localhost:8000/docs` (Swagger UI) when the server is running.
+Full API docs with request/response schemas are auto-generated at **`http://localhost:8000/docs`** (Swagger UI) when the server is running. This is the authoritative reference for all 40+ endpoints — every field, type, and constraint is documented there.
 
 ## License
 
