@@ -14,7 +14,7 @@ interface MessageInputProps {
   placeholder?: string;
 }
 
-function TypingIndicatorInline({ channelId }: { channelId?: string }) {
+export function TypingIndicatorInline({ channelId }: { channelId?: string }) {
   const typingAgents = useUIStore((state) => 
     channelId ? state.typingAgents[channelId] || [] : []
   );

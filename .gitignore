@@ -69,6 +69,9 @@ backend/data/
 # Backups
 backups/
 
+# Bundled frontend
+src/teamwork/static/
+
 # Misc
 *.log
 *.tmp
