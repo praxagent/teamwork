@@ -148,7 +148,7 @@ export function useWebSocket() {
         case 'agent:status': {
           const agentData = event.data;
           updateAgent({
-            id: agentData.agent_id as string,
+            id: (agentData.agent_id || agentData.id) as string,
             status: agentData.status as 'idle' | 'working' | 'blocked' | 'offline',
           } as any);
           break;

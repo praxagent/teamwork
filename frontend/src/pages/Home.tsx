@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { Button } from '@/components/common';
 import { useProjects } from '@/hooks/useApi';
 import { Users, Rocket, ArrowRight, FolderOpen, RotateCcw, Github, Server, Key, AlertTriangle, Zap, BookOpen, MessageSquare, Layout, Terminal, UserCheck, Eye, FileCode, GraduationCap, Brain, TrendingUp } from 'lucide-react';
@@ -9,9 +9,17 @@ import { useState } from 'react';
 
 export function Home() {
   const navigate = useNavigate();
-  const { data: projectsData } = useProjects();
+  const { data: projectsData, isLoading } = useProjects();
   const projects = projectsData?.projects || [];
   const [activeMode, setActiveMode] = useState<Mode>('startup');
+
+  // Skip lander and go straight to projects if any exist
+  if (!isLoading && projects.length > 0) {
+    return <Navigate to="/projects" replace />;
+  }
+
+  // Show nothing while checking for projects
+  if (isLoading) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slack-purple to-purple-900">
