@@ -1,6 +1,11 @@
 """Pytest configuration and shared fixtures for TeamWork tests."""
 
 import os
+
+# Set DATABASE_URL BEFORE importing teamwork — the engine is created at
+# import time, so the env var must be visible when Settings() runs.
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+
 from collections.abc import AsyncGenerator
 
 import pytest

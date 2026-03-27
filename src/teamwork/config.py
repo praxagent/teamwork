@@ -18,6 +18,9 @@ def get_project_root() -> Path:
 def resolve_database_path(db_url: str, project_root: Path) -> str:
     """Resolve the database URL to use an absolute path."""
     if db_url.startswith("sqlite"):
+        # In-memory databases need no path resolution.
+        if ":memory:" in db_url:
+            return db_url
         prefix_end = db_url.find(":///") + 4
         prefix = db_url[:prefix_end]
         path = db_url[prefix_end:]
