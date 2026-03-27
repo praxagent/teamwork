@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/praxagent/teamwork/compare/v0.1.0...v0.2.0) (2026-03-27)
+
+
+### Features
+
+* refactor teamwork as the shell for agents, without its own agent, add browser/terminal ([#9](https://github.com/praxagent/teamwork/issues/9)) ([0804020](https://github.com/praxagent/teamwork/commit/08040201474875c069ffbfc8e92c09f99a89af56))
+
 ## 0.1.0 (2026-03-27)
 
 
