@@ -4,15 +4,20 @@
 
 > **Breaking change (v0.2.0):** TeamWork is now a pure display shell — all built-in AI agent logic (PM orchestration, coaching, persona generation, response generation) has been removed. TeamWork no longer calls any LLM APIs directly. Instead, an external agent (like [Prax](https://github.com/praxagent/gpt-transcriber)) provides the intelligence via TeamWork's REST API. If you were using the previous self-contained version with built-in agents, it is preserved at [v0.1.0](https://github.com/praxagent/teamwork/releases/tag/v0.1.0).
 
-An open-source, **agent-agnostic collaboration shell** — a Slack-like web UI for AI agent teams. TeamWork provides the body (chat, channels, task board, file browser, terminal) while you bring the brains (your own agent framework).
+An open-source, **agent-agnostic collaboration shell** — a Slack-like web UI for AI agent teams. TeamWork provides the body (chat, channels, task board, file browser, **embedded terminal**, **live browser screencast**) while you bring the brains (your own agent framework).
 
 Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and renders files — but it doesn't decide what to say or do. Your agent talks to TeamWork through a simple REST + WebSocket API, just like a human would use Slack.
+
+<img src="assets/teamwork-embedded-browser.png" alt="TeamWork embedded browser — chat with your agent while watching it browse the web" width="800">
+
+*Chat with your agent on the left while watching it browse the web in real time on the right. The embedded browser streams a live screencast from a headless Chrome instance running in the agent's sandbox — you see exactly what the agent sees, and can take over with mouse and keyboard at any time.*
 
 > **API Keys & Costs** — TeamWork itself requires no AI API keys. However, the external agent you connect (e.g. Prax) will consume API credits. Monitor your usage dashboards and set spending limits.
 
 ## Table of Contents
 
 - [Features](#features)
+- [Embedded Terminal & Browser](#embedded-terminal--browser)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Connecting Your Agent](#connecting-your-agent)
@@ -30,12 +35,39 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 - **Real-time chat** — Channels and direct messages with WebSocket updates
 - **Kanban task board** — Drag-and-drop task management with status tracking
 - **File browser** — View and edit workspace files in-browser
-- **Executive Access** — Terminal sessions and browser screencast in the UI
+- **Embedded terminal** — Full PTY shell into the agent's sandbox container, right in the browser. Watch your agent run commands, or take over and type yourself. Powered by xterm.js with Docker exec under the hood
+- **Live browser screencast** — Stream a real-time view of the headless Chrome running in the sandbox. See exactly what your agent sees as it browses, scrapes, or interacts with web apps. Click "Take Over" to control the browser with your own mouse and keyboard — then hand it back
 - **Agent roster** — Display agent names, roles, avatars, and online status
 - **External Agent API** — REST endpoints for any agent to send messages, update tasks, and manage files
 - **Installable** — `uv pip install` from GitHub; bundles the React frontend as static files
 - **Single container** — One Docker image serves both API and frontend (no nginx needed)
 - **Zero AI dependencies** — No LLM API keys, no anthropic/openai packages
+
+## Embedded Terminal & Browser
+
+Most agent UIs are chat-only — you talk to the agent but you can't *see* what it's doing. TeamWork fixes that.
+
+### Live Browser Screencast
+
+Your agent runs a headless Chrome inside its sandbox container. TeamWork proxies the Chrome DevTools Protocol (CDP) and streams screenshots to the frontend over WebSocket. You get a real-time, low-latency view of whatever the agent is looking at — web pages, documentation, dashboards, anything.
+
+Click **"Take Over"** in the top-right corner to seize control: your mouse clicks and keystrokes are relayed directly to the headless browser. When you're done, hand it back to the agent. This makes debugging, guiding, and collaborating with your agent seamless — you're not guessing what it did, you're watching it happen.
+
+**How it works:** The sandbox container runs Chromium with `--headless=new` and exposes CDP on port 9222. A `socat` bridge forwards it to `0.0.0.0:9223` so TeamWork can reach it across the Docker network. TeamWork's `/api/browser/ws/{project_id}` endpoint captures screenshots via CDP and relays input events back.
+
+### In-Browser Terminal
+
+TeamWork embeds a full terminal (xterm.js) that connects to a PTY inside the agent's sandbox container via `docker exec`. It's the same shell your agent uses — you see its files, its installed packages, its running processes.
+
+Use it to:
+- **Watch the agent work** — see commands execute in real time
+- **Debug issues** — inspect files, check logs, run tests
+- **Take over** — type commands yourself when the agent gets stuck
+- **Install tools** — add packages or dependencies the agent needs
+
+The terminal is not a toy — it's a full interactive shell with color support, tab completion, and scroll history. Multiple sessions can run simultaneously.
+
+**How it works:** TeamWork creates a WebSocket-backed PTY session via `docker exec -it <container> /bin/bash`. The frontend renders it with xterm.js + the fit addon for responsive sizing.
 
 ## Quick Start
 
@@ -326,17 +358,44 @@ httpx.put(
 log = httpx.get(f"{TW}/api/workspace/{PROJECT_ID}/git-log").json()
 ```
 
-### 7. Browser Screencast
+### 7. Terminal Sessions
 
-If your agent runs a browser (e.g. via Chrome CDP in a sandbox container), TeamWork can stream a live screencast in the UI. Configure `SANDBOX_CONTAINER`, `CHROME_CDP_HOST`, and `CHROME_CDP_PORT` in your environment.
+If your agent runs inside a Docker container, users can open a live terminal directly in the TeamWork UI. Set `SANDBOX_CONTAINER` to the container name:
+
+```bash
+# .env
+SANDBOX_CONTAINER=prax-sandbox  # name of the Docker container to exec into
+```
+
+That's it — TeamWork handles the rest. The frontend opens a WebSocket to `/api/terminal/ws/{project_id}`, which spawns a `docker exec -it` PTY session. Users see exactly the same filesystem and processes as the agent.
+
+### 8. Browser Screencast
+
+If your agent runs a headless Chrome in its sandbox, TeamWork streams a live screencast to the UI. Users can watch the agent browse and take over with mouse/keyboard.
+
+```bash
+# .env
+SANDBOX_CONTAINER=prax-sandbox  # container running Chrome
+CHROME_CDP_HOST=sandbox          # hostname of the container (Docker network name)
+CHROME_CDP_PORT=9223             # CDP port exposed by the container
+```
+
+Your sandbox container needs to run Chrome headless with CDP enabled. Example entrypoint:
+
+```bash
+# In your sandbox Dockerfile / entrypoint:
+chromium --headless=new --no-sandbox --disable-gpu --remote-debugging-port=9222 &
+# socat bridge: Chrome only binds to 127.0.0.1, so forward to 0.0.0.0
+socat TCP-LISTEN:9223,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:9222 &
+```
 
 ```python
-# Check if the browser is reachable
+# Verify the browser is reachable from TeamWork:
 info = httpx.get(f"{TW}/api/browser/info").json()
-
-# The frontend connects via WebSocket at /api/browser/ws/{project_id}
-# to stream screenshots and relay mouse/keyboard input to Chrome.
+# {"available": true, "browser": "Chrome/146.0.7680.164"}
 ```
+
+The frontend connects via WebSocket at `/api/browser/ws/{project_id}` to stream screenshots and relay mouse/keyboard input back to Chrome.
 
 ### The Contract
 
@@ -418,21 +477,29 @@ When you install TeamWork, the React build is bundled inside the package at `tea
 
 ## Screenshots
 
-### Chat Interface
+### Embedded Browser — Watch Your Agent Browse the Web
+
+![Embedded Browser](assets/teamwork-embedded-browser.png)
+
+Chat with your agent while watching it browse in real time. The "Take Over" button (top right) lets you control the browser with your own mouse and keyboard.
+
+### Chat & Kanban
 
 | Chat | Kanban Board |
 |------|-------------|
 | ![Chat](docs/screenshots/startup/example_chat.png) | ![Kanban](docs/screenshots/startup/kanban_board.png) |
 
+### File Browser & Live Sessions
+
 | File Viewer | Live Sessions |
 |-------------|--------------|
 | ![Files](docs/screenshots/startup/example_file_viewer.png) | ![Live Sessions](docs/screenshots/startup/follow_agent_work.png) |
 
-### Executive Access
+### Executive Access — Terminal & Browser
 
 ![Executive Access](docs/screenshots/startup/executive_access.png)
 
-Launch terminal sessions or browser screencast directly in the UI. Agents run in isolated Docker containers with your workspace mounted.
+Launch terminal sessions or browser screencast directly in the UI. Agents run in isolated Docker containers with your workspace mounted. Multiple terminal sessions can run simultaneously.
 
 ### Projects
 
