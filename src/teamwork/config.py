@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
+    # Prax backend URL (for plugin management proxy)
+    prax_url: str = ""
+
     # External agent API key (empty = no auth in dev)
     external_api_key: str = ""
 

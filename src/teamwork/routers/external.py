@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Header
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teamwork.models import Project, Agent, Channel, Message, Task, get_db, AsyncSessionLocal
+from teamwork.routers.agents import get_live_output_store, _LiveOutputEntry
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,14 @@ class ExternalMessage(BaseModel):
 class ExternalAgentStatus(BaseModel):
     """Update an agent's status."""
     status: str  # idle, working, offline
+
+
+class ExternalLiveOutput(BaseModel):
+    """Push live output from agent execution."""
+    output: str = ""
+    status: str = "running"  # running, completed, error, idle, etc.
+    append: bool = True  # True = append to existing output, False = replace
+    error: str | None = None
 
 
 class ExternalTaskCreate(BaseModel):
@@ -351,6 +361,56 @@ async def send_typing_indicator(
     await manager.broadcast_to_channel(request.channel_id, typing_event)
     await manager.broadcast_to_project(project_id, typing_event)
     return {"status": "sent"}
+
+
+@router.post("/projects/{project_id}/agents/{agent_id}/live-output")
+async def push_live_output(
+    project_id: str,
+    agent_id: str,
+    request: ExternalLiveOutput,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(_verify_api_key),
+) -> dict[str, str]:
+    """Push live execution output for an agent.
+
+    Called by the external orchestrator (Prax) during agent execution to
+    stream tool call logs and output to the TeamWork frontend.
+    """
+    await _get_external_project(project_id, db)
+
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.project_id == project_id)
+    )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found in this project")
+
+    store = get_live_output_store()
+    now = datetime.now(timezone.utc).isoformat()
+
+    entry = store.get(agent_id)
+    if not entry:
+        entry = _LiveOutputEntry(agent_id, agent.name)
+        store[agent_id] = entry
+
+    entry.agent_name = agent.name
+    entry.status = request.status
+    entry.last_update = now
+    entry.error = request.error
+
+    if request.status in ("running", "invoking", "preparing", "initializing") and not entry.started_at:
+        entry.started_at = now
+
+    if request.append and request.output:
+        entry.output = (entry.output or "") + request.output
+    elif request.output:
+        entry.output = request.output
+
+    # Reset started_at on terminal states
+    if request.status in ("idle", "completed", "error", "failed", "stopped"):
+        entry.started_at = None
+
+    return {"status": "updated"}
 
 
 @router.post("/projects/{project_id}/tasks", status_code=201)

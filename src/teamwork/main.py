@@ -25,6 +25,7 @@ from teamwork.routers import (
     channels_router,
     external_router,
     messages_router,
+    plugins_router,
     projects_router,
     tasks_router,
     terminal_router,
@@ -86,6 +87,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(plugins_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 app.include_router(agents_router, prefix="/api")
 app.include_router(browser_router, prefix="/api")

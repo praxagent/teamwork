@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { MessageSquare, MoreHorizontal } from 'lucide-react';
+import { MessageSquare, MoreHorizontal, Activity } from 'lucide-react';
 import { Avatar, MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
 import type { Message, Agent } from '@/types';
@@ -256,6 +256,21 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
       {/* Message actions */}
       <div className="absolute right-4 top-0 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
         <div className={`flex items-center gap-1 border rounded shadow-sm ${actionsBg}`}>
+          {/* Trace button — shown only for agent messages with trace metadata */}
+          {message.metadata?.trace_id ? (
+            <button
+              className={`p-1 rounded ${actionsHoverBg}`}
+              onClick={() => {
+                const meta = message.metadata as Record<string, string>;
+                const url = meta.grafana_trace_url ||
+                  `http://localhost:3001/explore?left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22query%22:%22${meta.trace_id}%22%7D%5D%7D`;
+                window.open(url, '_blank', 'noopener');
+              }}
+              title={`View trace ${String(message.metadata.trace_id)}`}
+            >
+              <Activity className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+            </button>
+          ) : null}
           <button
             className={`p-1 rounded ${actionsHoverBg}`}
             onClick={() => onThreadClick?.(message.id)}

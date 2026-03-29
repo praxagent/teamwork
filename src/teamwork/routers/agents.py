@@ -1,6 +1,7 @@
 """Agents API router."""
 
 import base64
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +13,32 @@ from teamwork.models import Agent, Project, ActivityLog, get_db
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+# ---------------------------------------------------------------------------
+# In-memory live output buffer
+# ---------------------------------------------------------------------------
+# Stores the most recent execution output for each agent.  Keyed by agent_id.
+# This is intentionally in-memory — live output is ephemeral and doesn't need
+# persistence.  It survives as long as the TeamWork process is running.
+
+class _LiveOutputEntry:
+    __slots__ = ("agent_id", "agent_name", "status", "output", "last_update", "started_at", "error")
+
+    def __init__(self, agent_id: str, agent_name: str) -> None:
+        self.agent_id = agent_id
+        self.agent_name = agent_name
+        self.status = "idle"
+        self.output: str = ""
+        self.last_update: str | None = None
+        self.started_at: str | None = None
+        self.error: str | None = None
+
+_live_output: dict[str, _LiveOutputEntry] = {}
+
+
+def get_live_output_store() -> dict[str, _LiveOutputEntry]:
+    """Return the module-level live output store (used by external router too)."""
+    return _live_output
 
 
 class AgentCreate(BaseModel):
@@ -566,3 +593,57 @@ async def initialize_agent_prompts(
         "message": f"Prompts initialized for {agent.name}",
         "path": str(prompts_dir),
     }
+
+
+# ============================================================================
+# Agent Live Output — real-time execution output
+# ============================================================================
+
+class LiveOutputResponse(BaseModel):
+    """Response schema for agent live output."""
+    agent_id: str
+    agent_name: str
+    status: str  # idle, running, completed, error, etc.
+    output: str | None
+    last_update: str | None
+    started_at: str | None
+    error: str | None
+
+
+@router.get("/{agent_id}/live-output", response_model=LiveOutputResponse)
+async def get_agent_live_output(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> LiveOutputResponse:
+    """Get the live execution output for an agent.
+
+    Returns the most recent execution output buffer.  The frontend polls
+    this endpoint every ~1 second to display real-time agent activity.
+    """
+    entry = _live_output.get(agent_id)
+    if entry:
+        return LiveOutputResponse(
+            agent_id=entry.agent_id,
+            agent_name=entry.agent_name,
+            status=entry.status,
+            output=entry.output or None,
+            last_update=entry.last_update,
+            started_at=entry.started_at,
+            error=entry.error,
+        )
+
+    # No live output yet — look up agent name from DB and return idle state
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    return LiveOutputResponse(
+        agent_id=agent_id,
+        agent_name=agent.name,
+        status="idle",
+        output=None,
+        last_update=None,
+        started_at=None,
+        error=None,
+    )

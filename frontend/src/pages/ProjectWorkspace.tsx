@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Code, ListTodo, Settings, ChevronLeft, Sparkles, Terminal, TerminalSquare, BarChart3, Moon, Sun, Globe } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Sparkles, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -8,7 +8,7 @@ import {
   ThreadView,
 } from '@/components/chat';
 import { ProfileModal } from '@/components/profiles';
-import { BrowserPanel, BrowserChatSidebar, FileBrowser, TaskBoard, SettingsPanel, ClaudePanel, LiveSessionsPanel, ProgressPanel, TerminalPanel } from '@/components/workspace';
+import { BrowserPanel, BrowserChatSidebar, FileBrowser, TaskBoard, SettingsPanel, ClaudePanel, ProgressPanel, TerminalPanel, ObservabilityPanel } from '@/components/workspace';
 import {
   useProject,
   useAgents,
@@ -36,10 +36,10 @@ export function ProjectWorkspace() {
   const [showFileBrowser, setShowFileBrowser] = useState(savedView === 'files');
   const [showSettings, setShowSettings] = useState(savedView === 'settings');
   const [showClaudePanel, setShowClaudePanel] = useState(savedView === 'claude');
-  const [showLiveSessions, setShowLiveSessions] = useState(savedView === 'sessions');
   const [showProgressPanel, setShowProgressPanel] = useState(savedView === 'progress');
   const [showBrowserPanel, setShowBrowserPanel] = useState(savedView === 'browser');
   const [showTerminalPanel, setShowTerminalPanel] = useState(savedView === 'terminal');
+  const [showObservabilityPanel, setShowObservabilityPanel] = useState(savedView === 'observability');
   // Track if Claude panel has ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(savedView === 'claude');
 
@@ -49,14 +49,14 @@ export function ProjectWorkspace() {
     const view = showTerminalPanel ? 'terminal'
       : showBrowserPanel ? 'browser'
       : showClaudePanel ? 'claude'
+      : showObservabilityPanel ? 'observability'
       : showTaskPanel ? 'tasks'
       : showFileBrowser ? 'files'
       : showSettings ? 'settings'
       : showProgressPanel ? 'progress'
-      : showLiveSessions ? 'sessions'
       : 'chat';
     localStorage.setItem(`tw:view:${projectId}`, view);
-  }, [projectId, showTerminalPanel, showBrowserPanel, showClaudePanel, showTaskPanel, showFileBrowser, showSettings, showProgressPanel, showLiveSessions]);
+  }, [projectId, showTerminalPanel, showBrowserPanel, showClaudePanel, showObservabilityPanel, showTaskPanel, showFileBrowser, showSettings, showProgressPanel]);
   // Track if profile modal should open in edit mode
   const [profileEditMode, setProfileEditMode] = useState(false);
 
@@ -156,6 +156,7 @@ export function ProjectWorkspace() {
     setShowClaudePanel(false);
     setShowBrowserPanel(false);
     setShowTerminalPanel(false);
+    setShowObservabilityPanel(false);
   };
 
   const handleSendMessage = (content: string) => {
@@ -263,8 +264,8 @@ export function ProjectWorkspace() {
 
       {/* Main content area - shows either Chat, TaskBoard, FileBrowser, or Settings */}
       <div className={`flex-1 flex flex-col min-w-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
-        {/* Header - hidden when in Executive Access, Progress, or Browser panel for maximum space */}
-        {!showClaudePanel && !showProgressPanel && !showBrowserPanel && !showTerminalPanel && (
+        {/* Header - hidden when in Executive Access, Progress, Browser, or Observability panel for maximum space */}
+        {!showClaudePanel && !showProgressPanel && !showBrowserPanel && !showTerminalPanel && !showObservabilityPanel && (
         <div className={`flex items-center justify-between border-b px-4 py-3 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center gap-2">
             {/* Back to Projects */}
@@ -296,11 +297,6 @@ export function ProjectWorkspace() {
                 <Settings className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
                 <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Settings</h1>
               </>
-            ) : showLiveSessions ? (
-              <>
-                <Terminal className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-500'}`} />
-                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Live Sessions</h1>
-              </>
             ) : showProgressPanel ? (
               <>
                 <BarChart3 className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
@@ -330,17 +326,17 @@ export function ProjectWorkspace() {
           {/* Panel Toggle Buttons */}
           <div className="flex items-center gap-1">
             {/* Back to Chat button when in a panel */}
-            {(showTaskPanel || showFileBrowser || showClaudePanel || showSettings || showLiveSessions || showProgressPanel || showBrowserPanel) && (
+            {(showTaskPanel || showFileBrowser || showClaudePanel || showSettings || showProgressPanel || showBrowserPanel || showObservabilityPanel) && (
               <button
                 onClick={() => {
                   setShowTaskPanel(false);
                   setShowFileBrowser(false);
                   setShowClaudePanel(false);
                   setShowSettings(false);
-                  setShowLiveSessions(false);
                   setShowProgressPanel(false);
                   setShowBrowserPanel(false);
                   setShowTerminalPanel(false);
+                  setShowObservabilityPanel(false);
                 }}
                 className={`px-3 py-1.5 text-sm rounded mr-2 ${darkMode ? 'text-gray-300 hover:text-white hover:bg-slate-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
               >
@@ -355,7 +351,7 @@ export function ProjectWorkspace() {
                   setShowFileBrowser(false);
                   setShowClaudePanel(false);
                   setShowSettings(false);
-                  setShowLiveSessions(false);
+
                   setShowBrowserPanel(false);
                   setShowTerminalPanel(false);
                 }
@@ -376,7 +372,7 @@ export function ProjectWorkspace() {
                   setShowTaskPanel(false);
                   setShowClaudePanel(false);
                   setShowSettings(false);
-                  setShowLiveSessions(false);
+
                   setShowBrowserPanel(false);
                   setShowTerminalPanel(false);
                 }
@@ -401,7 +397,7 @@ export function ProjectWorkspace() {
                     setShowTaskPanel(false);
                     setShowFileBrowser(false);
                     setShowSettings(false);
-                    setShowLiveSessions(false);
+  
                     setShowProgressPanel(false);
                     setShowBrowserPanel(false);
                     setShowTerminalPanel(false);
@@ -427,7 +423,7 @@ export function ProjectWorkspace() {
                     setShowFileBrowser(false);
                     setShowClaudePanel(false);
                     setShowSettings(false);
-                    setShowLiveSessions(false);
+  
                     setShowBrowserPanel(false);
                     setShowTerminalPanel(false);
                   }
@@ -449,7 +445,7 @@ export function ProjectWorkspace() {
                   setShowTaskPanel(false);
                   setShowFileBrowser(false);
                   setShowClaudePanel(false);
-                  setShowLiveSessions(false);
+
                   setShowBrowserPanel(false);
                   setShowTerminalPanel(false);
                 }
@@ -473,29 +469,6 @@ export function ProjectWorkspace() {
               {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
             
-            {/* Live Sessions toggle - shows running Claude Code sessions as full panel */}
-            <button
-              onClick={() => {
-                setShowLiveSessions(!showLiveSessions);
-                if (!showLiveSessions) {
-                  setShowTaskPanel(false);
-                  setShowFileBrowser(false);
-                  setShowClaudePanel(false);
-                  setShowSettings(false);
-                  setShowBrowserPanel(false);
-                  setShowTerminalPanel(false);
-                }
-              }}
-              className={`p-2 rounded transition-colors ${
-                showLiveSessions 
-                  ? 'bg-green-600 text-white hover:bg-green-500' 
-                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-              title="Live Sessions - Watch agents work in real-time"
-            >
-              <Terminal className="w-5 h-5" />
-            </button>
-
             {/* Terminal panel toggle */}
             <button
               onClick={() => {
@@ -505,7 +478,7 @@ export function ProjectWorkspace() {
                   setShowFileBrowser(false);
                   setShowClaudePanel(false);
                   setShowSettings(false);
-                  setShowLiveSessions(false);
+
                   setShowProgressPanel(false);
                   setShowBrowserPanel(false);
                 }
@@ -529,9 +502,10 @@ export function ProjectWorkspace() {
                   setShowFileBrowser(false);
                   setShowClaudePanel(false);
                   setShowSettings(false);
-                  setShowLiveSessions(false);
+
                   setShowProgressPanel(false);
                   setShowTerminalPanel(false);
+                  setShowObservabilityPanel(false);
                 }
               }}
               className={`p-2 rounded transition-colors ${
@@ -542,6 +516,31 @@ export function ProjectWorkspace() {
               title="Browser - Watch and control the agent's browser"
             >
               <Globe className="w-5 h-5" />
+            </button>
+
+            {/* Observability panel toggle */}
+            <button
+              onClick={() => {
+                setShowObservabilityPanel(!showObservabilityPanel);
+                if (!showObservabilityPanel) {
+                  setShowTaskPanel(false);
+                  setShowFileBrowser(false);
+                  setShowClaudePanel(false);
+                  setShowSettings(false);
+
+                  setShowProgressPanel(false);
+                  setShowBrowserPanel(false);
+                  setShowTerminalPanel(false);
+                }
+              }}
+              className={`p-2 rounded transition-colors ${
+                showObservabilityPanel
+                  ? 'bg-green-600 text-white hover:bg-green-500'
+                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
+              }`}
+              title="Observability - Traces, metrics, and dashboards"
+            >
+              <Activity className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -566,6 +565,15 @@ export function ProjectWorkspace() {
           />
         )}
 
+        {/* Observability Panel */}
+        {showObservabilityPanel && projectId && (
+          <ObservabilityPanel
+            projectId={projectId}
+            isVisible={showObservabilityPanel}
+            onClose={() => setShowObservabilityPanel(false)}
+          />
+        )}
+
         {/* Claude Panel - rendered separately with CSS visibility for persistence */}
         {claudePanelMounted && projectId && (
           <ClaudePanel
@@ -581,16 +589,15 @@ export function ProjectWorkspace() {
             projectId={projectId}
             agents={agents}
             isCoachingProject={isCoachingProject}
-            onWatchLive={(agentId) => {
-              // Switch to Live Sessions panel when "Watch Live" is clicked
+            onWatchLive={() => {
+              // Switch to Observability panel (Live tab) when "Watch Live" is clicked
               setShowTaskPanel(false);
               setShowFileBrowser(false);
               setShowSettings(false);
               setShowClaudePanel(false);
               setShowBrowserPanel(false);
               setShowTerminalPanel(false);
-              setShowLiveSessions(true);
-              // TODO: Could also pass agentId to pre-select that agent's session
+              setShowObservabilityPanel(true);
             }}
           />
         ) : showFileBrowser && projectId ? (
@@ -610,14 +617,6 @@ export function ProjectWorkspace() {
               project={currentProject}
             />
           </div>
-        ) : showLiveSessions && projectId ? (
-          <LiveSessionsPanel
-            projectId={projectId}
-            agents={agents}
-            isVisible={true}
-            onClose={() => setShowLiveSessions(false)}
-            fullPage={true}
-          />
         ) : showProgressPanel && projectId ? (
           <div className={`flex-1 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
             <ProgressPanel
@@ -643,7 +642,7 @@ export function ProjectWorkspace() {
               }}
             />
           </div>
-        ) : !showClaudePanel && !showBrowserPanel && !showTerminalPanel ? (
+        ) : !showClaudePanel && !showBrowserPanel && !showTerminalPanel && !showObservabilityPanel ? (
           <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
             <MessageList
               messages={currentMessages}
