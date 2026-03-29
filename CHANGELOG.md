@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/praxagent/teamwork/compare/v0.2.0...v0.3.0) (2026-03-29)
+
+
+### Features
+
+* add plugin page and observability page ([#12](https://github.com/praxagent/teamwork/issues/12)) ([7e621f3](https://github.com/praxagent/teamwork/commit/7e621f3933b513b9544bf93c9a648d2d985ff45b))
+
 ## [0.2.0](https://github.com/praxagent/teamwork/compare/v0.1.0...v0.2.0) (2026-03-27)
 
 
