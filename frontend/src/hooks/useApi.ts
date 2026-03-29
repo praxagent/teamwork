@@ -1067,3 +1067,194 @@ export function useVocabulary(projectId: string | null, topic: string | null) {
     enabled: !!projectId && !!topic,
   });
 }
+
+// Plugins
+export interface PluginInfo {
+  name: string;
+  url: string;
+  subfolder_filter: string | null;
+  plugins_found: string[];
+  trust_tier: string;
+  active_version: string | null;
+  security_warnings_acknowledged: boolean;
+}
+
+export interface SecurityWarning {
+  severity: string;
+  pattern: string;
+  file: string;
+  line: number;
+  code: string;
+}
+
+export interface PluginImportResult {
+  status: string;
+  name: string;
+  path?: string;
+  url?: string;
+  security_warnings?: SecurityWarning[];
+  requires_acknowledgement?: boolean;
+  error?: string;
+}
+
+export interface PluginSecurityResult {
+  name: string;
+  warnings: SecurityWarning[];
+}
+
+export function usePlugins() {
+  return useQuery({
+    queryKey: ['plugins'],
+    queryFn: () => fetchJson<PluginInfo[]>('/plugins'),
+  });
+}
+
+export function useImportPlugin() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      repo_url: string;
+      name?: string;
+      plugin_subfolder?: string;
+    }) =>
+      fetchJson<PluginImportResult>('/plugins/import', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+  });
+}
+
+export function useRemovePlugin() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (name: string) =>
+      fetch(`${API_BASE}/plugins/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      }).then((res) => {
+        if (!res.ok) throw new Error('Failed to remove plugin');
+        return res.json();
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+  });
+}
+
+export function useUpdatePlugin() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (name: string) =>
+      fetchJson<{ status: string; name: string }>(
+        `/plugins/${encodeURIComponent(name)}/update`,
+        { method: 'POST' }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+  });
+}
+
+export function useAcknowledgePlugin() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (name: string) =>
+      fetchJson<{ status: string; name: string }>(
+        `/plugins/${encodeURIComponent(name)}/acknowledge`,
+        { method: 'POST' }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+  });
+}
+
+export function usePluginSecurity(name: string | null) {
+  return useQuery({
+    queryKey: ['plugin-security', name],
+    queryFn: () =>
+      fetchJson<PluginSecurityResult>(
+        `/plugins/${encodeURIComponent(name || '')}/security`
+      ),
+    enabled: !!name,
+  });
+}
+
+export interface PluginSkillEntry {
+  subfolder: string | null;
+  content: string;
+  version?: string;
+  description?: string;
+  tools?: string[];
+}
+
+export interface PluginSkillsResult {
+  name: string;
+  skills?: PluginSkillEntry[];
+  // Single-subfolder response shape:
+  subfolder?: string;
+  content?: string;
+  version?: string;
+  description?: string;
+  tools?: string[];
+}
+
+export function usePluginSkills(name: string | null) {
+  return useQuery({
+    queryKey: ['plugin-skills', name],
+    queryFn: () =>
+      fetchJson<PluginSkillsResult>(
+        `/plugins/${encodeURIComponent(name || '')}/skills`
+      ),
+    enabled: !!name,
+  });
+}
+
+export interface PluginUpdateCheck {
+  name: string;
+  local_commit: string;
+  remote_commit: string | null;
+  update_available: boolean;
+  commits_behind: number;
+}
+
+export function useCheckPluginUpdates(name: string | null) {
+  return useQuery({
+    queryKey: ['plugin-check-updates', name],
+    queryFn: () =>
+      fetchJson<PluginUpdateCheck>(
+        `/plugins/${encodeURIComponent(name || '')}/check-updates`
+      ),
+    enabled: !!name,
+  });
+}
+
+export function useCheckAllPluginUpdates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => fetchJson<PluginUpdateCheck[]>('/plugins/check-updates'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+  });
+}
+
+export function useUpdateAllPlugins() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      fetchJson<Array<{ name: string; status?: string; error?: string }>>(
+        '/plugins/update-all',
+        { method: 'POST' }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+  });
+}
