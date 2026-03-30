@@ -240,7 +240,7 @@ export function ProfileModal({ agent, activities = [], onClose, onSendMessage, i
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className={`${darkMode ? 'bg-slate-800' : 'bg-white'} rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col`}>
         {/* Header */}
-        <div className="relative bg-gradient-to-r from-slack-purple to-purple-600 h-32">
+        <div className="relative bg-gradient-to-r from-indigo-600 to-violet-600 h-32">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 p-1 hover:bg-white/20 rounded text-white"
@@ -302,7 +302,7 @@ export function ProfileModal({ agent, activities = [], onClose, onSendMessage, i
                 {agent.team && (
                   <>
                     <span className={darkMode ? 'text-gray-600' : 'text-gray-300'}>|</span>
-                    <span className="text-slack-active">{agent.team}</span>
+                    <span className="text-indigo-500">{agent.team}</span>
                   </>
                 )}
               </div>

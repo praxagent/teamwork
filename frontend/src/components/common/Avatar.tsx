@@ -73,14 +73,14 @@ export function Avatar({ src, name, size = 'md', status, className }: AvatarProp
           src={src}
           alt={name}
           className={clsx(
-            'rounded-md object-cover',
+            'rounded-full object-cover',
             sizeClasses[size]
           )}
         />
       ) : (
         <div
           className={clsx(
-            'rounded-md flex items-center justify-center font-semibold text-white',
+            'rounded-full flex items-center justify-center font-semibold text-white',
             sizeClasses[size],
             getColorFromName(name)
           )}

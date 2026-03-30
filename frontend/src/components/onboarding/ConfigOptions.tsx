@@ -37,14 +37,14 @@ function OptionCard({ selected, onClick, icon: Icon, title, description, badge }
       onClick={onClick}
       className={`cursor-pointer transition-all ${
         selected
-          ? 'border-slack-active bg-blue-50 ring-2 ring-slack-active ring-offset-2'
+          ? 'border-tw-accent bg-blue-50 ring-2 ring-tw-accent ring-offset-2'
           : ''
       }`}
     >
       <CardContent className="flex items-start gap-3">
         <div
           className={`p-2 rounded-lg ${
-            selected ? 'bg-slack-active text-white' : 'bg-gray-100 text-gray-600'
+            selected ? 'bg-tw-accent text-white' : 'bg-gray-100 text-gray-600'
           }`}
         >
           <Icon className="w-5 h-5" />
@@ -62,7 +62,7 @@ function OptionCard({ selected, onClick, icon: Icon, title, description, badge }
         </div>
         <div
           className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-            selected ? 'border-slack-active bg-slack-active' : 'border-gray-300'
+            selected ? 'border-tw-accent bg-tw-accent' : 'border-gray-300'
           }`}
         >
           {selected && (
@@ -168,7 +168,7 @@ export function ConfigOptions({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-slack-active focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-tw-accent focus:border-transparent"
                 placeholder="My Awesome Project"
               />
             </div>
@@ -179,7 +179,7 @@ export function ConfigOptions({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-slack-active focus:border-transparent resize-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-tw-accent focus:border-transparent resize-none"
                 placeholder="A brief description of your project..."
                 rows={2}
               />

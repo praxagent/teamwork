@@ -291,22 +291,22 @@ export function ProjectWorkspace() {
             
             {showTaskPanel ? (
               <>
-                <ListTodo className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <ListTodo className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-indigo-500'}`} />
                 <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Task Board</h1>
               </>
             ) : showFileBrowser ? (
               <>
-                <Code className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <Code className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-indigo-500'}`} />
                 <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Files</h1>
               </>
             ) : showClaudePanel ? (
               <>
-                <Workflow className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <Workflow className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-indigo-500'}`} />
                 <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Execution Graphs</h1>
               </>
             ) : showSettings ? (
               <>
-                <Settings className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <Settings className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-indigo-500'}`} />
                 <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Settings</h1>
               </>
             ) : showProgressPanel ? (
@@ -370,7 +370,7 @@ export function ProjectWorkspace() {
               }}
               className={`p-2 rounded transition-colors ${
                 showTaskPanel 
-                  ? 'bg-slack-purple text-white hover:bg-slack-purple/90' 
+                  ? 'bg-tw-accent text-white hover:bg-indigo-600' 
                   : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
               }`}
               title="Tasks"
@@ -391,7 +391,7 @@ export function ProjectWorkspace() {
               }}
               className={`p-2 rounded transition-colors ${
                 showFileBrowser 
-                  ? 'bg-slack-purple text-white hover:bg-slack-purple/90' 
+                  ? 'bg-tw-accent text-white hover:bg-indigo-600' 
                   : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
               }`}
               title="Files"
@@ -417,7 +417,7 @@ export function ProjectWorkspace() {
                 }}
                 className={`p-2 rounded transition-colors ${
                   showClaudePanel
-                    ? 'bg-slack-purple text-white hover:bg-slack-purple/90'
+                    ? 'bg-tw-accent text-white hover:bg-indigo-600'
                     : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
                 }`}
                 title="Execution Graphs - Watch agent delegation trees in real time"
@@ -464,7 +464,7 @@ export function ProjectWorkspace() {
               }}
               className={`p-2 rounded transition-colors ${
                 showSettings 
-                  ? 'bg-slack-purple text-white hover:bg-slack-purple/90' 
+                  ? 'bg-tw-accent text-white hover:bg-indigo-600' 
                   : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
               }`}
               title="Settings"

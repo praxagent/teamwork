@@ -61,7 +61,7 @@ export function Projects() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slack-purple to-purple-900">
+    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-slate-900 to-indigo-950">
       {/* Header */}
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between">
@@ -74,7 +74,7 @@ export function Projects() {
           </button>
           <Button
             onClick={() => navigate('/new')}
-            className="!bg-yellow-400 !text-purple-900 hover:!bg-yellow-300"
+            className="!bg-indigo-500 !text-white hover:!bg-indigo-400"
           >
             <Plus className="w-4 h-4 mr-2" />
             New Project
@@ -95,7 +95,7 @@ export function Projects() {
             <p className="text-white/70 mb-6">You don't have any projects yet.</p>
             <Button
               onClick={() => navigate('/new')}
-              className="!bg-yellow-400 !text-purple-900 hover:!bg-yellow-300"
+              className="!bg-indigo-500 !text-white hover:!bg-indigo-400"
             >
               <Plus className="w-4 h-4 mr-2" />
               Create Your First Project

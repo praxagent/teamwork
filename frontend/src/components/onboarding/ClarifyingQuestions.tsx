@@ -88,7 +88,7 @@ export function ClarifyingQuestions({
             variant="ghost"
             onClick={handleAutoAnswer}
             disabled={isLoading}
-            className="mt-4 text-slack-active hover:text-blue-700"
+            className="mt-4 text-indigo-500 hover:text-blue-700"
           >
             <Sparkles className="w-4 h-4 mr-2" />
             {autoAnswerLoading ? 'Thinking...' : 'Just answer for me'}

@@ -209,7 +209,7 @@ export function MessageInput({
                   className={clsx(
                     'w-full px-3 py-2 flex items-center gap-2 text-left',
                     index === selectedMentionIndex
-                      ? 'bg-slack-active text-white'
+                      ? 'bg-tw-accent text-white'
                       : popupItemBg
                   )}
                 >
@@ -303,7 +303,7 @@ export function MessageInput({
                 className={clsx(
                   'p-1.5 rounded transition-colors',
                   content.trim()
-                    ? 'bg-slack-active text-white hover:bg-blue-700'
+                    ? 'bg-tw-accent text-white hover:bg-indigo-600'
                     : sendButtonInactive
                 )}
               >

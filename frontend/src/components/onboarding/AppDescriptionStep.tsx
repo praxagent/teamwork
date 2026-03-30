@@ -85,8 +85,8 @@ export function AppDescriptionStep({ onSubmit, onQuickLaunch, onBack, loading, q
       )}
 
       <div className="text-center mb-8">
-        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${isCoaching ? 'bg-purple-100' : 'bg-slack-purple/10'}`}>
-          <HeaderIcon className={`w-8 h-8 ${isCoaching ? 'text-purple-600' : 'text-slack-purple'}`} />
+        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${isCoaching ? 'bg-purple-100' : 'bg-indigo-500/10'}`}>
+          <HeaderIcon className={`w-8 h-8 ${isCoaching ? 'text-purple-600' : 'text-indigo-600'}`} />
         </div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           {title}
@@ -224,7 +224,7 @@ function ExampleCard({
     <button
       type="button"
       onClick={onClick}
-      className="p-4 text-left border border-gray-200 rounded-lg hover:border-slack-active hover:bg-blue-50 transition-colors"
+      className="p-4 text-left border border-gray-200 rounded-lg hover:border-tw-accent hover:bg-blue-50 transition-colors"
     >
       <h3 className="font-medium text-gray-900 mb-1">{title}</h3>
       <p className="text-sm text-gray-500">{description}</p>

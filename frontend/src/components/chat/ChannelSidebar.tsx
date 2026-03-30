@@ -81,7 +81,7 @@ export function ChannelSidebar({
   };
 
   return (
-    <div className="w-64 bg-slack-sidebar flex flex-col h-full text-white">
+    <div className="w-64 bg-tw-bg flex flex-col h-full text-white">
       {/* Workspace header */}
       <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between relative" ref={dropdownRef}>
         <button 
@@ -106,7 +106,7 @@ export function ChannelSidebar({
         
         {/* Project Dropdown */}
         {showProjectDropdown && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-slack-sidebar border border-white/20 rounded-lg shadow-xl z-50 overflow-hidden">
+          <div className="absolute top-full left-0 right-0 mt-1 bg-tw-surface border border-tw-border rounded-lg shadow-xl z-50 overflow-hidden">
             <div className="py-1 max-h-64 overflow-y-auto">
               {allProjects.map((p) => (
                 <button
@@ -265,18 +265,19 @@ function ChannelItem({ name, icon, selected, unread, onClick }: ChannelItemProps
     <button
       onClick={onClick}
       className={clsx(
-        'w-full px-4 py-1 flex items-center gap-2 text-left transition-colors',
+        'w-full mx-2 px-3 py-1.5 flex items-center gap-2 text-left transition-colors rounded-lg',
         selected
-          ? 'bg-slack-active text-white'
-          : 'text-gray-400 hover:bg-white/10 hover:text-white'
+          ? 'bg-tw-accent/15 text-white'
+          : 'text-gray-400 hover:bg-white/5 hover:text-white'
       )}
+      style={{ width: 'calc(100% - 1rem)' }}
     >
       {icon}
-      <span className={clsx('truncate flex-1', unread > 0 && 'font-semibold text-white')}>
+      <span className={clsx('truncate flex-1', unread > 0 && 'font-medium text-white')}>
         {name}
       </span>
       {unread > 0 && (
-        <span className="bg-slack-red text-white text-xs px-1.5 rounded-full">
+        <span className="bg-tw-badge text-white text-xs px-1.5 rounded-full min-w-[1.25rem] text-center">
           {unread > 99 ? '99+' : unread}
         </span>
       )}
@@ -296,11 +297,12 @@ function AgentDMItem({ agent, selected, unread, onClick, onProfileClick }: Agent
   return (
     <div
       className={clsx(
-        'w-full px-4 py-1 flex items-center gap-2 text-left transition-colors cursor-pointer',
+        'w-full mx-2 px-3 py-1.5 flex items-center gap-2 text-left transition-colors cursor-pointer rounded-lg',
         selected
-          ? 'bg-slack-active text-white'
-          : 'text-gray-400 hover:bg-white/10 hover:text-white'
+          ? 'bg-tw-accent/15 text-white'
+          : 'text-gray-400 hover:bg-white/5 hover:text-white'
       )}
+      style={{ width: 'calc(100% - 1rem)' }}
       onClick={onClick}
     >
       <button
@@ -308,7 +310,7 @@ function AgentDMItem({ agent, selected, unread, onClick, onProfileClick }: Agent
           e.stopPropagation();
           onProfileClick();
         }}
-        className="flex-shrink-0 hover:ring-2 hover:ring-white/50 rounded-md transition-all"
+        className="flex-shrink-0 hover:ring-2 hover:ring-white/30 rounded-full transition-all"
         title={`View ${agent.name}'s profile`}
       >
         <Avatar
@@ -318,11 +320,11 @@ function AgentDMItem({ agent, selected, unread, onClick, onProfileClick }: Agent
           status={agent.status}
         />
       </button>
-      <span className={clsx('truncate flex-1', unread > 0 && 'font-semibold text-white')}>
+      <span className={clsx('truncate flex-1', unread > 0 && 'font-medium text-white')}>
         {agent.name}
       </span>
       {unread > 0 && (
-        <span className="bg-slack-red text-white text-xs px-1.5 rounded-full">
+        <span className="bg-tw-badge text-white text-xs px-1.5 rounded-full min-w-[1.25rem] text-center">
           {unread}
         </span>
       )}

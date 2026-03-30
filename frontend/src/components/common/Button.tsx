@@ -19,7 +19,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           'disabled:opacity-50 disabled:cursor-not-allowed',
           {
             // Variants
-            'bg-slack-active text-white hover:bg-blue-700 focus:ring-blue-500':
+            'bg-tw-accent text-white hover:bg-indigo-600 focus:ring-indigo-500':
               variant === 'primary',
             'bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500':
               variant === 'secondary',

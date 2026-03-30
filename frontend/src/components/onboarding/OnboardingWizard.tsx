@@ -450,7 +450,7 @@ export function OnboardingWizard() {
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                     i <= currentStepIndex
-                      ? 'bg-slack-active text-white'
+                      ? 'bg-tw-accent text-white'
                       : 'bg-gray-200 text-gray-500'
                   }`}
                 >
@@ -459,7 +459,7 @@ export function OnboardingWizard() {
                 {i < stepIndicators.length - 1 && (
                   <div
                     className={`w-12 h-1 mx-1 ${
-                      i < currentStepIndex ? 'bg-slack-active' : 'bg-gray-200'
+                      i < currentStepIndex ? 'bg-tw-accent' : 'bg-gray-200'
                     }`}
                   />
                 )}

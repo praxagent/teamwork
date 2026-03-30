@@ -25,7 +25,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
           id={inputId}
           className={clsx(
             'block w-full rounded-md border-gray-300 shadow-sm',
-            'focus:border-slack-active focus:ring-slack-active',
+            'focus:border-tw-accent focus:ring-tw-accent',
             'placeholder:text-gray-400',
             'disabled:bg-gray-50 disabled:text-gray-500',
             'px-3 py-2 text-sm border resize-none',

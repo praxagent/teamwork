@@ -90,8 +90,8 @@ export function TeamPreview({
     return (
       <div className="max-w-4xl mx-auto">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-slack-purple/10 rounded-full mb-4 animate-pulse">
-            <Users className="w-8 h-8 text-slack-purple" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-500/10 rounded-full mb-4 animate-pulse">
+            <Users className="w-8 h-8 text-indigo-500" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Assembling Your Team
@@ -100,7 +100,7 @@ export function TeamPreview({
             Creating {teamMembers.length || 'your'} virtual team members...
           </p>
           <div className="mt-6 flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-slack-purple border-t-transparent" />
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-500 border-t-transparent" />
           </div>
           {teamMembers.length > 0 && (
             <div className="mt-8 flex justify-center gap-4 flex-wrap">
@@ -260,7 +260,7 @@ export function TeamPreview({
             {teams.map((team) => (
               <span
                 key={team}
-                className="px-3 py-1 bg-slack-purple/10 text-slack-purple rounded-full text-sm font-medium"
+                className="px-3 py-1 bg-indigo-500/10 text-indigo-500 rounded-full text-sm font-medium"
               >
                 {team}
               </span>

@@ -8,8 +8,8 @@ export function TeamTypeStep({ onSelect }: TeamTypeStepProps) {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-slack-purple/10 rounded-full mb-4">
-          <Users className="w-8 h-8 text-slack-purple" />
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-500/10 rounded-full mb-4">
+          <Users className="w-8 h-8 text-indigo-600" />
         </div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Choose Your Team Type

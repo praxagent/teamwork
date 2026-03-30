@@ -59,7 +59,7 @@ export function MessageList({
   if (loading && messages.length === 0) {
     return (
       <div className={`flex-1 flex items-center justify-center ${containerBg}`}>
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slack-active" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-tw-accent" />
       </div>
     );
   }
@@ -85,7 +85,7 @@ export function MessageList({
         <div className="text-center py-4">
           <button
             onClick={onLoadMore}
-            className={`text-sm hover:underline ${darkMode ? 'text-blue-400' : 'text-slack-active'}`}
+            className={`text-sm hover:underline ${darkMode ? 'text-blue-400' : 'text-indigo-500'}`}
             disabled={loading}
           >
             {loading ? 'Loading...' : 'Load older messages'}
@@ -170,7 +170,7 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
   const hoverBg = darkMode ? 'hover:bg-slate-800/50' : 'hover:bg-gray-100/50';
   const timestampColor = darkMode ? 'text-gray-500' : 'text-gray-400';
   const senderColor = isFromUser 
-    ? (darkMode ? 'text-blue-400' : 'text-slack-active') 
+    ? (darkMode ? 'text-blue-400' : 'text-indigo-500') 
     : (darkMode ? 'text-gray-100' : 'text-gray-900');
   const roleTagBg = darkMode ? 'bg-slate-700 text-gray-400' : 'bg-gray-100 text-gray-500';
   const messageTextColor = darkMode ? 'text-gray-100' : 'text-gray-900';
@@ -184,7 +184,7 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
         'group relative py-1 -mx-4 px-4 rounded',
         hoverBg,
         showHeader ? 'mt-4' : 'mt-0.5',
-        !isFromUser && showHeader && (darkMode ? 'border-l-2 border-purple-500/40' : 'border-l-2 border-purple-300/60'),
+        !isFromUser && showHeader && (darkMode ? 'border-l-2 border-indigo-500/30' : 'border-l-2 border-indigo-300/50'),
       )}
     >
       {showHeader ? (
@@ -230,7 +230,7 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
             {message.reply_count > 0 && (
               <button
                 onClick={() => onThreadClick?.(message.id)}
-                className={`flex items-center gap-1 text-sm hover:underline mt-1 ${darkMode ? 'text-blue-400' : 'text-slack-active'}`}
+                className={`flex items-center gap-1 text-sm hover:underline mt-1 ${darkMode ? 'text-blue-400' : 'text-indigo-500'}`}
               >
                 <MessageSquare className="w-4 h-4" />
                 {message.reply_count} {message.reply_count === 1 ? 'reply' : 'replies'}

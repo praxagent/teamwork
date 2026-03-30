@@ -22,7 +22,7 @@ export function Home() {
   if (isLoading) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slack-purple to-purple-900">
+    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-slate-900 to-indigo-950">
       {/* Navbar */}
       <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
         <a 
@@ -49,8 +49,8 @@ export function Home() {
       {/* Hero section */}
       <div className="max-w-6xl mx-auto px-4 pt-12 pb-16 text-center">
         <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
-          <span className="text-yellow-400">TeamWork</span>
-          <span className="ml-3 text-xs font-medium bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded-full align-middle">BETA</span>
+          <span className="bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-transparent">TeamWork</span>
+          <span className="ml-3 text-xs font-medium bg-indigo-400/20 text-indigo-300 px-2 py-1 rounded-full align-middle">BETA</span>
           <br />
           <span className="text-3xl md:text-4xl font-normal text-white/90">AI-Powered Virtual Teams</span>
         </h1>
@@ -64,12 +64,12 @@ export function Home() {
         </p>
 
         {/* Proof of Concept Warning */}
-        <div className="max-w-2xl mx-auto mb-8 bg-yellow-500/20 border border-yellow-400/50 rounded-lg px-4 py-3">
+        <div className="max-w-2xl mx-auto mb-8 bg-amber-500/10 border border-amber-400/30 rounded-lg px-4 py-3">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
             <div className="text-left">
-              <p className="text-yellow-200 font-semibold text-sm">Proof of Concept Only</p>
-              <p className="text-yellow-200/80 text-sm">This is an experimental project for demonstration purposes. Do not rely on it for actual product development or production use.</p>
+              <p className="text-amber-200 font-semibold text-sm">Proof of Concept Only</p>
+              <p className="text-amber-200/70 text-sm">This is an experimental project for demonstration purposes. Do not rely on it for actual product development or production use.</p>
             </div>
           </div>
         </div>
@@ -94,7 +94,7 @@ export function Home() {
           variant="secondary"
           size="lg"
           onClick={() => navigate('/new')}
-          className="!bg-white !text-slack-purple hover:!bg-gray-100 text-lg px-8 py-4"
+          className="!bg-white !text-indigo-600 hover:!bg-gray-100 text-lg px-8 py-4"
         >
           <Rocket className="w-5 h-5 mr-2" />
           Start Building
@@ -109,9 +109,9 @@ export function Home() {
           <button 
             onClick={() => setActiveMode('startup')}
             className={`px-6 py-3 rounded-lg font-medium text-lg transition-all flex items-center gap-2 ${
-              activeMode === 'startup' 
-                ? 'bg-yellow-400 text-purple-900 shadow-lg' 
-                : 'bg-white/20 text-white hover:bg-white/30'
+              activeMode === 'startup'
+                ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25'
+                : 'bg-white/10 text-white/70 hover:bg-white/15'
             }`}
           >
             <Zap className="w-5 h-5" />
@@ -120,9 +120,9 @@ export function Home() {
           <button 
             onClick={() => setActiveMode('coaching')}
             className={`px-6 py-3 rounded-lg font-medium text-lg transition-all flex items-center gap-2 ${
-              activeMode === 'coaching' 
-                ? 'bg-green-400 text-purple-900 shadow-lg' 
-                : 'bg-white/20 text-white hover:bg-white/30'
+              activeMode === 'coaching'
+                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
+                : 'bg-white/10 text-white/70 hover:bg-white/15'
             }`}
           >
             <BookOpen className="w-5 h-5" />
@@ -143,22 +143,22 @@ export function Home() {
             {/* How it works - Startup */}
             <div className="hidden md:flex items-center justify-center gap-6 text-white/80 mb-12">
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">1</span>
+                <span className="w-8 h-8 bg-indigo-500 text-white rounded-full flex items-center justify-center font-bold">1</span>
                 <span>Describe your app idea</span>
               </div>
               <ArrowRight className="w-5 h-5 text-white/40" />
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">2</span>
+                <span className="w-8 h-8 bg-indigo-500 text-white rounded-full flex items-center justify-center font-bold">2</span>
                 <span>AI generates your team</span>
               </div>
               <ArrowRight className="w-5 h-5 text-white/40" />
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">3</span>
+                <span className="w-8 h-8 bg-indigo-500 text-white rounded-full flex items-center justify-center font-bold">3</span>
                 <span>Manage the build</span>
               </div>
               <RotateCcw className="w-5 h-5 text-white/40" />
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-yellow-400 text-purple-900 rounded-full flex items-center justify-center font-bold">↺</span>
+                <span className="w-8 h-8 bg-indigo-500 text-white rounded-full flex items-center justify-center font-bold">↺</span>
                 <span>Feedback & Direction</span>
               </div>
             </div>
@@ -218,17 +218,17 @@ export function Home() {
             {/* How it works - Coaching */}
             <div className="hidden md:flex items-center justify-center gap-6 text-white/80 mb-12">
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-green-400 text-purple-900 rounded-full flex items-center justify-center font-bold">1</span>
+                <span className="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold">1</span>
                 <span>Describe your learning goals</span>
               </div>
               <ArrowRight className="w-5 h-5 text-white/40" />
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-green-400 text-purple-900 rounded-full flex items-center justify-center font-bold">2</span>
+                <span className="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold">2</span>
                 <span>AI creates your coaches</span>
               </div>
               <ArrowRight className="w-5 h-5 text-white/40" />
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-green-400 text-purple-900 rounded-full flex items-center justify-center font-bold">3</span>
+                <span className="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold">3</span>
                 <span>Learn & track progress</span>
               </div>
             </div>
@@ -290,11 +290,11 @@ function FeatureCard({
   description: string;
   color: 'yellow' | 'green';
 }) {
-  const iconBgColor = color === 'yellow' ? 'bg-yellow-400/20' : 'bg-green-400/20';
-  const iconTextColor = color === 'yellow' ? 'text-yellow-400' : 'text-green-400';
+  const iconBgColor = color === 'yellow' ? 'bg-indigo-400/15' : 'bg-emerald-400/15';
+  const iconTextColor = color === 'yellow' ? 'text-indigo-400' : 'text-emerald-400';
   
   return (
-    <div className="bg-white/10 border border-white/20 rounded-xl p-6">
+    <div className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm hover:bg-white/8 transition-colors">
       <div className={`w-12 h-12 ${iconBgColor} rounded-lg flex items-center justify-center mb-4`}>
         <Icon className={`w-6 h-6 ${iconTextColor}`} />
       </div>
