@@ -84,12 +84,12 @@ export function ActivityTrace({ activities, compact }: ActivityTraceProps) {
               </p>
               {activity.metadata && Object.keys(activity.metadata).length > 0 && !compact && (
                 <div className="mt-1 text-xs text-gray-500">
-                  {activity.metadata.files && (
+                  {!!activity.metadata.files && (
                     <span className="bg-gray-100 px-1.5 py-0.5 rounded">
                       {(activity.metadata.files as string[]).length} files
                     </span>
                   )}
-                  {activity.metadata.task_id && (
+                  {!!activity.metadata.task_id && (
                     <span className="bg-gray-100 px-1.5 py-0.5 rounded ml-1">
                       Task #{(activity.metadata.task_id as string).slice(0, 8)}
                     </span>

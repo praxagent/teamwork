@@ -60,9 +60,9 @@ export function Avatar({ src, name, size = 'md', status, className }: AvatarProp
   };
 
   const statusColors = {
-    idle: 'bg-green-500',           // Green = done/ready, no active work
-    working: 'bg-red-500 status-pulse', // Red = actively working
-    blocked: 'bg-yellow-500',       // Yellow = has a question/needs input
+    idle: 'bg-green-500',                  // Green = ready, no active work
+    working: 'bg-green-400 status-pulse',  // Green pulse = actively working
+    blocked: 'bg-yellow-500',              // Yellow = needs input
     offline: 'bg-gray-400',
   };
 

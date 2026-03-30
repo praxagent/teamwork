@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { WebSocketEvent } from '@/types';
 import { useProjectStore, useMessageStore, useUIStore } from '@/stores';
@@ -134,7 +134,7 @@ export function useWebSocket() {
               agent_name: event.data.agent_name as string | null,
               agent_role: null,
               content: event.data.content as string,
-              message_type: (event.data.message_type as string) || 'chat',
+              message_type: ((event.data.message_type as string) || 'chat') as 'chat' | 'status_update' | 'task_update' | 'system',
               metadata: null,
               thread_id: event.data.thread_id as string | null,
               reply_count: 0,

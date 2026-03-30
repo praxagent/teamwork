@@ -15,7 +15,7 @@ interface TerminalTabProps {
   onActivate: () => void;
 }
 
-function TerminalTab({ id, projectId, mode, startClaude, isActive, onActivate }: TerminalTabProps) {
+function TerminalTab({ projectId, mode, startClaude, isActive, onActivate }: TerminalTabProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);

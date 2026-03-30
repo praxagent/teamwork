@@ -9,7 +9,6 @@ import type {
   ClarifyingQuestionsResponse,
   OnboardingStatus,
   TeamMemberSuggestion,
-  ProjectBreakdown,
 } from '@/types';
 
 const API_BASE = '/api';
@@ -338,6 +337,7 @@ export function useSendMessage() {
       agent_id?: string;
       message_type?: string;
       thread_id?: string;
+      active_view?: string;
     }) =>
       fetchJson<Message>('/messages', {
         method: 'POST',
@@ -831,6 +831,37 @@ export function useAgentLiveOutput(agentId: string | null, enabled: boolean = tr
     enabled: !!agentId && enabled,
     refetchInterval: 1000, // Poll every 1 second when enabled for more responsive updates
     staleTime: 500,
+  });
+}
+
+// Execution Graphs
+export interface GraphNode {
+  span_id: string;
+  name: string;
+  parent_id: string | null;
+  status: string;
+  spoke_or_category: string;
+  started_at: string;
+  finished_at: string | null;
+  tool_calls: number;
+  summary: string;
+  duration_s: number;
+}
+
+export interface ExecutionGraph {
+  trace_id: string;
+  status: string;
+  node_count: number;
+  nodes: GraphNode[];
+}
+
+export function useExecutionGraphs(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['execution-graphs'],
+    queryFn: () => fetchJson<{ graphs: ExecutionGraph[] }>('/agents/graphs/active'),
+    enabled,
+    refetchInterval: 2000,
+    staleTime: 1000,
   });
 }
 

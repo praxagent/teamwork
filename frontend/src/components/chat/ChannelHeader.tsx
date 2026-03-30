@@ -1,4 +1,4 @@
-import { Hash, Users, Star, Info, Settings } from 'lucide-react';
+import { Hash, Users, Star, Info } from 'lucide-react';
 import { useUIStore } from '@/stores';
 import type { Channel } from '@/types';
 

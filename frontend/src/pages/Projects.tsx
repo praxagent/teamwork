@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, CardContent } from '@/components/common';
+import { Button } from '@/components/common';
 import { useProjects, useDeleteProject, useUpdateProject } from '@/hooks/useApi';
 import { ArrowRight, Trash2, AlertTriangle, Plus, ArrowLeft, Pencil, Check, X } from 'lucide-react';
 import type { Project } from '@/types';

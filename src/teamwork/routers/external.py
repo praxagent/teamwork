@@ -50,6 +50,20 @@ class ExternalMessage(BaseModel):
     message_type: str = "chat"
 
 
+class BulkMessageItem(BaseModel):
+    """A single message in a bulk import."""
+    channel_id: str
+    agent_id: str | None = None
+    content: str
+    message_type: str = "chat"
+    created_at: str | None = None  # ISO 8601 — preserves original timestamp
+
+
+class BulkMessageImport(BaseModel):
+    """Bulk import historical messages into a channel."""
+    messages: list[BulkMessageItem]
+
+
 class ExternalAgentStatus(BaseModel):
     """Update an agent's status."""
     status: str  # idle, working, offline
@@ -164,6 +178,8 @@ async def create_external_project(
         ("general", "public", None, "Main conversation with the external agent"),
         ("engineering", "public", None, "Agent-to-agent work conversations"),
         ("research", "public", None, "Research and investigation"),
+        ("discord", "public", None, "Mirrored conversations from Discord"),
+        ("sms", "public", None, "Mirrored conversations from SMS/Twilio"),
     ]
     created_channels = {}
     for name, ch_type, team, description in channels_to_create:
@@ -207,6 +223,51 @@ async def update_external_project(
         project.config = config
     await db.commit()
     return {"status": "updated"}
+
+
+class EnsureChannelsRequest(BaseModel):
+    """List of channels to ensure exist."""
+    channels: list[dict[str, str]]  # [{"name": "discord", "description": "..."}]
+
+
+@router.post("/projects/{project_id}/ensure-channels")
+async def ensure_channels(
+    project_id: str,
+    request: EnsureChannelsRequest,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Ensure the listed channels exist for this project.
+
+    Creates any that are missing, returns all channel name→id mappings.
+    Used by Prax on startup to ensure #discord, #sms, etc. exist even
+    for projects created before those channels were added.
+    """
+    project = await _get_external_project(project_id, db)
+    # Get existing channels
+    ch_result = await db.execute(
+        select(Channel).where(Channel.project_id == project.id)
+    )
+    existing = {ch.name: ch.id for ch in ch_result.scalars().all()}
+
+    for ch_spec in request.channels:
+        name = ch_spec.get("name", "")
+        if not name or name in existing:
+            continue
+        channel = Channel(
+            project_id=project.id,
+            name=name,
+            type="public",
+            description=ch_spec.get("description", ""),
+        )
+        db.add(channel)
+        await db.flush()
+        await db.refresh(channel)
+        existing[name] = channel.id
+        logger.info("Created missing channel #%s for project %s", name, project.id)
+
+    await db.commit()
+    return {"channels": existing}
 
 
 @router.post("/projects/{project_id}/agents", status_code=201)
@@ -331,6 +392,85 @@ async def send_external_message(
     await manager.broadcast_to_project(project_id, msg_event)
 
     return {"message_id": message.id}
+
+
+@router.delete("/projects/{project_id}/channels/{channel_id}/messages")
+async def clear_channel_messages(
+    project_id: str,
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(_verify_api_key),
+) -> dict[str, int]:
+    """Delete all messages from a channel (used to re-sync history)."""
+    await _get_external_project(project_id, db)
+    from sqlalchemy import delete
+    result = await db.execute(
+        delete(Message).where(Message.channel_id == channel_id)
+    )
+    await db.commit()
+    return {"deleted": result.rowcount}
+
+
+@router.get("/projects/{project_id}/channels/{channel_id}/message-count")
+async def get_channel_message_count(
+    project_id: str,
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(_verify_api_key),
+) -> dict[str, int]:
+    """Return the number of messages in a channel (used by sync to avoid duplicates)."""
+    await _get_external_project(project_id, db)
+    from sqlalchemy import func
+    result = await db.execute(
+        select(func.count(Message.id)).where(Message.channel_id == channel_id)
+    )
+    count = result.scalar() or 0
+    return {"count": count}
+
+
+@router.post("/projects/{project_id}/messages/bulk", status_code=201)
+async def bulk_import_messages(
+    project_id: str,
+    request: BulkMessageImport,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Bulk import historical messages into channels.
+
+    Used to backfill SMS and Discord conversation history into TeamWork.
+    Does NOT broadcast via WebSocket (these are historical messages).
+    Supports ``created_at`` override to preserve original timestamps.
+    """
+    await _get_external_project(project_id, db)
+
+    # Validate all channel_ids belong to this project
+    ch_result = await db.execute(
+        select(Channel).where(Channel.project_id == project_id)
+    )
+    valid_channels = {ch.id for ch in ch_result.scalars().all()}
+
+    imported = 0
+    for item in request.messages:
+        if item.channel_id not in valid_channels:
+            continue
+
+        msg = Message(
+            channel_id=item.channel_id,
+            agent_id=item.agent_id,
+            content=item.content,
+            message_type=item.message_type,
+        )
+        # Override created_at if provided (for preserving original timestamps)
+        if item.created_at:
+            msg.created_at = datetime.fromisoformat(item.created_at.replace("Z", "+00:00"))
+        db.add(msg)
+        imported += 1
+
+    await db.flush()
+    await db.commit()
+
+    logger.info("Bulk imported %d messages into project %s", imported, project_id)
+    return {"imported": imported}
 
 
 @router.post("/projects/{project_id}/typing")

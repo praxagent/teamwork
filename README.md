@@ -33,12 +33,15 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 ## Features
 
 - **Real-time chat** — Channels and direct messages with WebSocket updates
+- **Channel mirroring** — Dedicated #discord and #sms channels that mirror cross-channel conversations, so you can follow everything from one place
 - **Kanban task board** — Drag-and-drop task management with status tracking
 - **File browser** — View and edit workspace files in-browser
 - **Embedded terminal** — Full PTY shell into the agent's sandbox container, right in the browser. Watch your agent run commands, or take over and type yourself. Powered by xterm.js with Docker exec under the hood
 - **Live browser screencast** — Stream a real-time view of the headless Chrome running in the sandbox. See exactly what your agent sees as it browses, scrapes, or interacts with web apps. Click "Take Over" to control the browser with your own mouse and keyboard — then hand it back
+- **Execution graph visualization** — Real-time tree view of agent delegation chains. See which spokes are running, tool call counts, timing, and status. Click any node to inspect live output
+- **Live agent output** — Terminal-style real-time execution stream for each agent. Select any agent to watch its work; working agents highlighted and sorted to top. Full-width layout for maximum visibility
 - **Agent roster** — Display agent names, roles, avatars, and online status
-- **External Agent API** — REST endpoints for any agent to send messages, update tasks, and manage files
+- **External Agent API** — REST endpoints for any agent to send messages, update tasks, manage files, push live output, and ensure channels
 - **Installable** — `uv pip install` from GitHub; bundles the React frontend as static files
 - **Single container** — One Docker image serves both API and frontend (no nginx needed)
 - **Zero AI dependencies** — No LLM API keys, no anthropic/openai packages
@@ -149,8 +152,10 @@ The API is split into two groups:
 |------|----------------|
 | **Projects** | Create/list/update external-mode projects. Creating a project returns the `project_id` and a map of `channel_id`s you'll need for everything else. |
 | **Agents** | Register agents (name, role, personality) and update their status (`idle`, `working`, `offline`). |
-| **Messages** | Send messages to any channel as any agent. Requires `channel_id` + `agent_id` + `content`. Also send typing indicators. |
+| **Messages** | Send messages to any channel as any agent. Requires `channel_id` + `agent_id` + `content`. Also send typing indicators. Forward external messages (Discord/SMS) to mirror channels. |
 | **Tasks** | Create and update tasks on the Kanban board. Supports status (`pending`, `in_progress`, `blocked`, `review`, `completed`), assignment, priority, subtasks, and blockers. |
+| **Channels** | Ensure channels exist (idempotent creation for mirror channels like #discord, #sms). |
+| **Live Output** | Push real-time execution output for an agent, polled by the frontend every 1 second. |
 
 **Internal API** (`/api/...`) — used by the frontend, also available to your agent:
 
@@ -423,7 +428,8 @@ docker compose up -d
 Prax automatically:
 - Creates a project and registers its agents (Planner, Researcher, Executor, Skeptic, Auditor)
 - Receives user messages via webhook and processes them through its LLM orchestrator
-- Mirrors SMS/Discord conversations to TeamWork channels
+- Mirrors SMS/Discord conversations to TeamWork's #discord and #sms channels
+- Pushes real-time execution output and agent delegation graphs to the UI
 - Syncs its SQLite task board to TeamWork's Kanban
 - Shows real-time agent status and typing indicators
 
@@ -438,11 +444,12 @@ teamwork/
 │   ├── static/            # Bundled React build (gitignored)
 │   ├── models/            # SQLAlchemy ORM
 │   ├── routers/           # API endpoints
-│   │   ├── agents.py      # Agent CRUD + status
+│   │   ├── agents.py      # Agent CRUD + status + live output + execution graphs
 │   │   ├── browser.py     # CDP browser screencast proxy
 │   │   ├── channels.py    # Channel management
-│   │   ├── external.py    # External agent API
+│   │   ├── external.py    # External agent API (messages, tasks, status, channels, live output)
 │   │   ├── messages.py    # Chat messages (CRUD only, no AI)
+│   │   ├── plugins.py     # Plugin management proxy (delegates to Prax)
 │   │   ├── projects.py    # Project management
 │   │   ├── tasks.py       # Kanban task board
 │   │   └── workspace.py   # File browser
@@ -495,11 +502,11 @@ Chat with your agent while watching it browse in real time. The "Take Over" butt
 |-------------|--------------|
 | ![Files](docs/screenshots/startup/example_file_viewer.png) | ![Live Sessions](docs/screenshots/startup/follow_agent_work.png) |
 
-### Executive Access — Terminal & Browser
+### Execution Graphs, Terminal & Browser
 
-![Executive Access](docs/screenshots/startup/executive_access.png)
+![Execution Graphs](docs/screenshots/startup/executive_access.png)
 
-Launch terminal sessions or browser screencast directly in the UI. Agents run in isolated Docker containers with your workspace mounted. Multiple terminal sessions can run simultaneously.
+View real-time agent delegation trees, launch terminal sessions, or watch the browser screencast directly in the UI. Agents run in isolated Docker containers with your workspace mounted. Multiple terminal sessions can run simultaneously.
 
 ### Projects
 
@@ -521,6 +528,7 @@ Create a `.env` file (copy from `.env.example`):
 | `SANDBOX_CONTAINER` | — | Docker container name for terminal sessions |
 | `CHROME_CDP_HOST` | `sandbox` | CDP host for browser screencast |
 | `CHROME_CDP_PORT` | `9223` | CDP port for browser screencast |
+| `PRAX_URL` | — | Prax backend URL for plugin management proxy and execution graph API (e.g. `http://app:5001`) |
 
 TeamWork itself does **not** require any AI API keys. All AI calls are made by the external agent you connect.
 
@@ -557,6 +565,9 @@ cd frontend && npm run dev
 ```bash
 make test
 # or: pytest tests/ -x -q
+
+# Playwright UI smoke tests (requires running docker-compose stack)
+cd frontend && npx playwright test
 ```
 
 ### Lint

@@ -148,7 +148,6 @@ interface MessageItemProps {
 
 function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }: MessageItemProps) {
   const userProfile = useUIStore((state) => state.userProfile);
-  const userRole = useUIStore((state) => state.userRole);
   const darkMode = useUIStore((state) => state.darkMode);
   
   const time = new Date(message.created_at).toLocaleTimeString([], {
@@ -184,7 +183,8 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
       className={clsx(
         'group relative py-1 -mx-4 px-4 rounded',
         hoverBg,
-        showHeader ? 'mt-4' : 'mt-0.5'
+        showHeader ? 'mt-4' : 'mt-0.5',
+        !isFromUser && showHeader && (darkMode ? 'border-l-2 border-purple-500/40' : 'border-l-2 border-purple-300/60'),
       )}
     >
       {showHeader ? (

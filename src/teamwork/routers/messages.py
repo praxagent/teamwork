@@ -35,6 +35,7 @@ class MessageCreate(BaseModel):
     message_type: str = "chat"
     extra_data: dict | None = None
     thread_id: str | None = None
+    active_view: str | None = None  # Which UI tab the user is on (chat, browser, terminal, etc.)
 
 
 class MessageResponse(BaseModel):
@@ -111,17 +112,21 @@ async def _forward_to_external_webhook(
     channel_id: str,
     content: str,
     message_id: str,
+    active_view: str | None = None,
 ):
     """Forward a user message to the external orchestrator's webhook."""
     try:
+        payload: dict = {
+            "project_id": project_id,
+            "channel_id": channel_id,
+            "content": content,
+            "message_id": message_id,
+            "type": "user_message",
+        }
+        if active_view:
+            payload["active_view"] = active_view
         async with httpx.AsyncClient(timeout=30.0) as client:
-            await client.post(webhook_url, json={
-                "project_id": project_id,
-                "channel_id": channel_id,
-                "content": content,
-                "message_id": message_id,
-                "type": "user_message",
-            })
+            await client.post(webhook_url, json=payload)
     except Exception as e:
         logger.error("Failed to forward message to webhook %s: %s", webhook_url, e)
         try:
@@ -562,6 +567,7 @@ async def create_message(
                     message.channel_id,
                     message.content,
                     db_message.id,
+                    message.active_view,
                 )
 
         # Handle CRUD-only slash commands

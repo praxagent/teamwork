@@ -1,18 +1,22 @@
 """Agents API router."""
 
 import base64
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from teamwork.config import settings
 from teamwork.models import Agent, Project, ActivityLog, get_db
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # In-memory live output buffer
@@ -647,3 +651,29 @@ async def get_agent_live_output(
         started_at=None,
         error=None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Execution graphs — proxied from Prax backend
+# ---------------------------------------------------------------------------
+
+
+@router.get("/graphs/active")
+async def get_active_graphs():
+    """Proxy execution graph data from the Prax backend.
+
+    Returns the list of currently running and recently completed execution
+    graphs, each with its tree of span nodes.  Used by the Graph panel in
+    the frontend.
+    """
+    prax_url = settings.prax_url
+    if not prax_url:
+        return {"graphs": []}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{prax_url.rstrip('/')}/execution/graphs")
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        _logger.debug("Failed to fetch execution graphs from Prax: %s", exc)
+        return {"graphs": []}

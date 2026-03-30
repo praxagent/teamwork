@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Code, ListTodo, Settings, ChevronLeft, Sparkles, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -8,7 +8,7 @@ import {
   ThreadView,
 } from '@/components/chat';
 import { ProfileModal } from '@/components/profiles';
-import { BrowserPanel, BrowserChatSidebar, FileBrowser, TaskBoard, SettingsPanel, ClaudePanel, ProgressPanel, TerminalPanel, ObservabilityPanel } from '@/components/workspace';
+import { BrowserPanel, BrowserChatSidebar, FileBrowser, TaskBoard, SettingsPanel, GraphPanel, ProgressPanel, TerminalPanel, ObservabilityPanel } from '@/components/workspace';
 import {
   useProject,
   useAgents,
@@ -22,7 +22,7 @@ import {
 } from '@/hooks/useApi';
 import { useProjectSubscription, useChannelSubscription } from '@/hooks/useWebSocket';
 import { useProjectStore, useMessageStore, useUIStore } from '@/stores';
-import type { Message, Agent } from '@/types';
+import type { Agent } from '@/types';
 
 export function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -72,7 +72,7 @@ export function ProjectWorkspace() {
     setCurrentChannelId,
   } = useProjectStore();
 
-  const { messagesByChannel, setMessages, addMessage } = useMessageStore();
+  const { messagesByChannel, setMessages } = useMessageStore();
   const { selectedAgent, setSelectedAgent, unreadCounts, activeThreadId, setActiveThreadId, darkMode, toggleDarkMode } =
     useUIStore();
 
@@ -86,7 +86,7 @@ export function ProjectWorkspace() {
   }, [isCoachingProject, setUserRole]);
 
   // API queries
-  const { data: projectData, error: projectError, isError: isProjectError } = useProject(projectId || null);
+  const { data: projectData, isError: isProjectError } = useProject(projectId || null);
   const { data: agentsData } = useAgents(projectId || null);
   const { data: channelsData } = useChannels(projectId || null);
   const { data: messagesData } = useMessages(currentChannelId);
@@ -159,11 +159,23 @@ export function ProjectWorkspace() {
     setShowObservabilityPanel(false);
   };
 
+  // Derive current active view for context.
+  const activeView = showTerminalPanel ? 'terminal'
+    : showBrowserPanel ? 'browser'
+    : showClaudePanel ? 'execution_graphs'
+    : showObservabilityPanel ? 'observability'
+    : showTaskPanel ? 'tasks'
+    : showFileBrowser ? 'files'
+    : showSettings ? 'settings'
+    : showProgressPanel ? 'progress'
+    : 'chat';
+
   const handleSendMessage = (content: string) => {
     if (!currentChannelId) return;
     sendMessage.mutate({
       channel_id: currentChannelId,
       content,
+      active_view: activeView,
     });
   };
 
@@ -237,8 +249,8 @@ export function ProjectWorkspace() {
 
   return (
     <div className={`flex h-screen ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
-      {/* Sidebar — swaps to browser chat when browser or terminal panel is active */}
-      {(showBrowserPanel || showTerminalPanel) && projectId ? (
+      {/* Sidebar — swaps to browser chat when browser or terminal panel is active, hidden for observability */}
+      {showObservabilityPanel || showClaudePanel ? null : (showBrowserPanel || showTerminalPanel) && projectId ? (
         <BrowserChatSidebar projectId={projectId} />
       ) : (
         <ChannelSidebar
@@ -264,7 +276,7 @@ export function ProjectWorkspace() {
 
       {/* Main content area - shows either Chat, TaskBoard, FileBrowser, or Settings */}
       <div className={`flex-1 flex flex-col min-w-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
-        {/* Header - hidden when in Executive Access, Progress, Browser, or Observability panel for maximum space */}
+        {/* Header - hidden when in Graph, Progress, Browser, Terminal, or Observability panel for maximum space */}
         {!showClaudePanel && !showProgressPanel && !showBrowserPanel && !showTerminalPanel && !showObservabilityPanel && (
         <div className={`flex items-center justify-between border-b px-4 py-3 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center gap-2">
@@ -289,8 +301,8 @@ export function ProjectWorkspace() {
               </>
             ) : showClaudePanel ? (
               <>
-                <Sparkles className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
-                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Executive Access</h1>
+                <Workflow className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-slack-purple'}`} />
+                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Execution Graphs</h1>
               </>
             ) : showSettings ? (
               <>
@@ -386,7 +398,7 @@ export function ProjectWorkspace() {
             >
               <Code className="w-5 h-5" />
             </button>
-            {/* Executive Access button - hidden for coaching projects */}
+            {/* Execution Graphs button - hidden for coaching projects */}
             {!isCoachingProject && (
               <button
                 onClick={() => {
@@ -397,20 +409,20 @@ export function ProjectWorkspace() {
                     setShowTaskPanel(false);
                     setShowFileBrowser(false);
                     setShowSettings(false);
-  
+
                     setShowProgressPanel(false);
                     setShowBrowserPanel(false);
                     setShowTerminalPanel(false);
                   }
                 }}
                 className={`p-2 rounded transition-colors ${
-                  showClaudePanel 
-                    ? 'bg-slack-purple text-white hover:bg-slack-purple/90' 
+                  showClaudePanel
+                    ? 'bg-slack-purple text-white hover:bg-slack-purple/90'
                     : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
                 }`}
-                title="Executive Access"
+                title="Execution Graphs - Watch agent delegation trees in real time"
               >
-                <Sparkles className="w-5 h-5" />
+                <Workflow className="w-5 h-5" />
               </button>
             )}
             {/* Progress button - shown only for coaching projects */}
@@ -574,12 +586,12 @@ export function ProjectWorkspace() {
           />
         )}
 
-        {/* Claude Panel - rendered separately with CSS visibility for persistence */}
+        {/* Graph Panel - execution graph visualization */}
         {claudePanelMounted && projectId && (
-          <ClaudePanel
+          <GraphPanel
             projectId={projectId}
             isVisible={showClaudePanel}
-            onBack={() => setShowClaudePanel(false)}
+            onClose={() => setShowClaudePanel(false)}
           />
         )}
         

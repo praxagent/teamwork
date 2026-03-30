@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Button, TextArea } from '@/components/common';
-import { Rocket, Brain, Users, Sparkles, Zap, GraduationCap, ArrowLeft, BookOpen, Target } from 'lucide-react';
+import { TextArea } from '@/components/common';
+import { Rocket, Brain, Users, Sparkles, Zap, GraduationCap, ArrowLeft, Target } from 'lucide-react';
 
 type TeamType = 'software' | 'coaching';
 

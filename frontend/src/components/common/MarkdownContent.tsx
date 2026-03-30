@@ -164,7 +164,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
         text: ({ children }) => <>{processChildren(children)}</>,
         
         // Code - with syntax highlighting
-        code: ({ className, children, ...props }) => {
+        code: ({ className, children }) => {
           const match = /language-(\w+)/.exec(className || '');
           const language = match ? match[1] : '';
           const codeString = String(children).replace(/\n$/, '');

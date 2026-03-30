@@ -1,4 +1,4 @@
-import { Code, GraduationCap, Users, Sparkles, BookOpen, Target } from 'lucide-react';
+import { Code, GraduationCap, Users, Sparkles } from 'lucide-react';
 
 interface TeamTypeStepProps {
   onSelect: (type: 'software' | 'coaching') => void;

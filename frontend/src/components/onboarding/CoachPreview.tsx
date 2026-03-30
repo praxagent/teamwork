@@ -124,7 +124,7 @@ export function CoachPreview({
 
       {/* Navigation */}
       <div className="mt-8 flex justify-between">
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="secondary" onClick={onBack}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>

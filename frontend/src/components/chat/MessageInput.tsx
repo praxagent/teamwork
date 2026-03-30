@@ -193,7 +193,7 @@ export function MessageInput({
   const sendButtonInactive = darkMode ? 'bg-slate-700 text-gray-500' : 'bg-gray-100 text-gray-400';
 
   return (
-    <div className={`px-4 pb-4 ${containerBg}`}>
+    <div className={`px-4 pt-2 pb-4 ${containerBg}`}>
       <div className="relative">
         {/* Mention popup */}
         {showMentions && filteredAgents.length > 0 && (

@@ -4,6 +4,7 @@ from teamwork.routers.agents import router as agents_router
 from teamwork.routers.browser import router as browser_router
 from teamwork.routers.channels import router as channels_router
 from teamwork.routers.messages import router as messages_router
+from teamwork.routers.observability import router as observability_router
 from teamwork.routers.plugins import router as plugins_router
 from teamwork.routers.projects import router as projects_router
 from teamwork.routers.tasks import router as tasks_router
@@ -17,6 +18,7 @@ __all__ = [
     "channels_router",
     "external_router",
     "messages_router",
+    "observability_router",
     "plugins_router",
     "projects_router",
     "tasks_router",

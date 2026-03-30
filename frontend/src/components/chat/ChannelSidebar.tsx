@@ -4,9 +4,7 @@ import { clsx } from 'clsx';
 import {
   Hash,
   Users,
-  MessageSquare,
   ChevronDown,
-  ChevronRight,
   Plus,
   Settings,
   Check,
@@ -209,7 +207,7 @@ export function ChannelSidebar({
         <div className="text-xs text-gray-500 mb-2">Agent Status</div>
         <div className="flex flex-wrap gap-3 text-xs text-gray-400">
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span>Working</span>
           </div>
           <div className="flex items-center gap-1.5">

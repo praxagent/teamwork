@@ -1,5 +1,5 @@
 import { Avatar } from '@/components/common';
-import { MapPin, Briefcase, Code, Shield, Clock, MessageSquare } from 'lucide-react';
+import { MapPin, Briefcase, Code, Shield } from 'lucide-react';
 import type { Agent } from '@/types';
 
 interface ProfileCardProps {
@@ -39,9 +39,10 @@ const getRoleIcon = (role: string) => {
   return Briefcase;
 };
 
-const statusLabels = {
+const statusLabels: Record<string, string> = {
   idle: 'Available',
   working: 'Working',
+  blocked: 'Blocked',
   offline: 'Offline',
 };
 

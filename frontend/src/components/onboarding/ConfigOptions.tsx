@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button, Card, CardContent } from '@/components/common';
-import { Settings, Box, Terminal, FolderGit, Globe, Layers, ImageIcon, Zap, Hand, AlertCircle, MonitorPlay, Code2, Key } from 'lucide-react';
+import { Settings, Box, Terminal, FolderGit, Globe, ImageIcon, Zap, Hand, AlertCircle, MonitorPlay, Code2, Key } from 'lucide-react';
 import { useSystemCapabilities } from '@/hooks/useApi';
 
 interface ConfigOptionsProps {
@@ -323,7 +323,7 @@ export function ConfigOptions({
               badge={imageGenDisabled ? undefined : "Recommended"}
             />
             <OptionCard
-              selected={!config.generate_images || imageGenDisabled}
+              selected={!config.generate_images || !!imageGenDisabled}
               onClick={() => setConfig({ ...config, generate_images: false })}
               icon={Users}
               title="Use Initials Avatars"
