@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/praxagent/teamwork/compare/v0.3.0...v0.4.0) (2026-03-31)
+
+
+### Features
+
+* refactors to integrate better with Prax ([c62140e](https://github.com/praxagent/teamwork/commit/c62140edcc7dbc33e92fe7408a4e2606c90999f9))
+* streamline ui ([b58d6bb](https://github.com/praxagent/teamwork/commit/b58d6bbc9b31bfb4a02581da036fbff25ee3fe9e))
+
 ## [0.3.0](https://github.com/praxagent/teamwork/compare/v0.2.0...v0.3.0) (2026-03-29)
 
 
