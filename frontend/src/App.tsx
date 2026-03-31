@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Home, ProjectWorkspace, Projects } from '@/pages';
 import { OnboardingWizard } from '@/components/onboarding';
+import { ToastContainer } from '@/components/common';
 import { useUIStore } from '@/stores';
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
         <Route path="/new" element={<OnboardingWizard />} />
         <Route path="/project/:projectId" element={<ProjectWorkspace />} />
       </Routes>
+      <ToastContainer />
     </BrowserRouter>
   );
 }

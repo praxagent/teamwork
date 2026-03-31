@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { WebSocketEvent } from '@/types';
 import { useProjectStore, useMessageStore, useUIStore } from '@/stores';
+import { toast } from '@/stores/toastStore';
 
 type MessageHandler = (event: WebSocketEvent) => void;
 
@@ -26,6 +27,9 @@ class WebSocketManager {
 
     this.ws.onopen = () => {
       console.log('WebSocket connected');
+      if (this.reconnectAttempts > 0) {
+        toast.success('Reconnected to server');
+      }
       this.reconnectAttempts = 0;
       // Re-subscribe to previous subscriptions
       this.subscribedProjects.forEach((id) => this.subscribeToProject(id));
@@ -43,6 +47,9 @@ class WebSocketManager {
 
     this.ws.onclose = () => {
       console.log('WebSocket disconnected');
+      if (this.reconnectAttempts === 0) {
+        toast.warning('Connection lost. Reconnecting...');
+      }
       this.scheduleReconnect();
     };
 
@@ -54,6 +61,7 @@ class WebSocketManager {
   private scheduleReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('Max reconnect attempts reached');
+      toast.error('Unable to reconnect. Please refresh the page.');
       return;
     }
 
@@ -117,6 +125,7 @@ export function useWebSocket() {
   const updateTask = useProjectStore((state) => state.updateTask);
   const addTask = useProjectStore((state) => state.addTask);
   const addMessage = useMessageStore((state) => state.addMessage);
+  const updateMessage = useMessageStore((state) => state.updateMessage);
   const setAgentTyping = useUIStore((state) => state.setAgentTyping);
 
   useEffect(() => {
@@ -135,11 +144,22 @@ export function useWebSocket() {
               agent_role: null,
               content: event.data.content as string,
               message_type: ((event.data.message_type as string) || 'chat') as 'chat' | 'status_update' | 'task_update' | 'system',
-              metadata: null,
+              extra_data: (event.data.extra_data as Record<string, unknown>) || null,
               thread_id: event.data.thread_id as string | null,
               reply_count: 0,
               created_at: event.data.created_at as string,
               updated_at: null,
+            });
+          }
+          break;
+        }
+
+        case 'message:update': {
+          const channelId = event.channelId || (event.data.channel_id as string);
+          const messageId = event.data.id as string;
+          if (channelId && messageId) {
+            updateMessage(channelId, messageId, {
+              extra_data: (event.data.extra_data as Record<string, unknown>) || null,
             });
           }
           break;
@@ -195,7 +215,7 @@ export function useWebSocket() {
     return () => {
       removeHandler();
     };
-  }, [queryClient, updateAgent, addChannel, updateTask, addTask, addMessage, setAgentTyping]);
+  }, [queryClient, updateAgent, addChannel, updateTask, addTask, addMessage, updateMessage, setAgentTyping]);
 
   const subscribeToProject = useCallback((projectId: string) => {
     wsManager.subscribeToProject(projectId);

@@ -24,6 +24,11 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 - [Integration Guide](#integration-guide)
 - [Prax — First-Class Agent](#prax--first-class-agent)
 - [Architecture](#architecture)
+- [Workspace Structure](#workspace-structure)
+- [Workspace Backup](#workspace-backup)
+- [Database Management](#database-management)
+- [Full-Text Search (FTS5 + BM25)](#full-text-search-fts5--bm25)
+- [SQLite in Production](#sqlite-in-production--scaling-characteristics)
 - [Screenshots](#screenshots)
 - [Environment Variables](#environment-variables)
 - [Development](#development)
@@ -481,6 +486,212 @@ teamwork/
 ### How Static Serving Works
 
 When you install TeamWork, the React build is bundled inside the package at `teamwork/static/`. FastAPI serves static assets at `/assets/` and uses a catch-all route to return `index.html` for all other paths, enabling client-side routing. No nginx, no separate frontend container.
+
+## Workspace Structure
+
+TeamWork provides a file browser, editor, git log viewer, and backup download for each project's workspace. Your agent owns the workspace — TeamWork just serves it. But for the file browser, terminal, and backup to work correctly, the workspace must live at a known location.
+
+### How workspaces are resolved
+
+Each project has a workspace directory on disk:
+
+```
+{WORKSPACE_PATH}/{workspace_dir}/
+```
+
+- **`WORKSPACE_PATH`** — configured via environment variable (default: `./workspace`). This is the root directory containing all project workspaces.
+- **`workspace_dir`** — a per-project subdirectory name, stored in the project record. Set it when creating the project via `/api/external/projects`, or let TeamWork auto-generate one from the project name.
+
+Example: if `WORKSPACE_PATH=/data/workspaces` and a project's `workspace_dir` is `my_project_abc12345`, the full path is `/data/workspaces/my_project_abc12345/`.
+
+### Expected directory layout
+
+TeamWork is agent-agnostic — it doesn't prescribe what goes inside the workspace. However, the following conventions are recommended for maximum compatibility with TeamWork's UI features:
+
+```
+{workspace_dir}/
+├── .git/                    # Optional — enables git log viewer and task diffs
+├── .gitignore               # Recommended — keep caches/artifacts out of git
+│
+├── active/                  # Convention: current working files
+│   ├── report.md            #   Documents, notes, generated content
+│   ├── slides.tex           #   LaTeX, code, configs
+│   └── diagram.png          #   Images, diagrams
+│
+├── archive/                 # Convention: binary/media outputs
+│   ├── presentation.mp4     #   Videos, audio, large files
+│   └── dataset.csv          #   Data exports
+│
+├── plugins/                 # Convention: agent plugin storage
+│   ├── custom/              #   User-created plugins
+│   └── shared/              #   Imported plugin repos (git submodules)
+│
+├── user_notes.md            # Convention: persistent user notes
+├── config.yaml              # Convention: agent/project configuration
+└── ...                      # Anything else your agent needs
+```
+
+**Required:** The workspace directory must exist and be readable by the TeamWork process.
+
+**Optional but recommended:**
+- **Git repository** — enables the git log viewer (`/api/workspace/{project_id}/git-log`) and per-task diffs. Initialize with `git init` when the workspace is created.
+- **`active/` subdirectory** — a well-known place for "current" files. Agents that use this convention can tell users "your file is in `active/report.md`" and it will appear in the file browser.
+
+**What TeamWork ignores:** The file browser automatically hides `.git`, `__pycache__`, `node_modules`, `.venv`, `.DS_Store`, and other common cache/build directories. These are also excluded from backups.
+
+### Setting workspace_dir at project creation
+
+When your agent creates a project via the external API, pass `workspace_dir` to control the directory name:
+
+```python
+resp = httpx.post(f"{TW}/api/external/projects", headers=HEADERS, json={
+    "name": "My Agent Workspace",
+    "workspace_dir": "user_12345",  # Your agent's directory name
+    "webhook_url": "http://my-agent:9000/webhook",
+})
+```
+
+If `workspace_dir` is omitted, TeamWork generates one: `{slugified_name}_{first_8_uuid_chars}`.
+
+**Shared workspaces:** If your agent has an existing workspace directory (e.g., a per-user directory at `/data/workspaces/user_12345/`), set TeamWork's `WORKSPACE_PATH` to the same parent directory and pass the matching `workspace_dir`. Both systems will then read from and write to the same directory — no symlinks or copies needed.
+
+## Workspace Backup
+
+TeamWork provides a one-click workspace backup in the Settings panel. The backup downloads a zip file containing all workspace files, excluding version control (`.git`), caches, build artifacts, and environment files (`.env`).
+
+**Limits:** 200 MB uncompressed maximum. If the workspace exceeds this limit, the download button is disabled with an explanation. This cap exists because the zip is built in memory on the server — for larger workspaces, use `git` directly or an external backup tool.
+
+**What's excluded:**
+- `.git/` — version control history (use `git clone` to preserve this)
+- `__pycache__/`, `node_modules/`, `.venv/` — caches and dependencies
+- `build/`, `dist/` — build artifacts
+- `.env` — environment files (may contain secrets)
+- `.DS_Store`, `Thumbs.db` — OS junk
+
+**What's included:** Everything else — code, configs, markdown, images, generated content, data files. TeamWork doesn't filter by file type because different agents produce different artifacts. If your workspace has large media files (videos, audio), they will be included in the zip and may push it past the 200 MB limit.
+
+**API endpoints:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/workspace/{project_id}/backup/info` | Pre-flight: file count, total size, whether it exceeds the limit |
+| `GET` | `/api/workspace/{project_id}/backup` | Download the zip (returns 413 if too large) |
+
+## Database Management
+
+The Settings panel includes two tools for managing message history as your database grows:
+
+### Delete Old Messages
+
+Permanently removes all messages older than a chosen threshold (7 / 14 / 30 / 60 / 90 days). Runs `VACUUM` afterward to reclaim disk space. No external dependencies — this is pure SQL.
+
+### Compactify Old Messages
+
+Replaces chunks of old messages with LLM-generated summaries. For every 50 messages, the LLM produces a concise bullet-point summary preserving key decisions, action items, and outcomes. The originals are deleted and replaced with a single `[Summary of N messages]` system message at the timestamp of the earliest message in the chunk.
+
+**Provider-agnostic:** Compactify works with any OpenAI-compatible chat completions API. The user provides three fields per request:
+
+| Field | Default | Examples |
+|-------|---------|----------|
+| **API Key** | *(required)* | `sk-...` (OpenAI), Ollama doesn't need one but the field is required |
+| **Model** | `gpt-4o-mini` | `claude-haiku-4-5-20251001`, `llama3`, `gemma2`, `grok-2` |
+| **API URL** | `https://api.openai.com/v1/chat/completions` | `http://localhost:11434/v1/chat/completions` (Ollama), `http://localhost:1234/v1/chat/completions` (LM Studio), `https://api.groq.com/openai/v1/chat/completions` |
+
+TeamWork never stores the API key — it is used for the duration of the request and discarded. This preserves TeamWork's "zero AI dependency" principle: the core platform works without any LLM, but you can opt in to LLM-powered maintenance when you choose.
+
+**Safety rails:**
+- Minimum threshold is 7 days — you can't accidentally summarize active conversations.
+- Summaries are clearly marked as `[Summary of N messages]` so they're visually distinct.
+- A two-click confirmation flow prevents accidental triggers.
+
+**API endpoints:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/messages/stats/{project_id}` | Message count by age bracket (7d / 30d / 90d / older) + DB file size |
+| `POST` | `/api/messages/cleanup` | Delete messages older than N days + VACUUM |
+| `POST` | `/api/messages/compactify` | LLM summarization of old messages (accepts `model` and `api_base_url`) |
+
+### Full-Text Search (FTS5 + BM25)
+
+TeamWork uses [SQLite FTS5](https://www.sqlite.org/fts5.html) for message search, providing relevance-ranked results via the [BM25 algorithm](https://www.sqlite.org/fts5.html#the_bm25_function) — the same ranking function used by Elasticsearch, Solr, and most modern search engines.
+
+**How it works:**
+
+A content-sync'd FTS5 virtual table (`messages_fts`) mirrors the `content` column of the `messages` table. SQLite triggers keep the index in sync on every INSERT, UPDATE, and DELETE — zero application-level bookkeeping. The tokenizer is `porter unicode61`, which means:
+
+- **Porter stemming** — "running", "runs", and "ran" all match a search for "run"
+- **Unicode normalization** — accented characters, CJK text, and mixed-script queries work correctly
+
+Search queries use FTS5's `MATCH` syntax with `bm25()` ranking, which scores results by term frequency, inverse document frequency, and document length normalization. A query for "deploy fix" ranks a short message containing both terms higher than a long message mentioning "deploy" once in passing.
+
+```sql
+-- What the search endpoint executes:
+SELECT m.id, m.content, m.channel_id, c.name, m.agent_id, a.name
+FROM messages_fts fts
+JOIN messages m ON m.rowid = fts.rowid
+JOIN channels c ON c.id = m.channel_id
+LEFT JOIN agents a ON a.id = m.agent_id
+WHERE fts.content MATCH :query
+  AND m.project_id = :project_id
+ORDER BY bm25(messages_fts)
+LIMIT :limit
+```
+
+**Migration:** The FTS5 table is created automatically on startup if it doesn't exist. Existing messages are backfilled into the index. No manual migration steps required — just restart the server.
+
+**Fallback:** If FTS5 is unavailable (e.g., a SQLite build without the extension), the search endpoint falls back to `LIKE '%query%'` — functional but unranked.
+
+### SQLite in Production — Scaling Characteristics
+
+TeamWork uses SQLite as its primary database. This is a deliberate architectural choice, not a prototype shortcut.
+
+#### Why SQLite works here
+
+SQLite handles far more load than most developers expect. The official documentation states:
+
+> *"SQLite works great as the database engine for most low to medium traffic websites (which is to say, most websites). The amount of web traffic that SQLite can handle depends on how heavily the website uses its database. Generally speaking, any site that gets fewer than 100K hits/day should work fine with SQLite."* — [sqlite.org/whentouse.html](https://www.sqlite.org/whentouse.html)
+
+Key performance characteristics relevant to TeamWork:
+
+| Characteristic | SQLite capability | Reference |
+|---|---|---|
+| **Maximum database size** | 281 terabytes | [sqlite.org/limits.html](https://www.sqlite.org/limits.html) |
+| **Concurrent readers** | Unlimited (with WAL mode) | [sqlite.org/wal.html](https://www.sqlite.org/wal.html) |
+| **Write throughput** | ~60K–100K inserts/sec on modern SSDs | [sqlite.org/speed.html](https://www.sqlite.org/speed.html) |
+| **WAL mode** | Readers never block writers; writers never block readers | [sqlite.org/wal.html](https://www.sqlite.org/wal.html) |
+| **Full-text search** | FTS5 with BM25 ranking, porter stemming | [sqlite.org/fts5.html](https://www.sqlite.org/fts5.html) |
+| **JSON support** | Built-in JSON functions for structured data | [sqlite.org/json1.html](https://www.sqlite.org/json1.html) |
+
+TeamWork enables WAL mode and sets a 5-second busy timeout at startup, which effectively eliminates write contention for single-user workloads.
+
+#### Per-user SQLite sandboxing
+
+TeamWork's architecture — one user, one project, one SQLite database — sidesteps the single-writer limitation entirely. Each user gets their own database file, their own containers, and their own agent processes. There is no shared write path.
+
+This pattern has significant production precedent:
+
+- **Expensify** runs a separate SQLite database per user, processing millions of expense reports daily. Their architecture treats each user's database as an isolated shard, eliminating cross-user write contention.
+- **Rails 8** adopted SQLite as a first-class production database, replacing Redis and PostgreSQL for queues (`solid_queue`), caching (`solid_cache`), and pub/sub (`solid_cable`) — betting that per-process SQLite is simpler and faster than networked databases for the common case. See [Rails 8 release notes](https://rubyonrails.org/2024/11/7/rails-8-no-paas-required).
+- **Litestream** ([litestream.io](https://litestream.io/)) provides continuous SQLite replication to S3, enabling point-in-time recovery and cross-region disaster recovery without PostgreSQL's operational overhead.
+- **LiteFS** ([fly.io/docs/litefs](https://fly.io/docs/litefs/)) replicates SQLite databases across distributed nodes using FUSE, enabling read replicas at the edge.
+
+The academic case for embedded databases in web applications is well-supported. Pavlo et al. (2017) in *"What's Really New with NewSQL?"* ([SIGMOD Record](https://doi.org/10.1145/3003665.3003674)) observe that most OLTP workloads are partitionable by user or tenant, making shared-nothing architectures (where each partition is an independent database) both simpler and faster than distributed transactions. SQLite-per-user is the logical endpoint of this observation.
+
+#### When to migrate to PostgreSQL
+
+The honest answer: **probably never, for TeamWork's architecture.** As long as each user has their own SQLite database, there is no write contention to resolve and no scaling wall to hit. A single SQLite database comfortably handles millions of messages, thousands of channels, and complex FTS5 queries.
+
+Migration to PostgreSQL would become necessary if TeamWork moves to a **multi-tenant shared database** model — specifically:
+
+| Trigger | Why PostgreSQL helps |
+|---|---|
+| **Shared database across users** | PostgreSQL's MVCC handles concurrent writers from multiple users gracefully; SQLite's single-writer lock becomes a bottleneck |
+| **Horizontal read scaling** | PostgreSQL supports streaming replication to read replicas; SQLite is single-node |
+| **Advanced query patterns** | Materialized views, window functions over large datasets, GIN/GiST indexes for geospatial or array queries |
+| **Operational tooling** | pgBackRest, pg_stat_statements, connection pooling (PgBouncer), mature monitoring ecosystem |
+
+For TeamWork's current per-user sandboxed architecture, SQLite + WAL + FTS5 is the right choice — simpler to deploy, zero network latency, zero connection pool management, and more than sufficient performance.
 
 ## Screenshots
 

@@ -1,9 +1,11 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { clsx } from 'clsx';
-import { MessageSquare, MoreHorizontal, Activity } from 'lucide-react';
+import { MessageSquare, MoreHorizontal, Activity, FileText, Download, SmilePlus } from 'lucide-react';
 import { Avatar, MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
-import type { Message, Agent } from '@/types';
+import { useToggleReaction } from '@/hooks/useApi';
+import { QuickReactions, ReactionDisplay } from './EmojiPicker';
+import type { Message, Agent, Attachment } from '@/types';
 
 interface MessageListProps {
   messages: Message[];
@@ -80,7 +82,7 @@ export function MessageList({
   const groupedMessages = groupMessagesByDate(messages);
 
   return (
-    <div className={`flex-1 overflow-y-auto px-4 py-2 ${containerBg}`}>
+    <div className={`flex-1 overflow-y-auto px-5 py-3 ${containerBg}`}>
       {hasMore && (
         <div className="text-center py-4">
           <button
@@ -149,11 +151,21 @@ interface MessageItemProps {
 function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }: MessageItemProps) {
   const userProfile = useUIStore((state) => state.userProfile);
   const darkMode = useUIStore((state) => state.darkMode);
-  
+  const toggleReaction = useToggleReaction();
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
+
   const time = new Date(message.created_at).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  const attachments = (message.extra_data?.attachments as Attachment[] | undefined) || [];
+  const reactions = (message.extra_data?.reactions as Record<string, string[]>) || {};
+
+  const handleReact = (emoji: string) => {
+    const userName = userProfile.name || 'You';
+    toggleReaction.mutate({ messageId: message.id, emoji, userName });
+  };
 
   const isFromUser = !message.agent_id;
   const getUserDisplayName = () => {
@@ -181,10 +193,10 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
   return (
     <div
       className={clsx(
-        'group relative py-1 -mx-4 px-4 rounded',
+        'group relative py-2 -mx-4 px-4 rounded-xl transition-colors',
         hoverBg,
-        showHeader ? 'mt-4' : 'mt-0.5',
-        !isFromUser && showHeader && (darkMode ? 'border-l-2 border-indigo-500/30' : 'border-l-2 border-indigo-300/50'),
+        showHeader ? 'mt-5' : 'mt-0.5',
+        !isFromUser && showHeader && (darkMode ? 'bg-slate-800/40' : 'bg-gray-50/80'),
       )}
     >
       {showHeader ? (
@@ -227,6 +239,8 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
             <div className={`message-content ${messageTextColor}`}>
               <MarkdownContent content={message.content} />
             </div>
+            {attachments.length > 0 && <AttachmentGrid attachments={attachments} darkMode={darkMode} />}
+            <ReactionDisplay reactions={reactions} onToggle={handleReact} />
             {message.reply_count > 0 && (
               <button
                 onClick={() => onThreadClick?.(message.id)}
@@ -249,6 +263,8 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
             <div className={`message-content ${messageTextColor}`}>
               <MarkdownContent content={message.content} />
             </div>
+            {attachments.length > 0 && <AttachmentGrid attachments={attachments} darkMode={darkMode} />}
+            <ReactionDisplay reactions={reactions} onToggle={handleReact} />
           </div>
         </div>
       )}
@@ -256,17 +272,32 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
       {/* Message actions */}
       <div className="absolute right-4 top-0 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
         <div className={`flex items-center gap-1 border rounded shadow-sm ${actionsBg}`}>
+          {/* Quick reactions */}
+          <div className="relative">
+            <button
+              className={`p-1 rounded ${actionsHoverBg}`}
+              onClick={() => setShowReactionPicker((v) => !v)}
+              title="Add reaction"
+            >
+              <SmilePlus className={`w-4 h-4 ${actionsIconColor}`} />
+            </button>
+            {showReactionPicker && (
+              <div className="absolute right-0 top-full mt-1 z-50">
+                <QuickReactions onReact={(emoji) => { handleReact(emoji); setShowReactionPicker(false); }} />
+              </div>
+            )}
+          </div>
           {/* Trace button — shown only for agent messages with trace metadata */}
-          {message.metadata?.trace_id ? (
+          {message.extra_data?.trace_id ? (
             <button
               className={`p-1 rounded ${actionsHoverBg}`}
               onClick={() => {
-                const meta = message.metadata as Record<string, string>;
+                const meta = message.extra_data as Record<string, string>;
                 const url = meta.grafana_trace_url ||
                   `http://localhost:3001/explore?left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22query%22:%22${meta.trace_id}%22%7D%5D%7D`;
                 window.open(url, '_blank', 'noopener');
               }}
-              title={`View trace ${String(message.metadata.trace_id)}`}
+              title={`View trace ${String(message.extra_data.trace_id)}`}
             >
               <Activity className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
             </button>
@@ -331,4 +362,55 @@ function shouldShowHeader(
   const currentTime = new Date(current.created_at).getTime();
   const prevTime = new Date(previous.created_at).getTime();
   return currentTime - prevTime > 5 * 60 * 1000;
+}
+
+function AttachmentGrid({ attachments, darkMode }: { attachments: Attachment[]; darkMode: boolean }) {
+  const images = attachments.filter(a => a.content_type.startsWith('image/'));
+  const files = attachments.filter(a => !a.content_type.startsWith('image/'));
+
+  const sizeLabel = (size: number) =>
+    size < 1024 ? `${size} B`
+    : size < 1024 * 1024 ? `${(size / 1024).toFixed(0)} KB`
+    : `${(size / (1024 * 1024)).toFixed(1)} MB`;
+
+  return (
+    <div className="mt-2 space-y-2">
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map(img => (
+            <a key={img.id} href={img.url} target="_blank" rel="noopener noreferrer" className="block">
+              <img
+                src={img.url}
+                alt={img.name}
+                className="max-w-xs max-h-60 rounded-lg object-cover border border-transparent hover:border-tw-accent transition-colors"
+              />
+            </a>
+          ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {files.map(file => (
+            <a
+              key={file.id}
+              href={file.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={clsx(
+                'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors',
+                darkMode
+                  ? 'bg-slate-700/60 hover:bg-slate-700 text-gray-200'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              )}
+            >
+              <FileText className="w-4 h-4 shrink-0 opacity-60" />
+              <span className="truncate max-w-[200px]">{file.name}</span>
+              <span className="text-xs opacity-50">{sizeLabel(file.size)}</span>
+              <Download className="w-3.5 h-3.5 opacity-40" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

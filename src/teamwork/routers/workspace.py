@@ -1,10 +1,13 @@
 """Workspace API router for file browsing."""
 
+import io
 import os
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -582,3 +585,135 @@ async def get_task_diff(
         )
 
 
+# ── Workspace backup ──────────────────────────────────────────────────
+
+# Directories to always skip — caches, version control, build artifacts.
+_BACKUP_SKIP_DIRS = {
+    ".git", "__pycache__", "node_modules", ".venv", "venv",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    "dist", "build", ".tox", ".nox", ".eggs",
+}
+
+# Individual files to skip by name.
+_BACKUP_SKIP_FILES = {".DS_Store", "Thumbs.db", ".env"}
+
+# Hard cap on total uncompressed size (200 MB).
+_BACKUP_MAX_BYTES = 200 * 1024 * 1024
+
+
+class BackupInfoResponse(BaseModel):
+    """Pre-flight info about a potential backup."""
+    file_count: int
+    total_bytes: int
+    total_mb: str
+    too_large: bool
+    max_mb: int
+
+
+def _collect_backup_files(root: Path) -> list[tuple[Path, int]]:
+    """Walk the workspace and collect all files, skipping junk directories.
+
+    Agent-agnostic: no extension whitelist. Zips everything the workspace
+    contains except caches, version control, and build artifacts.
+
+    Returns a list of (absolute_path, file_size) tuples.
+    """
+    collected: list[tuple[Path, int]] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune ignored directories in-place so os.walk skips them.
+        dirnames[:] = [d for d in dirnames if d not in _BACKUP_SKIP_DIRS]
+
+        for fname in filenames:
+            if fname in _BACKUP_SKIP_FILES:
+                continue
+            # Skip compiled/bytecode files.
+            if fname.endswith((".pyc", ".pyo", ".egg-info")):
+                continue
+            fpath = Path(dirpath) / fname
+            try:
+                collected.append((fpath, fpath.stat().st_size))
+            except OSError:
+                continue
+    return collected
+
+
+@router.get("/{project_id}/backup/info", response_model=BackupInfoResponse)
+async def backup_info(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> BackupInfoResponse:
+    """Pre-flight check: report how large the backup would be."""
+    workspace_path = await get_project_workspace_path(project_id, db)
+    if not workspace_path.exists():
+        return BackupInfoResponse(
+            file_count=0, total_bytes=0, total_mb="0",
+            too_large=False, max_mb=_BACKUP_MAX_BYTES // (1024 * 1024),
+        )
+
+    files = _collect_backup_files(workspace_path)
+    total = sum(size for _, size in files)
+    return BackupInfoResponse(
+        file_count=len(files),
+        total_bytes=total,
+        total_mb=f"{total / (1024 * 1024):.1f}",
+        too_large=total > _BACKUP_MAX_BYTES,
+        max_mb=_BACKUP_MAX_BYTES // (1024 * 1024),
+    )
+
+
+@router.get("/{project_id}/backup")
+async def download_backup(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a zip of the workspace.
+
+    Includes all workspace files except version control (.git), caches,
+    build artifacts, and environment files.  Capped at 200 MB uncompressed.
+    """
+    workspace_path = await get_project_workspace_path(project_id, db)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    files = _collect_backup_files(workspace_path)
+    total = sum(size for _, size in files)
+
+    if total > _BACKUP_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Backup would be {total / (1024 * 1024):.0f} MB, "
+                f"which exceeds the {_BACKUP_MAX_BYTES // (1024 * 1024)} MB limit. "
+                "Remove large files from the workspace to reduce the size."
+            ),
+        )
+
+    if not files:
+        raise HTTPException(status_code=404, detail="No files found in workspace")
+
+    # Build zip in memory (capped at 200 MB uncompressed, so this is safe).
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        for fpath, _ in files:
+            arcname = str(fpath.relative_to(workspace_path))
+            zf.write(fpath, arcname)
+    buf.seek(0)
+
+    # Filename for the download.
+    from sqlalchemy import select
+    from teamwork.models import Project
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    proj = result.scalar_one_or_none()
+    slug = "workspace"
+    if proj:
+        slug = proj.name[:30].lower().replace(" ", "_")
+        slug = "".join(c for c in slug if c.isalnum() or c in "_-") or "workspace"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{slug}_backup.zip"',
+            "Content-Length": str(buf.getbuffer().nbytes),
+        },
+    )

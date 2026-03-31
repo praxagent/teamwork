@@ -64,7 +64,7 @@ async def _run_migrations(conn) -> None:
     # Get existing columns in the tasks table
     result = await conn.execute(text("PRAGMA table_info(tasks)"))
     columns = {row[1] for row in result.fetchall()}
-    
+
     # Add blocked_by_json column if it doesn't exist
     if "blocked_by_json" not in columns:
         try:
@@ -74,7 +74,7 @@ async def _run_migrations(conn) -> None:
             print("Migration: Added blocked_by_json column to tasks table")
         except Exception as e:
             print(f"Migration warning: {e}")
-    
+
     # Add start_commit column if it doesn't exist
     if "start_commit" not in columns:
         try:
@@ -84,7 +84,7 @@ async def _run_migrations(conn) -> None:
             print("Migration: Added start_commit column to tasks table")
         except Exception as e:
             print(f"Migration warning: {e}")
-    
+
     # Add end_commit column if it doesn't exist
     if "end_commit" not in columns:
         try:
@@ -94,6 +94,61 @@ async def _run_migrations(conn) -> None:
             print("Migration: Added end_commit column to tasks table")
         except Exception as e:
             print(f"Migration warning: {e}")
+
+    # ── FTS5 full-text search for messages ──
+    await _migrate_fts5(conn)
+
+
+async def _migrate_fts5(conn) -> None:
+    """Create or rebuild the FTS5 virtual table for message search."""
+    # Check if the FTS table already exists
+    result = await conn.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='messages_fts'")
+    )
+    fts_exists = result.first() is not None
+
+    if not fts_exists:
+        # Create the FTS5 virtual table — content-sync'd to messages table
+        # content="" means we only store the index, not a copy of the data
+        # content_rowid maps the FTS rowid to messages.rowid
+        await conn.execute(text("""
+            CREATE VIRTUAL TABLE messages_fts USING fts5(
+                content,
+                content='messages',
+                content_rowid='rowid',
+                tokenize='porter unicode61'
+            )
+        """))
+
+        # Triggers to keep FTS in sync with messages table
+        await conn.execute(text("""
+            CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages BEGIN
+                INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+            END
+        """))
+
+        await conn.execute(text("""
+            CREATE TRIGGER messages_fts_delete AFTER DELETE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, content)
+                    VALUES('delete', old.rowid, old.content);
+            END
+        """))
+
+        await conn.execute(text("""
+            CREATE TRIGGER messages_fts_update AFTER UPDATE OF content ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, content)
+                    VALUES('delete', old.rowid, old.content);
+                INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+            END
+        """))
+
+        # Backfill existing messages into the FTS index
+        await conn.execute(text("""
+            INSERT INTO messages_fts(rowid, content)
+                SELECT rowid, content FROM messages
+        """))
+
+        print("Migration: Created FTS5 full-text search index for messages")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

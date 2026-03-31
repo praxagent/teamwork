@@ -117,6 +117,14 @@ export interface Channel {
   created_at: string;
 }
 
+export interface Attachment {
+  id: string;
+  name: string;
+  url: string;
+  content_type: string;
+  size: number;
+}
+
 export interface Message {
   id: string;
   channel_id: string;
@@ -125,7 +133,7 @@ export interface Message {
   agent_role: string | null;
   content: string;
   message_type: 'chat' | 'status_update' | 'task_update' | 'system';
-  metadata: Record<string, unknown> | null;
+  extra_data: Record<string, unknown> | null;
   thread_id: string | null;
   reply_count: number;
   created_at: string;
@@ -156,7 +164,7 @@ export interface ActivityLog {
   agent_id: string;
   activity_type: string;
   description: string;
-  metadata: Record<string, unknown> | null;
+  extra_data: Record<string, unknown> | null;
   created_at: string;
 }
 

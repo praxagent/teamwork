@@ -30,6 +30,7 @@ from teamwork.routers import (
     projects_router,
     tasks_router,
     terminal_router,
+    uploads_router,
     workspace_router,
 )
 from teamwork.websocket import manager, WebSocketEvent, EventType
@@ -97,6 +98,7 @@ app.include_router(channels_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(terminal_router, prefix="/api")
+app.include_router(uploads_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
 

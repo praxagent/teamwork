@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   Project,
   Agent,
+  Attachment,
   Channel,
   Message,
   Task,
@@ -338,6 +339,7 @@ export function useSendMessage() {
       message_type?: string;
       thread_id?: string;
       active_view?: string;
+      extra_data?: Record<string, unknown>;
     }) =>
       fetchJson<Message>('/messages', {
         method: 'POST',
@@ -353,6 +355,52 @@ export function useSendMessage() {
         });
       }
     },
+  });
+}
+
+// File uploads
+export function useUploadFile() {
+  return useMutation({
+    mutationFn: async (data: { projectId: string; file: File }): Promise<Attachment> => {
+      const formData = new FormData();
+      formData.append('file', data.file);
+      const response = await fetch(`${API_BASE}/uploads/${data.projectId}`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || `Upload failed: ${response.status}`);
+      }
+      return response.json();
+    },
+  });
+}
+
+// Search
+export interface SearchResult {
+  message_id: string;
+  channel_id: string;
+  channel_name: string;
+  agent_name: string | null;
+  content: string;
+  created_at: string;
+}
+
+export async function searchMessages(projectId: string, query: string, limit = 15): Promise<{ results: SearchResult[]; total: number }> {
+  return fetchJson<{ results: SearchResult[]; total: number }>(
+    `/messages/search?q=${encodeURIComponent(query)}&project_id=${encodeURIComponent(projectId)}&limit=${limit}`
+  );
+}
+
+// Reactions
+export function useToggleReaction() {
+  return useMutation({
+    mutationFn: (data: { messageId: string; emoji: string; userName: string }) =>
+      fetchJson<{ reactions: Record<string, string[]> }>(`/messages/${data.messageId}/reactions`, {
+        method: 'POST',
+        body: JSON.stringify({ emoji: data.emoji, user_name: data.userName }),
+      }),
   });
 }
 

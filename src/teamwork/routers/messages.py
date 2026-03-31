@@ -6,13 +6,14 @@ message persistence, retrieval, WebSocket broadcasting, and webhook forwarding.
 """
 
 import logging
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teamwork.config import settings
@@ -440,6 +441,118 @@ async def handle_memories_command(channel_id: str, project_id: str):
 # ─── Route handlers ──────────────────────────────────────────────────────────
 
 
+class SearchResult(BaseModel):
+    """A single search hit."""
+    message_id: str
+    channel_id: str
+    channel_name: str
+    agent_name: str | None
+    content: str
+    created_at: str
+
+
+class SearchResponse(BaseModel):
+    results: list[SearchResult]
+    total: int
+
+
+@router.get("/search")
+async def search_messages(
+    q: str,
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    limit: int = 20,
+) -> SearchResponse:
+    """Full-text search across all messages in a project using FTS5.
+
+    Falls back to LIKE if FTS5 index is not available.
+    """
+    if not q.strip():
+        return SearchResponse(results=[], total=0)
+
+    # Get all channel IDs for this project
+    ch_result = await db.execute(
+        select(Channel.id, Channel.name).where(Channel.project_id == project_id)
+    )
+    channel_rows = ch_result.all()
+    if not channel_rows:
+        return SearchResponse(results=[], total=0)
+
+    channel_ids = [r[0] for r in channel_rows]
+    channel_names = {r[0]: r[1] for r in channel_rows}
+    placeholders = ", ".join(f":ch{i}" for i in range(len(channel_ids)))
+    ch_params = {f"ch{i}": cid for i, cid in enumerate(channel_ids)}
+
+    # Try FTS5 first, fall back to LIKE
+    try:
+        # FTS5 query — use porter tokenizer matching.
+        # Escape double-quotes in user input to prevent FTS syntax errors.
+        fts_query = q.strip().replace('"', '""')
+
+        # Count total FTS matches scoped to this project's channels
+        count_sql = text(f"""
+            SELECT COUNT(*) FROM messages
+            WHERE rowid IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH :q)
+              AND channel_id IN ({placeholders})
+        """)
+        total = (await db.execute(count_sql, {"q": fts_query, **ch_params})).scalar() or 0
+
+        # Fetch results ranked by FTS5 relevance (bm25), limited
+        search_sql = text(f"""
+            SELECT m.id, m.channel_id, m.agent_id, m.content, m.created_at
+            FROM messages m
+            JOIN messages_fts fts ON m.rowid = fts.rowid
+            WHERE messages_fts MATCH :q
+              AND m.channel_id IN ({placeholders})
+            ORDER BY fts.rank
+            LIMIT :lim
+        """)
+        result = await db.execute(search_sql, {"q": fts_query, "lim": limit, **ch_params})
+        rows = result.all()
+
+    except Exception:
+        # FTS5 not available — fall back to LIKE
+        logger.info("FTS5 not available, falling back to LIKE search")
+        pattern = f"%{q}%"
+        from sqlalchemy import func
+
+        base_filter = (
+            select(Message)
+            .where(Message.channel_id.in_(channel_ids))
+            .where(Message.content.ilike(pattern))
+        )
+        count_q = select(func.count()).select_from(base_filter.subquery())
+        total = (await db.execute(count_q)).scalar() or 0
+        result = await db.execute(
+            base_filter.order_by(Message.created_at.desc()).limit(limit)
+        )
+        msgs = result.scalars().all()
+        rows = [(m.id, m.channel_id, m.agent_id, m.content, m.created_at) for m in msgs]
+
+    # Build response
+    hits = []
+    for row in rows:
+        msg_id, channel_id, agent_id, content, created_at = row
+        agent_name = None
+        if agent_id:
+            ag = await db.execute(select(Agent.name).where(Agent.id == agent_id))
+            ag_row = ag.first()
+            if ag_row:
+                agent_name = ag_row[0]
+
+        created_str = created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at)
+        hits.append(SearchResult(
+            message_id=msg_id,
+            channel_id=channel_id,
+            channel_name=channel_names.get(channel_id, "unknown"),
+            agent_name=agent_name,
+            content=content[:200],
+            created_at=created_str,
+        ))
+
+    return SearchResponse(results=hits, total=total)
+
+
 @router.get("/channel/{channel_id}", response_model=MessageListResponse)
 async def list_channel_messages(
     channel_id: str,
@@ -543,6 +656,7 @@ async def create_message(
                 "agent_name": agent_name,
                 "content": db_message.content,
                 "message_type": db_message.message_type,
+                "extra_data": db_message.extra_data,
                 "thread_id": db_message.thread_id,
                 "created_at": db_message.created_at.isoformat(),
             },
@@ -651,3 +765,372 @@ async def delete_message(
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
     await db.delete(message)
+    await db.commit()
+
+
+class ReactionToggle(BaseModel):
+    """Schema for toggling a reaction on a message."""
+    emoji: str
+    user_name: str  # Display name of the user reacting
+
+
+@router.post("/{message_id}/reactions")
+async def toggle_reaction(
+    message_id: str,
+    body: ReactionToggle,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Toggle a reaction on a message. Returns updated reactions dict."""
+    result = await db.execute(select(Message).where(Message.id == message_id))
+    message = result.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    extra = dict(message.extra_data) if message.extra_data else {}
+    reactions: dict[str, list[str]] = extra.get("reactions", {})
+
+    names = reactions.get(body.emoji, [])
+    if body.user_name in names:
+        names.remove(body.user_name)
+        if not names:
+            reactions.pop(body.emoji, None)
+    else:
+        names.append(body.user_name)
+        reactions[body.emoji] = names
+
+    if reactions:
+        extra["reactions"] = reactions
+    else:
+        extra.pop("reactions", None)
+
+    message.extra_data = extra or None
+    message.updated_at = datetime.utcnow()
+    await db.commit()
+
+    # Broadcast reaction update
+    await manager.broadcast_to_channel(
+        message.channel_id,
+        WebSocketEvent(
+            type=EventType.MESSAGE_UPDATE,
+            data={
+                "id": message.id,
+                "channel_id": message.channel_id,
+                "extra_data": message.extra_data,
+            },
+        ),
+    )
+
+    return {"reactions": reactions}
+
+
+# ─── Database Management ──────────────────────────────────────────────────────
+
+
+class MessageStatsResponse(BaseModel):
+    """Message count breakdown by age bracket."""
+    total: int
+    last_7_days: int
+    last_30_days: int
+    last_90_days: int
+    older_than_90_days: int
+    db_size_mb: str | None = None
+
+
+@router.get("/stats/{project_id}", response_model=MessageStatsResponse)
+async def message_stats(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> MessageStatsResponse:
+    """Get message count breakdown by age for a project."""
+    # Get all channel IDs in this project.
+    ch_result = await db.execute(
+        select(Channel.id).where(Channel.project_id == project_id)
+    )
+    channel_ids = [r[0] for r in ch_result.fetchall()]
+    if not channel_ids:
+        return MessageStatsResponse(
+            total=0, last_7_days=0, last_30_days=0,
+            last_90_days=0, older_than_90_days=0,
+        )
+
+    now = datetime.utcnow()
+    d7 = now - timedelta(days=7)
+    d30 = now - timedelta(days=30)
+    d90 = now - timedelta(days=90)
+
+    base = select(func.count(Message.id)).where(Message.channel_id.in_(channel_ids))
+    total = (await db.execute(base)).scalar() or 0
+    last_7 = (await db.execute(base.where(Message.created_at >= d7))).scalar() or 0
+    last_30 = (await db.execute(base.where(Message.created_at >= d30))).scalar() or 0
+    last_90 = (await db.execute(base.where(Message.created_at >= d90))).scalar() or 0
+    older = total - last_90
+
+    # Try to get DB file size.
+    db_size_mb = None
+    try:
+        db_url = settings.database_url
+        if "sqlite" in db_url and ":memory:" not in db_url:
+            import os
+            prefix_end = db_url.find(":///") + 4
+            db_path = db_url[prefix_end:]
+            if os.path.exists(db_path):
+                size = os.path.getsize(db_path)
+                db_size_mb = f"{size / (1024 * 1024):.1f}"
+    except Exception:
+        pass
+
+    return MessageStatsResponse(
+        total=total,
+        last_7_days=last_7,
+        last_30_days=last_30,
+        last_90_days=last_90,
+        older_than_90_days=older,
+        db_size_mb=db_size_mb,
+    )
+
+
+class CleanupRequest(BaseModel):
+    """Request to delete old messages."""
+    project_id: str
+    older_than_days: int
+
+
+class CleanupResponse(BaseModel):
+    """Result of a cleanup operation."""
+    deleted: int
+    message: str
+
+
+@router.post("/cleanup", response_model=CleanupResponse)
+async def cleanup_old_messages(
+    request: CleanupRequest,
+    db: AsyncSession = Depends(get_db),
+) -> CleanupResponse:
+    """Delete all messages older than N days for a project.
+
+    This is irreversible. Messages are permanently removed from the database.
+    The FTS5 index is updated automatically via triggers.
+    """
+    if request.older_than_days < 1:
+        raise HTTPException(status_code=400, detail="older_than_days must be at least 1")
+
+    cutoff = datetime.utcnow() - timedelta(days=request.older_than_days)
+
+    # Get channel IDs for this project.
+    ch_result = await db.execute(
+        select(Channel.id).where(Channel.project_id == request.project_id)
+    )
+    channel_ids = [r[0] for r in ch_result.fetchall()]
+    if not channel_ids:
+        return CleanupResponse(deleted=0, message="No channels found for this project")
+
+    # Count first.
+    count_q = select(func.count(Message.id)).where(
+        Message.channel_id.in_(channel_ids),
+        Message.created_at < cutoff,
+    )
+    count = (await db.execute(count_q)).scalar() or 0
+
+    if count == 0:
+        return CleanupResponse(deleted=0, message="No messages older than the cutoff")
+
+    # Delete.
+    await db.execute(
+        delete(Message).where(
+            Message.channel_id.in_(channel_ids),
+            Message.created_at < cutoff,
+        )
+    )
+    await db.commit()
+
+    # Vacuum to reclaim space (SQLite-specific).
+    try:
+        await db.execute(text("VACUUM"))
+    except Exception:
+        pass  # Non-critical — space will be reclaimed eventually.
+
+    return CleanupResponse(
+        deleted=count,
+        message=f"Deleted {count} messages older than {request.older_than_days} days",
+    )
+
+
+class CompactifyRequest(BaseModel):
+    """Request to summarize and replace old messages."""
+    project_id: str
+    older_than_days: int
+    openai_api_key: str  # User provides the key per-request; TeamWork doesn't store it.
+    model: str = "gpt-4o-mini"  # Any OpenAI-compatible model name.
+    api_base_url: str = "https://api.openai.com/v1/chat/completions"  # Ollama, LM Studio, etc.
+
+
+class CompactifyResponse(BaseModel):
+    """Result of a compactify operation."""
+    channels_processed: int
+    messages_removed: int
+    summaries_created: int
+    message: str
+
+
+@router.post("/compactify", response_model=CompactifyResponse)
+async def compactify_old_messages(
+    request: CompactifyRequest,
+    db: AsyncSession = Depends(get_db),
+) -> CompactifyResponse:
+    """Summarize and replace old messages with LLM-generated summaries.
+
+    Groups old messages by channel into chunks, sends each chunk to the
+    LLM for summarization, deletes the originals, and inserts a single
+    summary message per chunk.
+
+    The API key is provided per-request — TeamWork does not store it.
+    This keeps TeamWork's "zero AI dependency" principle intact while
+    allowing optional LLM-powered maintenance when the user chooses.
+    """
+    if request.older_than_days < 7:
+        raise HTTPException(
+            status_code=400,
+            detail="older_than_days must be at least 7 (to avoid summarizing recent conversations)",
+        )
+
+    cutoff = datetime.utcnow() - timedelta(days=request.older_than_days)
+
+    # Get channels in this project.
+    ch_result = await db.execute(
+        select(Channel).where(Channel.project_id == request.project_id)
+    )
+    channels = ch_result.scalars().all()
+    if not channels:
+        return CompactifyResponse(
+            channels_processed=0, messages_removed=0,
+            summaries_created=0, message="No channels found",
+        )
+
+    total_removed = 0
+    total_summaries = 0
+    channels_processed = 0
+    chunk_size = 50  # Messages per summary chunk.
+
+    for channel in channels:
+        # Get old messages for this channel, ordered by time.
+        msg_result = await db.execute(
+            select(Message)
+            .where(Message.channel_id == channel.id, Message.created_at < cutoff)
+            .order_by(Message.created_at.asc())
+        )
+        old_messages = msg_result.scalars().all()
+        if not old_messages:
+            continue
+
+        channels_processed += 1
+
+        # Process in chunks.
+        for i in range(0, len(old_messages), chunk_size):
+            chunk = old_messages[i : i + chunk_size]
+            chunk_text = _format_chunk_for_summary(chunk)
+
+            summary = await _llm_summarize(
+                chunk_text, request.openai_api_key,
+                model=request.model, api_base_url=request.api_base_url,
+            )
+            if not summary:
+                continue  # Skip this chunk on LLM failure.
+
+            # Insert summary message.
+            earliest = chunk[0].created_at
+            summary_msg = Message(
+                id=str(uuid.uuid4()),
+                channel_id=channel.id,
+                agent_id=None,
+                content=f"**[Summary of {len(chunk)} messages]**\n\n{summary}",
+                message_type="system",
+                created_at=earliest,
+            )
+            db.add(summary_msg)
+
+            # Delete original messages.
+            chunk_ids = [m.id for m in chunk]
+            await db.execute(
+                delete(Message).where(Message.id.in_(chunk_ids))
+            )
+
+            total_removed += len(chunk)
+            total_summaries += 1
+
+    await db.commit()
+
+    # Vacuum.
+    try:
+        await db.execute(text("VACUUM"))
+    except Exception:
+        pass
+
+    return CompactifyResponse(
+        channels_processed=channels_processed,
+        messages_removed=total_removed,
+        summaries_created=total_summaries,
+        message=(
+            f"Compacted {total_removed} messages into {total_summaries} summaries "
+            f"across {channels_processed} channels"
+        ),
+    )
+
+
+def _format_chunk_for_summary(messages: list[Message]) -> str:
+    """Format a chunk of messages into text for the LLM."""
+    lines = []
+    for m in messages:
+        sender = m.agent_id or "User"
+        ts = m.created_at.strftime("%Y-%m-%d %H:%M")
+        lines.append(f"[{ts}] {sender}: {m.content}")
+    return "\n".join(lines)
+
+
+async def _llm_summarize(
+    text: str,
+    api_key: str,
+    *,
+    model: str = "gpt-4o-mini",
+    api_base_url: str = "https://api.openai.com/v1/chat/completions",
+) -> str | None:
+    """Call any OpenAI-compatible API to summarize a chunk of conversation.
+
+    Works with OpenAI, Anthropic (via proxy), Ollama, LM Studio, Groq,
+    Together, or any service exposing an OpenAI-compatible chat endpoint.
+    Uses httpx directly — no SDK dependency.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                api_base_url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are summarizing old chat messages from a project workspace. "
+                                "Write a concise summary that preserves key decisions, action items, "
+                                "important information, and outcomes. Skip pleasantries and routine "
+                                "status updates. Use bullet points. Be brief."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Summarize this conversation:\n\n{text[:12000]}",
+                        },
+                    ],
+                    "max_tokens": 500,
+                    "temperature": 0.3,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        logger.warning("LLM summarization failed: %s", e)
+        return None

@@ -82,16 +82,16 @@ export function ActivityTrace({ activities, compact }: ActivityTraceProps) {
               <p className={`text-gray-900 ${compact ? 'text-sm' : ''}`}>
                 {activity.description}
               </p>
-              {activity.metadata && Object.keys(activity.metadata).length > 0 && !compact && (
+              {activity.extra_data && Object.keys(activity.extra_data).length > 0 && !compact && (
                 <div className="mt-1 text-xs text-gray-500">
-                  {!!activity.metadata.files && (
+                  {!!activity.extra_data.files && (
                     <span className="bg-gray-100 px-1.5 py-0.5 rounded">
-                      {(activity.metadata.files as string[]).length} files
+                      {(activity.extra_data.files as string[]).length} files
                     </span>
                   )}
-                  {!!activity.metadata.task_id && (
+                  {!!activity.extra_data.task_id && (
                     <span className="bg-gray-100 px-1.5 py-0.5 rounded ml-1">
-                      Task #{(activity.metadata.task_id as string).slice(0, 8)}
+                      Task #{(activity.extra_data.task_id as string).slice(0, 8)}
                     </span>
                   )}
                 </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity } from 'lucide-react';
+import { clsx } from 'clsx';
+import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -9,6 +10,7 @@ import {
 } from '@/components/chat';
 import { ProfileModal } from '@/components/profiles';
 import { BrowserPanel, BrowserChatSidebar, FileBrowser, TaskBoard, SettingsPanel, GraphPanel, ProgressPanel, TerminalPanel, ObservabilityPanel } from '@/components/workspace';
+import { CommandPalette } from '@/components/common';
 import {
   useProject,
   useAgents,
@@ -21,8 +23,9 @@ import {
   useExecuteCode,
 } from '@/hooks/useApi';
 import { useProjectSubscription, useChannelSubscription } from '@/hooks/useWebSocket';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useProjectStore, useMessageStore, useUIStore } from '@/stores';
-import type { Agent } from '@/types';
+import type { Agent, Attachment } from '@/types';
 
 export function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -42,6 +45,7 @@ export function ProjectWorkspace() {
   const [showObservabilityPanel, setShowObservabilityPanel] = useState(savedView === 'observability');
   // Track if Claude panel has ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(savedView === 'claude');
+  const [channelPanelOpen, setChannelPanelOpen] = useState(true);
 
   // Persist active view to localStorage
   useEffect(() => {
@@ -143,20 +147,42 @@ export function ProjectWorkspace() {
     }
   }, [messagesData, currentChannelId, setMessages]);
 
+  // View switching helpers
+  const switchTo = (view: string) => {
+    setShowTaskPanel(view === 'tasks');
+    setShowFileBrowser(view === 'files');
+    setShowSettings(view === 'settings');
+    setShowClaudePanel(view === 'execution_graphs');
+    setShowProgressPanel(view === 'progress');
+    setShowBrowserPanel(view === 'browser');
+    setShowTerminalPanel(view === 'terminal');
+    setShowObservabilityPanel(view === 'observability');
+    if (view === 'execution_graphs') setClaudePanelMounted(true);
+  };
+
+  const toggleView = (view: string) => {
+    activeView === view ? switchTo('chat') : switchTo(view);
+  };
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onToggleDarkMode: toggleDarkMode,
+    onNextChannel: () => {
+      const idx = channels.findIndex((c) => c.id === currentChannelId);
+      if (idx < channels.length - 1) handleChannelSelect(channels[idx + 1].id);
+    },
+    onPrevChannel: () => {
+      const idx = channels.findIndex((c) => c.id === currentChannelId);
+      if (idx > 0) handleChannelSelect(channels[idx - 1].id);
+    },
+  });
+
   // Handlers
   const handleChannelSelect = (channelId: string) => {
     setCurrentChannelId(channelId);
     if (projectId) localStorage.setItem(`tw:channel:${projectId}`, channelId);
     setActiveThreadId(null);
-    // Close any open panels to show chat view (but keep Claude panel mounted)
-    setShowTaskPanel(false);
-    setShowFileBrowser(false);
-    setShowSettings(false);
-    setShowProgressPanel(false);
-    setShowClaudePanel(false);
-    setShowBrowserPanel(false);
-    setShowTerminalPanel(false);
-    setShowObservabilityPanel(false);
+    switchTo('chat');
   };
 
   // Derive current active view for context.
@@ -170,12 +196,13 @@ export function ProjectWorkspace() {
     : showProgressPanel ? 'progress'
     : 'chat';
 
-  const handleSendMessage = (content: string) => {
+  const handleSendMessage = (content: string, attachments?: Attachment[]) => {
     if (!currentChannelId) return;
     sendMessage.mutate({
       channel_id: currentChannelId,
       content,
       active_view: activeView,
+      ...(attachments?.length ? { extra_data: { attachments } } : {}),
     });
   };
 
@@ -190,9 +217,7 @@ export function ProjectWorkspace() {
       });
       
       if (result.success) {
-        // Show the file browser after successful code generation
-        setShowFileBrowser(true);
-        setShowTaskPanel(false);
+        switchTo('files');
       } else {
         console.error('Code execution failed:', result.message);
       }
@@ -227,12 +252,7 @@ export function ProjectWorkspace() {
       });
       setCurrentChannelId(dmChannel.id);
       setActiveThreadId(null);
-      // Close any open panels to show chat view (but keep Claude panel mounted)
-      setShowTaskPanel(false);
-      setShowProgressPanel(false);
-      setShowFileBrowser(false);
-      setShowSettings(false);
-      setShowClaudePanel(false);
+      switchTo('chat');
     } catch (error) {
       console.error('Failed to open DM:', error);
     }
@@ -247,12 +267,59 @@ export function ProjectWorkspace() {
     ? currentMessages.find((m) => m.id === activeThreadId) || null
     : null;
 
+  const isChatView = activeView === 'chat';
+
   return (
     <div className={`flex h-screen ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
-      {/* Sidebar — swaps to browser chat when browser or terminal panel is active, hidden for observability */}
-      {showObservabilityPanel || showClaudePanel ? null : (showBrowserPanel || showTerminalPanel) && projectId ? (
-        <BrowserChatSidebar projectId={projectId} />
-      ) : (
+      {/* ── Icon Rail ── */}
+      <nav className={`w-14 shrink-0 flex flex-col items-center py-3 gap-1 border-r ${
+        darkMode ? 'bg-slate-950 border-slate-800' : 'bg-gray-50 border-gray-200'
+      }`}>
+        {/* Project initial — toggles channel panel */}
+        <button
+          onClick={() => {
+            if (!isChatView) { switchTo('chat'); setChannelPanelOpen(true); }
+            else setChannelPanelOpen(v => !v);
+          }}
+          className={clsx(
+            'w-10 h-10 rounded-xl flex items-center justify-center mb-2 text-sm font-bold transition-colors',
+            isChatView && channelPanelOpen
+              ? 'bg-tw-accent text-white'
+              : darkMode ? 'bg-slate-800 text-gray-300 hover:bg-slate-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          )}
+          title={currentProject?.name || 'Project'}
+        >
+          {currentProject?.name?.[0]?.toUpperCase() || 'P'}
+        </button>
+
+        <div className={`w-6 border-t mb-1 ${darkMode ? 'border-slate-800' : 'border-gray-200'}`} />
+
+        <RailIcon icon={Search} active={false} onClick={() => window.dispatchEvent(new Event('open-command-palette'))} title="Search (⌘K)" darkMode={darkMode} />
+        <RailIcon icon={MessageSquare} active={isChatView} onClick={() => switchTo('chat')} title="Chat" darkMode={darkMode} />
+        <RailIcon icon={ListTodo} active={activeView === 'tasks'} onClick={() => toggleView('tasks')} title="Tasks" darkMode={darkMode} />
+        <RailIcon icon={Code} active={activeView === 'files'} onClick={() => toggleView('files')} title="Files" darkMode={darkMode} />
+        <RailIcon icon={TerminalSquare} active={activeView === 'terminal'} onClick={() => toggleView('terminal')} title="Terminal" darkMode={darkMode} activeColor="bg-green-500/15 text-green-400" />
+        <RailIcon icon={Globe} active={activeView === 'browser'} onClick={() => toggleView('browser')} title="Browser" darkMode={darkMode} activeColor="bg-blue-500/15 text-blue-400" />
+        {isCoachingProject && (
+          <RailIcon icon={BarChart3} active={activeView === 'progress'} onClick={() => toggleView('progress')} title="Progress" darkMode={darkMode} />
+        )}
+
+        <div className="flex-1" />
+
+        {!isCoachingProject && (
+          <RailIcon icon={Workflow} active={activeView === 'execution_graphs'} onClick={() => toggleView('execution_graphs')} title="Execution Graphs" darkMode={darkMode} />
+        )}
+        <RailIcon icon={Activity} active={activeView === 'observability'} onClick={() => toggleView('observability')} title="Observability" darkMode={darkMode} activeColor="bg-green-500/15 text-green-400" />
+
+        <div className={`w-6 border-t my-1 ${darkMode ? 'border-slate-800' : 'border-gray-200'}`} />
+
+        <RailIcon icon={Settings} active={activeView === 'settings'} onClick={() => toggleView('settings')} title="Settings" darkMode={darkMode} />
+        <RailIcon icon={darkMode ? Sun : Moon} active={false} onClick={toggleDarkMode} title={darkMode ? 'Light mode' : 'Dark mode'} darkMode={darkMode} />
+        <RailIcon icon={ChevronLeft} active={false} onClick={() => navigate('/projects')} title="All Projects" darkMode={darkMode} />
+      </nav>
+
+      {/* ── Channel Panel (chat mode, collapsible) ── */}
+      {isChatView && channelPanelOpen && (
         <ChannelSidebar
           project={currentProject}
           channels={channels}
@@ -261,401 +328,100 @@ export function ProjectWorkspace() {
           onChannelSelect={handleChannelSelect}
           onDMSelect={handleDMSelect}
           onAgentProfileClick={handleAgentClick}
-          onSettingsClick={() => {
-            setShowSettings(true);
-            setShowTaskPanel(false);
-            setShowFileBrowser(false);
-            setShowClaudePanel(false);
-            setShowProgressPanel(false);
-            setShowBrowserPanel(false);
-            setShowTerminalPanel(false);
-          }}
+          onSettingsClick={() => switchTo('settings')}
           unreadCounts={unreadCounts}
         />
       )}
 
-      {/* Main content area - shows either Chat, TaskBoard, FileBrowser, or Settings */}
+      {/* ── Browser Chat Sidebar (browser/terminal mode) ── */}
+      {(activeView === 'browser' || activeView === 'terminal') && projectId && (
+        <BrowserChatSidebar projectId={projectId} />
+      )}
+
+      {/* ── Main Content ── */}
       <div className={`flex-1 flex flex-col min-w-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
-        {/* Header - hidden when in Graph, Progress, Browser, Terminal, or Observability panel for maximum space */}
-        {!showClaudePanel && !showProgressPanel && !showBrowserPanel && !showTerminalPanel && !showObservabilityPanel && (
-        <div className={`flex items-center justify-between border-b px-4 py-3 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'}`}>
-          <div className="flex items-center gap-2">
-            {/* Back to Projects */}
-            <button
-              onClick={() => navigate('/projects')}
-              className={`p-1.5 rounded transition-colors mr-2 ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-slate-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
-              title="Back to Projects"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            
-            {showTaskPanel ? (
-              <>
-                <ListTodo className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-indigo-500'}`} />
-                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Task Board</h1>
-              </>
-            ) : showFileBrowser ? (
-              <>
-                <Code className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-indigo-500'}`} />
-                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Files</h1>
-              </>
-            ) : showClaudePanel ? (
-              <>
-                <Workflow className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-indigo-500'}`} />
-                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Execution Graphs</h1>
-              </>
-            ) : showSettings ? (
-              <>
-                <Settings className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-indigo-500'}`} />
-                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Settings</h1>
-              </>
-            ) : showProgressPanel ? (
-              <>
-                <BarChart3 className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Progress</h1>
-              </>
-            ) : currentChannel ? (
-              <>
-                <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>{currentChannel.type === 'dm' ? '@' : '#'}</span>
-                <h1 className={`font-bold text-lg ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
-                  {currentChannel.type === 'dm' 
-                    ? agents.find(a => a.id === currentChannel.dm_participants)?.name || currentChannel.name
-                    : currentChannel.name}
-                </h1>
-                <span className={`text-sm ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {currentChannel.type === 'dm' 
-                    ? '2 members' 
-                    : currentChannel.type === 'team'
-                      ? `${agents.filter(a => a.team === currentChannel.team).length + 1} members`
-                      : `${agents.length + 1} members`}
-                </span>
-              </>
-            ) : (
-              <div className={`h-6 rounded w-32 animate-pulse ${darkMode ? 'bg-slate-700' : 'bg-gray-100'}`} />
-            )}
-          </div>
-          
-          {/* Panel Toggle Buttons */}
-          <div className="flex items-center gap-1">
-            {/* Back to Chat button when in a panel */}
-            {(showTaskPanel || showFileBrowser || showClaudePanel || showSettings || showProgressPanel || showBrowserPanel || showObservabilityPanel) && (
-              <button
-                onClick={() => {
-                  setShowTaskPanel(false);
-                  setShowFileBrowser(false);
-                  setShowClaudePanel(false);
-                  setShowSettings(false);
-                  setShowProgressPanel(false);
-                  setShowBrowserPanel(false);
-                  setShowTerminalPanel(false);
-                  setShowObservabilityPanel(false);
-                }}
-                className={`px-3 py-1.5 text-sm rounded mr-2 ${darkMode ? 'text-gray-300 hover:text-white hover:bg-slate-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
-              >
-                ← Back to Chat
-              </button>
-            )}
-            
-            <button
-              onClick={() => {
-                setShowTaskPanel(!showTaskPanel);
-                if (!showTaskPanel) {
-                  setShowFileBrowser(false);
-                  setShowClaudePanel(false);
-                  setShowSettings(false);
 
-                  setShowBrowserPanel(false);
-                  setShowTerminalPanel(false);
-                }
-              }}
-              className={`p-2 rounded transition-colors ${
-                showTaskPanel 
-                  ? 'bg-tw-accent text-white hover:bg-indigo-600' 
-                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-              title="Tasks"
-            >
-              <ListTodo className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                setShowFileBrowser(!showFileBrowser);
-                if (!showFileBrowser) {
-                  setShowTaskPanel(false);
-                  setShowClaudePanel(false);
-                  setShowSettings(false);
-
-                  setShowBrowserPanel(false);
-                  setShowTerminalPanel(false);
-                }
-              }}
-              className={`p-2 rounded transition-colors ${
-                showFileBrowser 
-                  ? 'bg-tw-accent text-white hover:bg-indigo-600' 
-                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-              title="Files"
-            >
-              <Code className="w-5 h-5" />
-            </button>
-            {/* Execution Graphs button - hidden for coaching projects */}
-            {!isCoachingProject && (
-              <button
-                onClick={() => {
-                  const willShow = !showClaudePanel;
-                  setShowClaudePanel(willShow);
-                  if (willShow) {
-                    setClaudePanelMounted(true);
-                    setShowTaskPanel(false);
-                    setShowFileBrowser(false);
-                    setShowSettings(false);
-
-                    setShowProgressPanel(false);
-                    setShowBrowserPanel(false);
-                    setShowTerminalPanel(false);
-                  }
-                }}
-                className={`p-2 rounded transition-colors ${
-                  showClaudePanel
-                    ? 'bg-tw-accent text-white hover:bg-indigo-600'
-                    : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-                title="Execution Graphs - Watch agent delegation trees in real time"
-              >
-                <Workflow className="w-5 h-5" />
-              </button>
-            )}
-            {/* Progress button - shown only for coaching projects */}
-            {isCoachingProject && (
-              <button
-                onClick={() => {
-                  setShowProgressPanel(!showProgressPanel);
-                  if (!showProgressPanel) {
-                    setShowTaskPanel(false);
-                    setShowFileBrowser(false);
-                    setShowClaudePanel(false);
-                    setShowSettings(false);
-  
-                    setShowBrowserPanel(false);
-                    setShowTerminalPanel(false);
-                  }
-                }}
-                className={`p-2 rounded transition-colors ${
-                  showProgressPanel 
-                    ? 'bg-purple-600 text-white hover:bg-purple-700' 
-                    : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-                title="Progress"
-              >
-                <BarChart3 className="w-5 h-5" />
-              </button>
-            )}
-            <button
-              onClick={() => {
-                setShowSettings(!showSettings);
-                if (!showSettings) {
-                  setShowTaskPanel(false);
-                  setShowFileBrowser(false);
-                  setShowClaudePanel(false);
-
-                  setShowBrowserPanel(false);
-                  setShowTerminalPanel(false);
-                }
-              }}
-              className={`p-2 rounded transition-colors ${
-                showSettings 
-                  ? 'bg-tw-accent text-white hover:bg-indigo-600' 
-                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-              title="Settings"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-            
-            {/* Dark mode toggle */}
-            <button
-              onClick={toggleDarkMode}
-              className={`p-2 rounded transition-colors ${darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'}`}
-              title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-            
-            {/* Terminal panel toggle */}
-            <button
-              onClick={() => {
-                setShowTerminalPanel(!showTerminalPanel);
-                if (!showTerminalPanel) {
-                  setShowTaskPanel(false);
-                  setShowFileBrowser(false);
-                  setShowClaudePanel(false);
-                  setShowSettings(false);
-
-                  setShowProgressPanel(false);
-                  setShowBrowserPanel(false);
-                }
-              }}
-              className={`p-2 rounded transition-colors ${
-                showTerminalPanel
-                  ? 'bg-green-600 text-white hover:bg-green-500'
-                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-              title="Terminal - Pair with Prax at the command line"
-            >
-              <TerminalSquare className="w-5 h-5" />
-            </button>
-
-            {/* Browser panel toggle */}
-            <button
-              onClick={() => {
-                setShowBrowserPanel(!showBrowserPanel);
-                if (!showBrowserPanel) {
-                  setShowTaskPanel(false);
-                  setShowFileBrowser(false);
-                  setShowClaudePanel(false);
-                  setShowSettings(false);
-
-                  setShowProgressPanel(false);
-                  setShowTerminalPanel(false);
-                  setShowObservabilityPanel(false);
-                }
-              }}
-              className={`p-2 rounded transition-colors ${
-                showBrowserPanel
-                  ? 'bg-blue-600 text-white hover:bg-blue-500'
-                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-              title="Browser - Watch and control the agent's browser"
-            >
-              <Globe className="w-5 h-5" />
-            </button>
-
-            {/* Observability panel toggle */}
-            <button
-              onClick={() => {
-                setShowObservabilityPanel(!showObservabilityPanel);
-                if (!showObservabilityPanel) {
-                  setShowTaskPanel(false);
-                  setShowFileBrowser(false);
-                  setShowClaudePanel(false);
-                  setShowSettings(false);
-
-                  setShowProgressPanel(false);
-                  setShowBrowserPanel(false);
-                  setShowTerminalPanel(false);
-                }
-              }}
-              className={`p-2 rounded transition-colors ${
-                showObservabilityPanel
-                  ? 'bg-green-600 text-white hover:bg-green-500'
-                  : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-              title="Observability - Traces, metrics, and dashboards"
-            >
-              <Activity className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-        )}
-        
-        {/* Content area - switches between views */}
         {/* Browser Panel */}
-        {showBrowserPanel && projectId && (
-          <BrowserPanel
-            projectId={projectId}
-            isVisible={showBrowserPanel}
-            onClose={() => setShowBrowserPanel(false)}
-          />
+        {activeView === 'browser' && projectId && (
+          <BrowserPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
         )}
 
         {/* Terminal Panel */}
-        {showTerminalPanel && projectId && (
-          <TerminalPanel
-            projectId={projectId}
-            isVisible={showTerminalPanel}
-            onClose={() => setShowTerminalPanel(false)}
-          />
+        {activeView === 'terminal' && projectId && (
+          <TerminalPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
         )}
 
         {/* Observability Panel */}
-        {showObservabilityPanel && projectId && (
-          <ObservabilityPanel
-            projectId={projectId}
-            isVisible={showObservabilityPanel}
-            onClose={() => setShowObservabilityPanel(false)}
-          />
+        {activeView === 'observability' && projectId && (
+          <ObservabilityPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
         )}
 
-        {/* Graph Panel - execution graph visualization */}
+        {/* Graph Panel — persistent mount */}
         {claudePanelMounted && projectId && (
-          <GraphPanel
-            projectId={projectId}
-            isVisible={showClaudePanel}
-            onClose={() => setShowClaudePanel(false)}
-          />
+          <GraphPanel projectId={projectId} isVisible={showClaudePanel} onClose={() => switchTo('chat')} />
         )}
-        
-        {/* Main content - panel views */}
-        {showTaskPanel && projectId ? (
-          <TaskBoard
-            projectId={projectId}
-            agents={agents}
-            isCoachingProject={isCoachingProject}
-            onWatchLive={() => {
-              // Switch to Observability panel (Live tab) when "Watch Live" is clicked
-              setShowTaskPanel(false);
-              setShowFileBrowser(false);
-              setShowSettings(false);
-              setShowClaudePanel(false);
-              setShowBrowserPanel(false);
-              setShowTerminalPanel(false);
-              setShowObservabilityPanel(true);
-            }}
-          />
-        ) : showFileBrowser && projectId ? (
-          <FileBrowser
-            projectId={projectId}
-            onOpenClaudePanel={() => {
-              setShowClaudePanel(true);
-              setClaudePanelMounted(true);
-              setShowFileBrowser(false);
-              setShowBrowserPanel(false);
-              setShowTerminalPanel(false);
-            }}
-          />
-        ) : showSettings && currentProject ? (
+
+        {/* Task Board */}
+        {activeView === 'tasks' && projectId && (
+          <TaskBoard projectId={projectId} agents={agents} isCoachingProject={isCoachingProject} onWatchLive={() => switchTo('observability')} />
+        )}
+
+        {/* File Browser */}
+        {activeView === 'files' && projectId && (
+          <FileBrowser projectId={projectId} onOpenClaudePanel={() => switchTo('execution_graphs')} />
+        )}
+
+        {/* Settings */}
+        {activeView === 'settings' && currentProject && (
           <div className={`flex-1 overflow-y-auto p-4 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
-            <SettingsPanel
-              project={currentProject}
-            />
+            <SettingsPanel project={currentProject} />
           </div>
-        ) : showProgressPanel && projectId ? (
+        )}
+
+        {/* Progress Panel */}
+        {activeView === 'progress' && projectId && (
           <div className={`flex-1 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
             <ProgressPanel
               projectId={projectId}
-              onClose={() => setShowProgressPanel(false)}
+              onClose={() => switchTo('chat')}
               onEditCoach={(coachSlug) => {
-                // Find the agent matching this coach slug and open profile in edit mode
                 const matchedAgent = agents.find((a) => {
-                  const agentSlug = a.name
-                    .toLowerCase()
-                    .trim()
-                    .replace(/[^a-z0-9\s-]/g, '')
-                    .replace(/[\s_]+/g, '-')
-                    .replace(/-+/g, '-')
-                    .replace(/^-|-$/g, '');
+                  const agentSlug = a.name.toLowerCase().trim()
+                    .replace(/[^a-z0-9\s-]/g, '').replace(/[\s_]+/g, '-')
+                    .replace(/-+/g, '-').replace(/^-|-$/g, '');
                   return agentSlug === coachSlug;
                 });
                 if (matchedAgent) {
-                  setShowProgressPanel(false);
+                  switchTo('chat');
                   setProfileEditMode(true);
                   setSelectedAgent(matchedAgent);
                 }
               }}
             />
           </div>
-        ) : !showClaudePanel && !showBrowserPanel && !showTerminalPanel && !showObservabilityPanel ? (
+        )}
+
+        {/* Chat View */}
+        {isChatView && (
           <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+            {/* Minimal channel indicator */}
+            {currentChannel && (
+              <div className={`px-5 pt-3 pb-1 flex items-center gap-2 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <span className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                  {currentChannel.type === 'dm' ? '' : '# '}
+                  {currentChannel.type === 'dm'
+                    ? agents.find(a => a.id === currentChannel.dm_participants)?.name || currentChannel.name
+                    : currentChannel.name}
+                </span>
+                <span className="text-xs">
+                  {currentChannel.type === 'dm'
+                    ? '2 members'
+                    : currentChannel.type === 'team'
+                      ? `${agents.filter(a => a.team === currentChannel.team).length + 1} members`
+                      : `${agents.length + 1} members`}
+                </span>
+              </div>
+            )}
             <MessageList
               messages={currentMessages}
               agents={agents}
@@ -666,16 +432,17 @@ export function ProjectWorkspace() {
             <MessageInput
               channelName={currentChannel?.name || 'channel'}
               channelId={currentChannelId || undefined}
+              projectId={projectId}
               agents={agents}
               onSend={handleSendMessage}
               onCodeRequest={handleCodeRequest}
             />
           </div>
-        ) : null}
+        )}
       </div>
 
-      {/* Thread panel */}
-      {activeThreadId && !showTaskPanel && !showFileBrowser && !showClaudePanel && !showBrowserPanel && !showTerminalPanel && !showSettings && (
+      {/* Thread panel — only in chat view */}
+      {activeThreadId && isChatView && (
         <ThreadView
           parentMessage={parentMessage}
           replies={threadData?.messages || []}
@@ -702,6 +469,47 @@ export function ProjectWorkspace() {
           initialEditMode={profileEditMode}
         />
       )}
+
+      {/* Command palette (Cmd+K) */}
+      <CommandPalette
+        onChannelSelect={handleChannelSelect}
+        onDMSelect={handleDMSelect}
+        onSwitchView={switchTo}
+      />
     </div>
+  );
+}
+
+// ── Icon Rail button ──
+function RailIcon({
+  icon: Icon,
+  active,
+  onClick,
+  title,
+  darkMode,
+  activeColor,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  darkMode: boolean;
+  activeColor?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={clsx(
+        'w-10 h-10 flex items-center justify-center rounded-xl transition-colors',
+        active
+          ? (activeColor || 'bg-tw-accent/15 text-indigo-400')
+          : darkMode
+            ? 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+            : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+      )}
+      title={title}
+    >
+      <Icon className="w-5 h-5" />
+    </button>
   );
 }

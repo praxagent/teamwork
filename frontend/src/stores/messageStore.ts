@@ -6,6 +6,7 @@ interface MessageState {
   messagesByChannel: Record<string, Message[]>;
   setMessages: (channelId: string, messages: Message[]) => void;
   addMessage: (channelId: string, message: Message) => void;
+  updateMessage: (channelId: string, messageId: string, updates: Partial<Message>) => void;
   prependMessages: (channelId: string, messages: Message[]) => void;
 
   // Thread messages
@@ -59,6 +60,17 @@ export const useMessageStore = create<MessageState>((set) => ({
         messagesByChannel: {
           ...state.messagesByChannel,
           [channelId]: [...existing, message],
+        },
+      };
+    }),
+
+  updateMessage: (channelId, messageId, updates) =>
+    set((state) => {
+      const existing = state.messagesByChannel[channelId] || [];
+      return {
+        messagesByChannel: {
+          ...state.messagesByChannel,
+          [channelId]: existing.map((m) => m.id === messageId ? { ...m, ...updates } : m),
         },
       };
     }),
