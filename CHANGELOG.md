@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/praxagent/teamwork/compare/v0.4.0...v0.5.0) (2026-04-01)
+
+
+### Features
+
+* better visualize agentic flow ([8b2cafa](https://github.com/praxagent/teamwork/commit/8b2cafa91c5e375acf22e9153b61397fdc301a96))
+
 ## [0.4.0](https://github.com/praxagent/teamwork/compare/v0.3.0...v0.4.0) (2026-03-31)
 
 
