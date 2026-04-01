@@ -20,6 +20,10 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_EXTENSIONS = {
     # Images
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
+    # Audio
+    ".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".webm",
+    # Video
+    ".mp4", ".mov", ".avi", ".mkv",
     # Documents
     ".pdf", ".txt", ".md", ".csv",
     # Code

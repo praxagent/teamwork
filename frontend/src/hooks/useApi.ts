@@ -317,6 +317,15 @@ export function useMessages(channelId: string | null, skip = 0, limit = 50) {
   });
 }
 
+export function useLoadOlderMessages() {
+  return useMutation({
+    mutationFn: ({ channelId, skip, limit = 50 }: { channelId: string; skip: number; limit?: number }) =>
+      fetchJson<{ messages: Message[]; total: number; has_more: boolean }>(
+        `/messages/channel/${channelId}?skip=${skip}&limit=${limit}`
+      ),
+  });
+}
+
 export function useThreadMessages(threadId: string | null) {
   return useQuery({
     queryKey: ['thread', threadId],
@@ -894,6 +903,7 @@ export interface GraphNode {
   tool_calls: number;
   summary: string;
   duration_s: number;
+  trace_id?: string;
 }
 
 export interface ExecutionGraph {
@@ -906,10 +916,26 @@ export interface ExecutionGraph {
 export function useExecutionGraphs(enabled: boolean = true) {
   return useQuery({
     queryKey: ['execution-graphs'],
-    queryFn: () => fetchJson<{ graphs: ExecutionGraph[] }>('/agents/graphs/active'),
+    queryFn: () => fetchJson<{ graphs: ExecutionGraph[]; total: number }>('/agents/graphs/active'),
     enabled,
-    refetchInterval: 2000,
+    // Fast poll while any graph is running, slow poll otherwise
+    refetchInterval: (query) => {
+      const graphs = query.state.data?.graphs;
+      const hasRunning = graphs?.some((g: ExecutionGraph) => g.status === 'running');
+      return hasRunning ? 2000 : 30000;
+    },
     staleTime: 1000,
+  });
+}
+
+export function useDeleteExecutionGraph() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (traceId: string) =>
+      fetchJson<{ ok: boolean }>(`/agents/graphs/${traceId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['execution-graphs'] });
+    },
   });
 }
 
@@ -1235,6 +1261,7 @@ export function useUpdatePlugin() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
+      queryClient.invalidateQueries({ queryKey: ['plugin-check-updates'] });
     },
   });
 }
@@ -1334,6 +1361,7 @@ export function useUpdateAllPlugins() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
+      queryClient.invalidateQueries({ queryKey: ['plugin-check-updates'] });
     },
   });
 }

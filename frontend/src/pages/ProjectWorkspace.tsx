@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search } from 'lucide-react';
@@ -21,6 +21,7 @@ import {
   useAgentActivity,
   useGetOrCreateDMChannel,
   useExecuteCode,
+  useLoadOlderMessages,
 } from '@/hooks/useApi';
 import { useProjectSubscription, useChannelSubscription } from '@/hooks/useWebSocket';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -76,7 +77,7 @@ export function ProjectWorkspace() {
     setCurrentChannelId,
   } = useProjectStore();
 
-  const { messagesByChannel, setMessages } = useMessageStore();
+  const { messagesByChannel, setMessages, prependMessages, hasMore: storeHasMore, setHasMore } = useMessageStore();
   const { selectedAgent, setSelectedAgent, unreadCounts, activeThreadId, setActiveThreadId, darkMode, toggleDarkMode } =
     useUIStore();
 
@@ -108,6 +109,21 @@ export function ProjectWorkspace() {
   const sendMessage = useSendMessage();
   const getOrCreateDM = useGetOrCreateDMChannel();
   const executeCode = useExecuteCode();
+  const loadOlderMutation = useLoadOlderMessages();
+
+  const handleLoadOlderMessages = useCallback(() => {
+    if (!currentChannelId || loadOlderMutation.isPending) return;
+    const skip = (messagesByChannel[currentChannelId] || []).length;
+    loadOlderMutation.mutate(
+      { channelId: currentChannelId, skip },
+      {
+        onSuccess: (data) => {
+          prependMessages(currentChannelId, data.messages);
+          setHasMore(currentChannelId, data.has_more);
+        },
+      },
+    );
+  }, [currentChannelId, loadOlderMutation.isPending, messagesByChannel, prependMessages, setHasMore]);
 
   // WebSocket subscriptions
   useProjectSubscription(projectId || null);
@@ -142,10 +158,15 @@ export function ProjectWorkspace() {
   }, [channelsData, setChannels, currentChannelId, setCurrentChannelId]);
 
   useEffect(() => {
-    if (messagesData?.messages && currentChannelId) {
+    if (messagesData && currentChannelId) {
+      const existingCount = (messagesByChannel[currentChannelId] || []).length;
       setMessages(currentChannelId, messagesData.messages);
+      // Only update hasMore on fresh loads, not refetches when older messages are already in the store
+      if (existingCount <= messagesData.messages.length) {
+        setHasMore(currentChannelId, messagesData.has_more);
+      }
     }
-  }, [messagesData, currentChannelId, setMessages]);
+  }, [messagesData, currentChannelId, setMessages, setHasMore]);
 
   // View switching helpers
   const switchTo = (view: string) => {
@@ -251,6 +272,7 @@ export function ProjectWorkspace() {
         projectId,
       });
       setCurrentChannelId(dmChannel.id);
+      localStorage.setItem(`tw:channel:${projectId}`, dmChannel.id);
       setActiveThreadId(null);
       switchTo('chat');
     } catch (error) {
@@ -428,6 +450,9 @@ export function ProjectWorkspace() {
               channelId={currentChannelId || undefined}
               onThreadClick={handleThreadClick}
               onAgentClick={handleAgentClick}
+              hasMore={currentChannelId ? storeHasMore[currentChannelId] ?? false : false}
+              onLoadMore={handleLoadOlderMessages}
+              loading={loadOlderMutation.isPending}
             />
             <MessageInput
               channelName={currentChannel?.name || 'channel'}

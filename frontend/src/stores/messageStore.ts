@@ -37,6 +37,14 @@ export const useMessageStore = create<MessageState>((set) => ({
       const messageIds = new Set(messages.map((m) => m.id));
       // Keep any messages that aren't in the API response (they're newer from WebSocket)
       const newerFromWs = existing.filter((m) => !messageIds.has(m.id));
+
+      // Skip update if nothing changed — avoids re-renders on redundant refetches
+      if (newerFromWs.length === 0 && existing.length === messages.length) {
+        const existingIds = existing.map((m) => m.id).join(',');
+        const newIds = messages.map((m) => m.id).join(',');
+        if (existingIds === newIds) return state;
+      }
+
       // Combine and sort by created_at
       const merged = [...messages, ...newerFromWs].sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()

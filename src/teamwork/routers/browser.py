@@ -219,6 +219,27 @@ async def browser_websocket(
                     url = msg.get("url", "")
                     logger.info("Navigate to: %s", url)
                     await send_cdp_and_wait("Page.navigate", {"url": url}, timeout=10)
+                elif t == "clipboard_paste":
+                    # Inject text from the user's local clipboard into the
+                    # sandbox Chrome page via Input.insertText (works like a
+                    # native paste — triggers input/change events correctly).
+                    text = msg.get("text", "")
+                    if text:
+                        await send_cdp("Input.insertText", {"text": text})
+                elif t == "clipboard_copy":
+                    # Read the current selection from the sandbox Chrome and
+                    # send it back so the frontend can write it to the user's
+                    # local clipboard.
+                    result = await send_cdp_and_wait(
+                        "Runtime.evaluate",
+                        {"expression": "window.getSelection()?.toString() || ''"},
+                        timeout=3,
+                    )
+                    selected = result.get("result", {}).get("result", {}).get("value", "")
+                    try:
+                        await websocket.send_json({"type": "clipboard_content", "text": selected})
+                    except Exception:
+                        pass
                 elif t == "eval":
                     expr = msg.get("expression", "")
                     await send_cdp("Runtime.evaluate", {"expression": expr})

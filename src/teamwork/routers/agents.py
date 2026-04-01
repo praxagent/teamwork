@@ -659,7 +659,7 @@ async def get_agent_live_output(
 
 
 @router.get("/graphs/active")
-async def get_active_graphs():
+async def get_active_graphs(limit: int = 100):
     """Proxy execution graph data from the Prax backend.
 
     Returns the list of currently running and recently completed execution
@@ -668,12 +668,35 @@ async def get_active_graphs():
     """
     prax_url = settings.prax_url
     if not prax_url:
-        return {"graphs": []}
+        return {"graphs": [], "total": 0}
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{prax_url.rstrip('/')}/execution/graphs")
+            resp = await client.get(
+                f"{prax_url.rstrip('/')}/execution/graphs",
+                params={"limit": limit},
+            )
             resp.raise_for_status()
             return resp.json()
     except Exception as exc:
         _logger.debug("Failed to fetch execution graphs from Prax: %s", exc)
-        return {"graphs": []}
+        return {"graphs": [], "total": 0}
+
+
+@router.delete("/graphs/{trace_id}")
+async def delete_execution_graph(trace_id: str):
+    """Delete a single execution graph by trace_id (proxied to Prax)."""
+    prax_url = settings.prax_url
+    if not prax_url:
+        raise HTTPException(status_code=502, detail="Prax backend not configured")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.delete(
+                f"{prax_url.rstrip('/')}/execution/graphs/{trace_id}",
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=exc.response.status_code, detail="Graph not found")
+    except Exception as exc:
+        _logger.debug("Failed to delete execution graph from Prax: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to reach Prax backend")

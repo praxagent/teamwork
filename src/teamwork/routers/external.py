@@ -48,6 +48,7 @@ class ExternalMessage(BaseModel):
     agent_id: str | None = None  # None = system message
     content: str
     message_type: str = "chat"
+    extra_data: dict[str, Any] | None = None
 
 
 class BulkMessageItem(BaseModel):
@@ -369,6 +370,7 @@ async def send_external_message(
         agent_id=request.agent_id,
         content=request.content,
         message_type=request.message_type,
+        extra_data=request.extra_data,
     )
     db.add(message)
     await db.flush()
@@ -385,6 +387,7 @@ async def send_external_message(
             "content": message.content,
             "message_type": message.message_type,
             "created_at": message.created_at.isoformat(),
+            **({"extra_data": message.extra_data} if message.extra_data else {}),
         },
     )
     # Broadcast to both channel AND project subscribers (frontend may use either).

@@ -227,6 +227,45 @@ async def get_file_content(
     )
 
 
+@router.get("/{project_id}/download")
+async def download_workspace_file(
+    project_id: str,
+    path: str = Query(..., description="Relative path to file"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Serve a workspace file as a raw download with correct Content-Type.
+
+    Used for inline audio/video playback and file downloads in the chat UI.
+    """
+    import mimetypes
+
+    workspace_path = await get_project_workspace_path(project_id, db)
+    file_path = workspace_path / path
+
+    # Security: ensure path is within workspace
+    try:
+        file_path = file_path.resolve()
+        workspace_resolved = workspace_path.resolve()
+        if not str(file_path).startswith(str(workspace_resolved)):
+            raise HTTPException(status_code=403, detail="Access denied")
+    except Exception:
+        raise HTTPException(status_code=403, detail="Invalid path")
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    if not content_type:
+        content_type = "application/octet-stream"
+
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=str(file_path),
+        media_type=content_type,
+        filename=file_path.name,
+    )
+
+
 class SaveFileRequest(BaseModel):
     """Request to save file content."""
     path: str

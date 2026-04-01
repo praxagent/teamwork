@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useLayoutEffect } from 'react';
 import { clsx } from 'clsx';
 import { MessageSquare, MoreHorizontal, Activity, FileText, Download, SmilePlus } from 'lucide-react';
 import { Avatar, MarkdownContent } from '@/components/common';
@@ -28,32 +28,75 @@ export function MessageList({
   hasMore,
   onLoadMore,
 }: MessageListProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const prevChannelRef = useRef<string | undefined>(undefined);
-  const prevMessageCountRef = useRef<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const prevFirstIdRef = useRef<string | null>(null);
+  const prevLastIdRef = useRef<string | null>(null);
+  const prevScrollHeightRef = useRef<number>(0);
   const agentMap = new Map(agents.map((a) => [a.id, a]));
 
-  // Scroll to bottom - instant on channel change, smooth on new messages
-  const scrollToBottom = useCallback((instant: boolean = false) => {
-    bottomRef.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth' });
-  }, []);
+  // Keep mutable refs for values used in the scroll handler so it stays stable
+  const hasMoreRef = useRef(false);
+  const loadingRef = useRef(false);
+  const onLoadMoreRef = useRef(onLoadMore);
+  hasMoreRef.current = hasMore ?? false;
+  loadingRef.current = loading ?? false;
+  onLoadMoreRef.current = onLoadMore;
 
-  useEffect(() => {
-    const channelChanged = prevChannelRef.current !== channelId;
-    const hasNewMessages = messages.length > prevMessageCountRef.current;
-    
-    // Scroll instantly when switching channels, smooth when new messages arrive
-    if (channelChanged) {
-      // Instant scroll on channel change
-      scrollToBottom(true);
-    } else if (hasNewMessages) {
-      // Smooth scroll for new messages
-      scrollToBottom(false);
+  // Scroll positioning — runs after DOM commit but before browser paint,
+  // so the user never sees a flash of wrong scroll position.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el || messages.length === 0) return;
+
+    const firstId = messages[0].id;
+    const lastId = messages[messages.length - 1].id;
+    const firstIdChanged = firstId !== prevFirstIdRef.current;
+    const lastIdChanged = lastId !== prevLastIdRef.current;
+    const isFirstLoad = prevLastIdRef.current === null;
+
+    if (isFirstLoad) {
+      // Initial load or channel switch → snap to bottom (no visible scroll)
+      el.scrollTop = el.scrollHeight;
+    } else if (firstIdChanged && !lastIdChanged) {
+      // Older messages prepended → maintain viewport position
+      const addedHeight = el.scrollHeight - prevScrollHeightRef.current;
+      el.scrollTop += addedHeight;
+    } else if (lastIdChanged && isNearBottomRef.current) {
+      // New message at bottom + user was near bottom → scroll to see it
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
-    
-    prevChannelRef.current = channelId;
-    prevMessageCountRef.current = messages.length;
-  }, [messages.length, channelId, scrollToBottom]);
+
+    prevFirstIdRef.current = firstId;
+    prevLastIdRef.current = lastId;
+    prevScrollHeightRef.current = el.scrollHeight;
+  }, [messages, channelId]);
+
+  // Reset refs on channel change so the next render is treated as a first load.
+  useLayoutEffect(() => {
+    prevFirstIdRef.current = null;
+    prevLastIdRef.current = null;
+    prevScrollHeightRef.current = 0;
+    isNearBottomRef.current = true;
+  }, [channelId]);
+
+  // Stable scroll handler — tracks near-bottom and triggers older message loading
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+
+    // Load older messages when user scrolls near the top
+    if (
+      el.scrollTop < 200 &&
+      hasMoreRef.current &&
+      !loadingRef.current &&
+      onLoadMoreRef.current
+    ) {
+      onLoadMoreRef.current();
+    }
+  }, []);
 
   const darkMode = useUIStore((state) => state.darkMode);
   const containerBg = darkMode ? 'bg-slate-900' : 'bg-white';
@@ -82,16 +125,15 @@ export function MessageList({
   const groupedMessages = groupMessagesByDate(messages);
 
   return (
-    <div className={`flex-1 overflow-y-auto px-5 py-3 ${containerBg}`}>
-      {hasMore && (
-        <div className="text-center py-4">
-          <button
-            onClick={onLoadMore}
-            className={`text-sm hover:underline ${darkMode ? 'text-blue-400' : 'text-indigo-500'}`}
-            disabled={loading}
-          >
-            {loading ? 'Loading...' : 'Load older messages'}
-          </button>
+    <div
+      ref={containerRef}
+      className={`flex-1 overflow-y-auto px-5 py-3 ${containerBg}`}
+      onScroll={handleScroll}
+    >
+      {/* Loading spinner when fetching older messages */}
+      {loading && hasMore && (
+        <div className="flex justify-center py-3">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-tw-accent" />
         </div>
       )}
 
@@ -101,7 +143,7 @@ export function MessageList({
           {msgs.map((message, index) => {
             // Try to get agent from map, fall back to constructing from message data
             let agent = message.agent_id ? agentMap.get(message.agent_id) : null;
-            
+
             // If agent not in map but message has agent info, create a minimal agent object
             if (!agent && message.agent_id && message.agent_name) {
               agent = {
@@ -117,7 +159,7 @@ export function MessageList({
                 created_at: '',
               };
             }
-            
+
             const prevMessage = index > 0 ? msgs[index - 1] : null;
             const showHeader = shouldShowHeader(message, prevMessage);
 
@@ -134,8 +176,6 @@ export function MessageList({
           })}
         </div>
       ))}
-
-      <div ref={bottomRef} />
     </div>
   );
 }
@@ -366,7 +406,13 @@ function shouldShowHeader(
 
 function AttachmentGrid({ attachments, darkMode }: { attachments: Attachment[]; darkMode: boolean }) {
   const images = attachments.filter(a => a.content_type.startsWith('image/'));
-  const files = attachments.filter(a => !a.content_type.startsWith('image/'));
+  const audio = attachments.filter(a => a.content_type.startsWith('audio/'));
+  const video = attachments.filter(a => a.content_type.startsWith('video/'));
+  const files = attachments.filter(a =>
+    !a.content_type.startsWith('image/') &&
+    !a.content_type.startsWith('audio/') &&
+    !a.content_type.startsWith('video/')
+  );
 
   const sizeLabel = (size: number) =>
     size < 1024 ? `${size} B`
@@ -388,6 +434,38 @@ function AttachmentGrid({ attachments, darkMode }: { attachments: Attachment[]; 
           ))}
         </div>
       )}
+      {audio.map(a => (
+        <div key={a.id} className={clsx(
+          'flex items-center gap-3 p-3 rounded-lg max-w-md',
+          darkMode ? 'bg-slate-700/60' : 'bg-gray-100'
+        )}>
+          <div className="flex-1 min-w-0">
+            <p className={clsx('text-sm font-medium truncate', darkMode ? 'text-gray-200' : 'text-gray-700')}>
+              {a.name}
+            </p>
+            <audio controls preload="metadata" className="w-full mt-1.5" style={{ height: 32 }}>
+              <source src={a.url} type={a.content_type} />
+            </audio>
+          </div>
+          <a href={a.url} download={a.name} className="shrink-0 p-1.5 rounded hover:bg-black/10 transition-colors">
+            <Download className="w-4 h-4 opacity-50" />
+          </a>
+        </div>
+      ))}
+      {video.map(v => (
+        <div key={v.id} className="max-w-lg">
+          <video controls preload="metadata" className="w-full rounded-lg">
+            <source src={v.url} type={v.content_type} />
+          </video>
+          <div className={clsx('flex items-center gap-2 mt-1 text-xs', darkMode ? 'text-gray-400' : 'text-gray-500')}>
+            <span className="truncate">{v.name}</span>
+            <span>{sizeLabel(v.size)}</span>
+            <a href={v.url} download={v.name} className="ml-auto hover:text-tw-accent">
+              <Download className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </div>
+      ))}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {files.map(file => (
