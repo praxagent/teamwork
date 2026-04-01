@@ -1,6 +1,6 @@
-import { useRef, useCallback, useState, useLayoutEffect } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { clsx } from 'clsx';
-import { MessageSquare, MoreHorizontal, Activity, FileText, Download, SmilePlus } from 'lucide-react';
+import { MessageSquare, Activity, FileText, Download, SmilePlus, AlertTriangle } from 'lucide-react';
 import { Avatar, MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
 import { useToggleReaction } from '@/hooks/useApi';
@@ -13,6 +13,7 @@ interface MessageListProps {
   channelId?: string; // Used to detect channel changes
   onThreadClick?: (messageId: string) => void;
   onAgentClick?: (agent: Agent) => void;
+  onTraceClick?: (traceId: string) => void;
   loading?: boolean;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -24,15 +25,18 @@ export function MessageList({
   channelId,
   onThreadClick,
   onAgentClick,
+  onTraceClick,
   loading,
   hasMore,
   onLoadMore,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const prevFirstIdRef = useRef<string | null>(null);
   const prevLastIdRef = useRef<string | null>(null);
   const prevScrollHeightRef = useRef<number>(0);
+  const prevMessageCountRef = useRef(0);
   const agentMap = new Map(agents.map((a) => [a.id, a]));
 
   // Keep mutable refs for values used in the scroll handler so it stays stable
@@ -43,49 +47,61 @@ export function MessageList({
   loadingRef.current = loading ?? false;
   onLoadMoreRef.current = onLoadMore;
 
-  // Scroll positioning — runs after DOM commit but before browser paint,
-  // so the user never sees a flash of wrong scroll position.
-  useLayoutEffect(() => {
+  // Which channel we've completed initial scroll for.
+  const scrolledForChannelRef = useRef<string | undefined>(undefined);
+
+  // --- Scroll positioning ---
+  // Uses useEffect (fires AFTER paint, layout guaranteed final) instead of
+  // useLayoutEffect which fires before paint when flex layout may not be
+  // computed yet.  A brief flash is acceptable vs. never scrolling at all.
+  useEffect(() => {
     const el = containerRef.current;
     if (!el || messages.length === 0) return;
 
     const firstId = messages[0].id;
     const lastId = messages[messages.length - 1].id;
+
+    // --- Initial scroll or channel change: snap to bottom ---
+    if (scrolledForChannelRef.current !== channelId) {
+      // Use setTimeout(0) to guarantee we run after ALL layout/paint/reflow.
+      // This is the nuclear option — works even when flex parents haven't
+      // finished computing heights during the initial effect pass.
+      setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 0);
+      scrolledForChannelRef.current = channelId;
+      prevFirstIdRef.current = firstId;
+      prevLastIdRef.current = lastId;
+      prevScrollHeightRef.current = el.scrollHeight;
+      prevMessageCountRef.current = messages.length;
+      isNearBottomRef.current = true;
+      return;
+    }
+
     const firstIdChanged = firstId !== prevFirstIdRef.current;
     const lastIdChanged = lastId !== prevLastIdRef.current;
-    const isFirstLoad = prevLastIdRef.current === null;
 
-    if (isFirstLoad) {
-      // Initial load or channel switch → snap to bottom (no visible scroll)
-      el.scrollTop = el.scrollHeight;
-    } else if (firstIdChanged && !lastIdChanged) {
+    if (firstIdChanged && !lastIdChanged && messages.length > prevMessageCountRef.current) {
       // Older messages prepended → maintain viewport position
       const addedHeight = el.scrollHeight - prevScrollHeightRef.current;
       el.scrollTop += addedHeight;
     } else if (lastIdChanged && isNearBottomRef.current) {
-      // New message at bottom + user was near bottom → scroll to see it
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      // New message at bottom + user was near bottom → snap to it
+      el.scrollTop = el.scrollHeight;
     }
 
     prevFirstIdRef.current = firstId;
     prevLastIdRef.current = lastId;
     prevScrollHeightRef.current = el.scrollHeight;
+    prevMessageCountRef.current = messages.length;
   }, [messages, channelId]);
-
-  // Reset refs on channel change so the next render is treated as a first load.
-  useLayoutEffect(() => {
-    prevFirstIdRef.current = null;
-    prevLastIdRef.current = null;
-    prevScrollHeightRef.current = 0;
-    isNearBottomRef.current = true;
-  }, [channelId]);
 
   // Stable scroll handler — tracks near-bottom and triggers older message loading
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
 
     // Load older messages when user scrolls near the top
     if (
@@ -127,7 +143,7 @@ export function MessageList({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 overflow-y-auto px-5 py-3 ${containerBg}`}
+      className={`flex-1 min-h-0 overflow-y-auto px-5 py-3 ${containerBg}`}
       onScroll={handleScroll}
     >
       {/* Loading spinner when fetching older messages */}
@@ -171,11 +187,14 @@ export function MessageList({
                 showHeader={showHeader}
                 onThreadClick={onThreadClick}
                 onAgentClick={onAgentClick}
+                onTraceClick={onTraceClick}
               />
             );
           })}
         </div>
       ))}
+      {/* Bottom sentinel — used for scroll detection */}
+      <div ref={bottomRef} aria-hidden="true" />
     </div>
   );
 }
@@ -186,9 +205,10 @@ interface MessageItemProps {
   showHeader: boolean;
   onThreadClick?: (messageId: string) => void;
   onAgentClick?: (agent: Agent) => void;
+  onTraceClick?: (traceId: string) => void;
 }
 
-function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }: MessageItemProps) {
+function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, onTraceClick }: MessageItemProps) {
   const userProfile = useUIStore((state) => state.userProfile);
   const darkMode = useUIStore((state) => state.darkMode);
   const toggleReaction = useToggleReaction();
@@ -206,6 +226,33 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
     const userName = userProfile.name || 'You';
     toggleReaction.mutate({ messageId: message.id, emoji, userName });
   };
+
+  const isSystemMessage = message.message_type === 'system';
+
+  // System/error messages get a distinct banner style.
+  if (isSystemMessage) {
+    const systemBg = darkMode ? 'bg-red-900/30 border-red-800/50' : 'bg-red-50 border-red-200';
+    const systemText = darkMode ? 'text-red-300' : 'text-red-700';
+    const systemIcon = darkMode ? 'text-red-400' : 'text-red-500';
+    // Strip the "[System] " prefix if present — the icon already conveys it.
+    const displayContent = message.content.replace(/^\[System\]\s*/i, '');
+    return (
+      <div className={clsx('py-2 -mx-4 px-4 mt-3')}>
+        <div className={clsx(
+          'flex items-start gap-2.5 px-3 py-2 rounded-lg border',
+          systemBg,
+        )}>
+          <AlertTriangle className={clsx('w-4 h-4 flex-shrink-0 mt-0.5', systemIcon)} />
+          <div className="flex-1 min-w-0">
+            <span className={clsx('text-sm', systemText)}>{displayContent}</span>
+            <span className={clsx('text-xs ml-2', darkMode ? 'text-red-400/60' : 'text-red-400')}>
+              {time}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const isFromUser = !message.agent_id;
   const getUserDisplayName = () => {
@@ -332,25 +379,30 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick }
             <button
               className={`p-1 rounded ${actionsHoverBg}`}
               onClick={() => {
-                const meta = message.extra_data as Record<string, string>;
-                const url = meta.grafana_trace_url ||
-                  `http://localhost:3001/explore?left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22query%22:%22${meta.trace_id}%22%7D%5D%7D`;
-                window.open(url, '_blank', 'noopener');
+                const traceId = String(message.extra_data!.trace_id);
+                if (onTraceClick) {
+                  onTraceClick(traceId);
+                } else {
+                  // Fallback: open Grafana Tempo if no handler provided
+                  const meta = message.extra_data as Record<string, string>;
+                  const url = meta.grafana_trace_url ||
+                    `http://localhost:3001/explore?left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22query%22:%22${traceId}%22%7D%5D%7D`;
+                  window.open(url, '_blank', 'noopener');
+                }
               }}
               title={`View trace ${String(message.extra_data.trace_id)}`}
             >
               <Activity className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
             </button>
           ) : null}
-          <button
-            className={`p-1 rounded ${actionsHoverBg}`}
-            onClick={() => onThreadClick?.(message.id)}
-          >
-            <MessageSquare className={`w-4 h-4 ${actionsIconColor}`} />
-          </button>
-          <button className={`p-1 rounded ${actionsHoverBg}`}>
-            <MoreHorizontal className={`w-4 h-4 ${actionsIconColor}`} />
-          </button>
+          {onThreadClick && (
+            <button
+              className={`p-1 rounded ${actionsHoverBg}`}
+              onClick={() => onThreadClick(message.id)}
+            >
+              <MessageSquare className={`w-4 h-4 ${actionsIconColor}`} />
+            </button>
+          )}
         </div>
       </div>
     </div>

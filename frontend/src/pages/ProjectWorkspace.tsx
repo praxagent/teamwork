@@ -46,6 +46,7 @@ export function ProjectWorkspace() {
   const [showObservabilityPanel, setShowObservabilityPanel] = useState(savedView === 'observability');
   // Track if Claude panel has ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(savedView === 'claude');
+  const [focusTraceId, setFocusTraceId] = useState<string | null>(null);
   const [channelPanelOpen, setChannelPanelOpen] = useState(true);
 
   // Persist active view to localStorage
@@ -184,6 +185,12 @@ export function ProjectWorkspace() {
   const toggleView = (view: string) => {
     activeView === view ? switchTo('chat') : switchTo(view);
   };
+
+  // Navigate to Execution Graphs focused on a specific trace
+  const handleTraceClick = useCallback((traceId: string) => {
+    setFocusTraceId(traceId);
+    switchTo('execution_graphs');
+  }, []);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -357,7 +364,7 @@ export function ProjectWorkspace() {
 
       {/* ── Browser Chat Sidebar (browser/terminal mode) ── */}
       {(activeView === 'browser' || activeView === 'terminal') && projectId && (
-        <BrowserChatSidebar projectId={projectId} />
+        <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} />
       )}
 
       {/* ── Main Content ── */}
@@ -380,7 +387,7 @@ export function ProjectWorkspace() {
 
         {/* Graph Panel — persistent mount */}
         {claudePanelMounted && projectId && (
-          <GraphPanel projectId={projectId} isVisible={showClaudePanel} onClose={() => switchTo('chat')} />
+          <GraphPanel projectId={projectId} isVisible={showClaudePanel} onClose={() => switchTo('chat')} focusTraceId={focusTraceId} />
         )}
 
         {/* Task Board */}
@@ -450,6 +457,7 @@ export function ProjectWorkspace() {
               channelId={currentChannelId || undefined}
               onThreadClick={handleThreadClick}
               onAgentClick={handleAgentClick}
+              onTraceClick={handleTraceClick}
               hasMore={currentChannelId ? storeHasMore[currentChannelId] ?? false : false}
               onLoadMore={handleLoadOlderMessages}
               loading={loadOlderMutation.isPending}

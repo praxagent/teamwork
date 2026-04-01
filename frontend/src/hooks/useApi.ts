@@ -311,9 +311,9 @@ export function useMessages(channelId: string | null, skip = 0, limit = 50) {
         `/messages/channel/${channelId}?skip=${skip}&limit=${limit}`
       ),
     enabled: !!channelId,
-    staleTime: 0, // Always refetch when channel changes
-    refetchOnMount: 'always', // Force refetch on mount/refresh
-    refetchOnWindowFocus: true,
+    staleTime: 30_000, // 30s — WebSocket handles live updates
+    refetchOnMount: true,
+    refetchOnWindowFocus: false, // WebSocket keeps messages current
   });
 }
 
@@ -911,6 +911,7 @@ export interface ExecutionGraph {
   status: string;
   node_count: number;
   nodes: GraphNode[];
+  trigger?: string;
 }
 
 export function useExecutionGraphs(enabled: boolean = true) {

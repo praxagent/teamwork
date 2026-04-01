@@ -753,6 +753,27 @@ cd teamwork
 uv pip install -e ".[dev]"
 ```
 
+### Frontend build gotcha (Docker)
+
+The Dockerfile builds the React frontend during `docker build` (line `RUN cd frontend && npx vite build`). However, **Docker layer caching can serve stale JavaScript** if it doesn't detect changes in the `COPY frontend/ frontend/` layer. When you edit `.tsx`/`.ts` files and run `docker compose up --build`, Docker may reuse the cached build layer and your changes won't appear.
+
+**Symptoms:** You changed frontend code, rebuilt the container, but the UI behaves exactly the same. The browser serves an old `index-*.js` bundle.
+
+**Fix — option A (recommended):** Rebuild the frontend locally before Docker build. Since `src/teamwork/static/` is copied into the image via `COPY src/ src/`, fresh local assets always invalidate the cache:
+
+```bash
+cd frontend && npm run build && cd ..
+docker compose up --build
+```
+
+**Fix — option B:** Force Docker to rebuild without layer cache:
+
+```bash
+docker compose build --no-cache && docker compose up
+```
+
+> **Why does this happen?** Docker hashes the build context to decide whether a `COPY` layer has changed. Timestamp-only changes, editor swap files, or certain filesystem behaviors can cause Docker to consider the layer unchanged even when source files differ. The local build workaround sidesteps this entirely because the output JS bundle gets a new content hash (e.g., `index-DmPi-rii.js` → `index-Bx7kQ2f1.js`), which Docker always detects as a change in the `COPY src/ src/` layer.
+
 ### Run (one command)
 
 ```bash
