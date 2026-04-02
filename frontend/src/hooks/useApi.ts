@@ -10,6 +10,8 @@ import type {
   ClarifyingQuestionsResponse,
   OnboardingStatus,
   TeamMemberSuggestion,
+  ContentListResponse,
+  ContentSearchResponse,
 } from '@/types';
 
 const API_BASE = '/api';
@@ -1363,6 +1365,113 @@ export function useUpdateAllPlugins() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
       queryClient.invalidateQueries({ queryKey: ['plugin-check-updates'] });
+    },
+  });
+}
+
+// Content — Prax's Space (notes, courses, news)
+export function useContent(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['content'],
+    queryFn: () => fetchJson<ContentListResponse>('/content'),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useContentSearch(query: string) {
+  return useQuery({
+    queryKey: ['content-search', query],
+    queryFn: () =>
+      fetchJson<ContentSearchResponse>(
+        `/content/search?q=${encodeURIComponent(query)}`
+      ),
+    enabled: query.length >= 2,
+    staleTime: 10_000,
+  });
+}
+
+export function useContentItem(category: string | null, slug: string | null) {
+  return useQuery({
+    queryKey: ['content-item', category, slug],
+    queryFn: () =>
+      fetchJson<Record<string, unknown>>(`/content/${category}/${slug}`),
+    enabled: !!category && !!slug,
+  });
+}
+
+export function useDeleteNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      fetchJson<{ slug: string; title: string; deleted: boolean }>(
+        `/content/notes/${encodeURIComponent(slug)}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['content'] });
+      queryClient.invalidateQueries({ queryKey: ['content-search'] });
+    },
+  });
+}
+
+export function useUpdateNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { slug: string; content?: string; title?: string; tags?: string[] }) => {
+      const { slug, ...body } = data;
+      return fetchJson<Record<string, unknown>>(
+        `/content/notes/${encodeURIComponent(slug)}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['content'] });
+      queryClient.invalidateQueries({ queryKey: ['content-item', 'notes', variables.slug] });
+    },
+  });
+}
+
+export interface NoteVersion {
+  commit: string;
+  date: string;
+  message: string;
+}
+
+export function useNoteVersions(slug: string | null) {
+  return useQuery({
+    queryKey: ['note-versions', slug],
+    queryFn: () =>
+      fetchJson<{ versions: NoteVersion[] }>(
+        `/content/notes/${encodeURIComponent(slug || '')}/versions`,
+      ),
+    enabled: !!slug,
+  });
+}
+
+export function useNoteAtVersion(slug: string | null, commit: string | null) {
+  return useQuery({
+    queryKey: ['note-version', slug, commit],
+    queryFn: () =>
+      fetchJson<Record<string, unknown>>(
+        `/content/notes/${encodeURIComponent(slug || '')}/versions/${commit}`,
+      ),
+    enabled: !!slug && !!commit,
+  });
+}
+
+export function useRestoreNoteVersion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { slug: string; commit: string }) =>
+      fetchJson<Record<string, unknown>>(
+        `/content/notes/${encodeURIComponent(data.slug)}/versions/${data.commit}/restore`,
+        { method: 'POST' },
+      ),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['content'] });
+      queryClient.invalidateQueries({ queryKey: ['content-item', 'notes', variables.slug] });
+      queryClient.invalidateQueries({ queryKey: ['note-versions', variables.slug] });
     },
   });
 }

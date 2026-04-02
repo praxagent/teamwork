@@ -97,12 +97,28 @@ const customStyle = {
  */
 function preprocessContent(content: string): string {
   // Convert bullet characters to proper markdown list syntax
-  // Match lines starting with bullet characters (•, ◦, ▪, ▸, ►, ●, ○, etc.)
-  // and convert them to markdown list items
-  return content
+  let result = content
     .replace(/^[\s]*[•◦▪▸►●○‣⁃]\s*/gm, '- ')
-    // Also handle lines that start with "• " in the middle of text
     .replace(/\n[\s]*[•◦▪▸►●○‣⁃]\s*/g, '\n- ');
+
+  // Convert LaTeX math delimiters \(...\) → $...$ and \[...\] → $$...$$
+  // so remark-math can parse them. Skip content inside code fences.
+  const lines = result.split('\n');
+  let inCodeBlock = false;
+  result = lines.map(line => {
+    if (line.trimStart().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      return line;
+    }
+    if (inCodeBlock) return line;
+    return line
+      .replace(/\\\(/g, '$')
+      .replace(/\\\)/g, '$')
+      .replace(/\\\[/g, '$$')
+      .replace(/\\\]/g, '$$');
+  }).join('\n');
+
+  return result;
 }
 
 /**

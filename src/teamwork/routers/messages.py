@@ -114,6 +114,7 @@ async def _forward_to_external_webhook(
     content: str,
     message_id: str,
     active_view: str | None = None,
+    extra_data: dict | None = None,
 ):
     """Forward a user message to the external orchestrator's webhook."""
     try:
@@ -126,6 +127,8 @@ async def _forward_to_external_webhook(
         }
         if active_view:
             payload["active_view"] = active_view
+        if extra_data:
+            payload["extra_data"] = extra_data
         async with httpx.AsyncClient(timeout=30.0) as client:
             await client.post(webhook_url, json=payload)
     except Exception as e:
@@ -682,6 +685,7 @@ async def create_message(
                     message.content,
                     db_message.id,
                     message.active_view,
+                    message.extra_data,
                 )
 
         # Handle CRUD-only slash commands

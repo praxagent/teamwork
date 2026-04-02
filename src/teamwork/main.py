@@ -23,6 +23,7 @@ from teamwork.routers import (
     agents_router,
     browser_router,
     channels_router,
+    content_router,
     external_router,
     messages_router,
     observability_router,
@@ -91,6 +92,7 @@ app.add_middleware(
 # Include routers
 app.include_router(observability_router, prefix="/api")
 app.include_router(plugins_router, prefix="/api")
+app.include_router(content_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 app.include_router(agents_router, prefix="/api")
 app.include_router(browser_router, prefix="/api")
