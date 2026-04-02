@@ -1,6 +1,6 @@
 [project]
 name = "teamwork"
-version = "0.5.0"
+version = "0.6.0"
 description = "Agent-agnostic collaboration shell — Slack-like web UI for AI agent teams"
 readme = "README.md"
 license = "AGPL-3.0"
