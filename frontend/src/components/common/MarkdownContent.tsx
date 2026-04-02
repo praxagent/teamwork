@@ -1,16 +1,21 @@
 import ReactMarkdown from 'react-markdown';
 import { clsx } from 'clsx';
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import mermaid from 'mermaid';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
+import { useUIStore } from '@/stores';
 import 'katex/dist/katex.min.css';
+
+mermaid.initialize({ startOnLoad: false, theme: 'default', fontFamily: 'inherit' });
 
 interface MarkdownContentProps {
   content: string;
   className?: string;
+  darkMode?: boolean;
 }
 
 /**
@@ -91,6 +96,39 @@ const customStyle = {
   },
 };
 
+function MermaidDiagram({ code, darkMode }: { code: string; darkMode?: boolean }) {
+  const id = useId().replace(/:/g, '_');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState<string>('');
+  const [error, setError] = useState<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const theme = darkMode ? 'dark' : 'default';
+    mermaid.initialize({ startOnLoad: false, theme, fontFamily: 'inherit' });
+    mermaid.render(`mermaid${id}_${theme}`, code)
+      .then(({ svg: renderedSvg }: { svg: string }) => { if (!cancelled) setSvg(renderedSvg); })
+      .catch((e: unknown) => { if (!cancelled) setError(String(e)); });
+    return () => { cancelled = true; };
+  }, [code, id, darkMode]);
+
+  if (error) {
+    return (
+      <pre className="my-3 p-3 rounded-lg bg-red-900/20 text-red-400 text-sm overflow-x-auto">
+        {code}
+      </pre>
+    );
+  }
+  if (!svg) return <div className="my-3 p-4 text-center text-gray-500 text-sm">Rendering diagram...</div>;
+  return (
+    <div
+      ref={containerRef}
+      className="my-3 flex justify-center overflow-x-auto [&_svg]:max-w-full"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
 /**
  * Preprocesses content to normalize bullet points and other formatting.
  * Converts various bullet characters to proper markdown list syntax.
@@ -118,6 +156,19 @@ function preprocessContent(content: string): string {
       .replace(/\\\]/g, '$$');
   }).join('\n');
 
+  // Convert backtick-wrapped LaTeX to $...$ for inline math rendering.
+  // LLMs sometimes wrap LaTeX in backticks (e.g. `\phi_a`) instead of $ delimiters.
+  // Match: backtick, then content containing a backslash (LaTeX command) or common
+  // math symbols like ^, _, {, }, but NOT content that looks like regular code.
+  result = result.replace(
+    /`((?:[^`]*\\[a-zA-Z]+[^`]*|[^`]*[{}_^][^`]*))`/g,
+    (_, inner) => {
+      // Skip if it looks like a file path, shell command, or code identifier
+      if (/^[/~.]|^\w+\(|^[a-z_]+$/.test(inner)) return '`' + inner + '`';
+      return '$' + inner + '$';
+    }
+  );
+
   return result;
 }
 
@@ -129,7 +180,9 @@ function preprocessContent(content: string): string {
  * - @mentions
  * - All standard markdown formatting
  */
-export function MarkdownContent({ content, className }: MarkdownContentProps) {
+export function MarkdownContent({ content, className, darkMode: darkModeProp }: MarkdownContentProps) {
+  const storeDarkMode = useUIStore((s) => s.darkMode);
+  const darkMode = darkModeProp ?? storeDarkMode;
   const processedContent = preprocessContent(content);
   
   return (
@@ -184,7 +237,12 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           const match = /language-(\w+)/.exec(className || '');
           const language = match ? match[1] : '';
           const codeString = String(children).replace(/\n$/, '');
-          
+
+          // Mermaid diagrams
+          if (language === 'mermaid') {
+            return <MermaidDiagram code={codeString} darkMode={darkMode} />;
+          }
+
           // Check if it's a code block or inline code
           const isInline = !className && !codeString.includes('\n') && codeString.length < 80;
           
