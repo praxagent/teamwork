@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/praxagent/teamwork/compare/v0.5.0...v0.6.0) (2026-04-02)
+
+
+### Features
+
+* add prax space (notes, courses) ([c317897](https://github.com/praxagent/teamwork/commit/c317897689d553056e33c6f80f9b95a7147aec51))
+
 ## [0.5.0](https://github.com/praxagent/teamwork/compare/v0.4.0...v0.5.0) (2026-04-01)
 
 
