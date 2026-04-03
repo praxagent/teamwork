@@ -134,8 +134,13 @@ function MermaidDiagram({ code, darkMode }: { code: string; darkMode?: boolean }
  * Converts various bullet characters to proper markdown list syntax.
  */
 function preprocessContent(content: string): string {
+  // Strip zero-width characters that break inline code rendering.
+  // Claude Code and other LLMs sometimes include U+200B (zero-width space),
+  // U+200C/D (zero-width non-joiner/joiner), U+FEFF (BOM) in output.
+  let result = content.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+
   // Convert bullet characters to proper markdown list syntax
-  let result = content
+  result = result
     .replace(/^[\s]*[•◦▪▸►●○‣⁃]\s*/gm, '- ')
     .replace(/\n[\s]*[•◦▪▸►●○‣⁃]\s*/g, '\n- ');
 
@@ -247,10 +252,11 @@ export function MarkdownContent({ content, className, darkMode: darkModeProp }: 
           const isInline = !className && !codeString.includes('\n') && codeString.length < 80;
           
           if (isInline) {
-            // Inline code - pink on light gray
+            // Inline code - render as plain string to prevent react-markdown
+            // from splitting characters into individual spans (which stack vertically).
             return (
-              <code className="bg-slate-200 dark:bg-slate-700 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded text-sm font-mono">
-                {children}
+              <code className="bg-slate-200 dark:bg-slate-700 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded text-sm font-mono whitespace-nowrap">
+                {codeString}
               </code>
             );
           }
