@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/praxagent/teamwork/compare/v0.8.0...v0.9.0) (2026-04-03)
+
+
+### Features
+
+* add interaction with coding tools ([ef8e040](https://github.com/praxagent/teamwork/commit/ef8e04072fca5a28de335d99eb0ec867e51d4cdc))
+
 ## [0.8.0](https://github.com/praxagent/teamwork/compare/v0.7.0...v0.8.0) (2026-04-03)
 
 
