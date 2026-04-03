@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/praxagent/teamwork/compare/v0.7.0...v0.8.0) (2026-04-03)
+
+
+### Features
+
+* add memory review page ([e39afa5](https://github.com/praxagent/teamwork/commit/e39afa504c825c605ed2d9e13b9785c6667446fa))
+
 ## [0.7.0](https://github.com/praxagent/teamwork/compare/v0.6.0...v0.7.0) (2026-04-02)
 
 
