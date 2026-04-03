@@ -22,6 +22,7 @@ from teamwork.models import init_db, AsyncSessionLocal
 from teamwork.routers import (
     agents_router,
     browser_router,
+    claude_code_router,
     channels_router,
     content_router,
     external_router,
@@ -93,6 +94,7 @@ app.add_middleware(
 # Include routers
 app.include_router(observability_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+app.include_router(claude_code_router, prefix="/api")
 app.include_router(plugins_router, prefix="/api")
 app.include_router(content_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")

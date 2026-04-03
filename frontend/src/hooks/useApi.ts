@@ -1475,3 +1475,31 @@ export function useRestoreNoteVersion() {
     },
   });
 }
+
+
+// Claude Code Sessions
+
+export interface ClaudeCodeSession {
+  session_id: string;
+  turn_count: number;
+  idle_seconds: number;
+}
+
+export function useClaudeCodeSessions() {
+  return useQuery({
+    queryKey: ['claude-code-sessions'],
+    queryFn: () => fetchJson<{ sessions: ClaudeCodeSession[]; bridge_available: boolean }>('/claude-code/sessions'),
+    refetchInterval: 10000,
+  });
+}
+
+export function useKillClaudeCodeSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      fetchJson(`/claude-code/sessions/${sessionId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['claude-code-sessions'] });
+    },
+  });
+}

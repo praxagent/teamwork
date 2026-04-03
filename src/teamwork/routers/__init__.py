@@ -2,6 +2,7 @@
 
 from teamwork.routers.agents import router as agents_router
 from teamwork.routers.browser import router as browser_router
+from teamwork.routers.claude_code import router as claude_code_router
 from teamwork.routers.channels import router as channels_router
 from teamwork.routers.content import router as content_router
 from teamwork.routers.memory import router as memory_router
@@ -18,6 +19,7 @@ from teamwork.routers.workspace import router as workspace_router
 __all__ = [
     "agents_router",
     "browser_router",
+    "claude_code_router",
     "channels_router",
     "content_router",
     "external_router",

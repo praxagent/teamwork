@@ -8,6 +8,7 @@ import {
   MessageInput,
   ThreadView,
 } from '@/components/chat';
+import { ClaudeCodeStatus } from '@/components/chat/ClaudeCodeStatus';
 import { ProfileModal } from '@/components/profiles';
 import { BrowserPanel, BrowserChatSidebar, ContentPanel, FileBrowser, TaskBoard, SettingsPanel, GraphPanel, ProgressPanel, TerminalPanel, ObservabilityPanel, MemoryPanel } from '@/components/workspace';
 import { CommandPalette } from '@/components/common';
@@ -471,6 +472,11 @@ export function ProjectWorkspace() {
                       ? `${agents.filter(a => a.team === currentChannel.team).length + 1} members`
                       : `${agents.length + 1} members`}
                 </span>
+                {['claude-code', 'codex', 'opencode'].includes(currentChannel.name) && (
+                  <div className="ml-auto">
+                    <ClaudeCodeStatus darkMode={darkMode} />
+                  </div>
+                )}
               </div>
             )}
             <MessageList
