@@ -34,7 +34,7 @@ export function ThreadView({
   const buttonColor = darkMode ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-500 hover:bg-gray-100';
 
   return (
-    <div className={`w-96 border-l flex flex-col h-full ${containerBg}`}>
+    <div className={`w-full md:w-96 border-l flex flex-col h-full ${containerBg}`}>
       {/* Header */}
       <div className={`px-4 py-3 border-b flex items-center justify-between ${containerBg}`}>
         <div>

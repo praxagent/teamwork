@@ -29,6 +29,7 @@ interface ChannelSidebarProps {
   onCreateChannel?: () => void;
   onSettingsClick?: () => void;
   unreadCounts: Record<string, number>;
+  onMobileClose?: () => void;
 }
 
 export function ChannelSidebar({
@@ -40,6 +41,7 @@ export function ChannelSidebar({
   onDMSelect,
   onAgentProfileClick,
   unreadCounts,
+  onMobileClose,
 }: ChannelSidebarProps) {
   const navigate = useNavigate();
   const darkMode = useUIStore((s) => s.darkMode);
@@ -158,9 +160,27 @@ export function ChannelSidebar({
 
   return (
     <div className={clsx(
-      'w-60 flex flex-col shrink-0 border-r',
+      'w-full md:w-60 flex flex-col shrink-0 md:border-r h-full',
       darkMode ? 'bg-tw-sidebar border-white/10' : 'bg-gray-50 border-gray-200',
     )}>
+      {/* Mobile close button */}
+      {onMobileClose && (
+        <div className={clsx(
+          'flex items-center justify-between px-4 py-2 border-b md:hidden',
+          darkMode ? 'border-white/10' : 'border-gray-200'
+        )}>
+          <span className={clsx('text-sm font-semibold', darkMode ? 'text-gray-200' : 'text-gray-800')}>Channels</span>
+          <button
+            onClick={onMobileClose}
+            className={clsx(
+              'p-2 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center',
+              darkMode ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-gray-200 text-gray-500'
+            )}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
       {/* Project selector */}
       <div className="relative" ref={dropdownRef}>
         <button

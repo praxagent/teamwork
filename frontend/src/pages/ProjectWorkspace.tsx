@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, BookOpen, Brain, Timer } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, BookOpen, Brain, Timer, MoreHorizontal } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -48,10 +48,14 @@ export function ProjectWorkspace() {
   const [showContentPanel, setShowContentPanel] = useState(savedView === 'content');
   const [showMemoryPanel, setShowMemoryPanel] = useState(savedView === 'memory');
   const [showScheduler, setShowScheduler] = useState(savedView === 'scheduler');
-  // Track if Claude panel has ever been opened (for persistent mounting)
+  // Track if panels have ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(savedView === 'claude');
+  const [terminalMounted, setTerminalMounted] = useState(savedView === 'terminal');
   const [focusTraceId, setFocusTraceId] = useState<string | null>(null);
   const [channelPanelOpen, setChannelPanelOpen] = useState(true);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  // On mobile, the channel sidebar is an overlay toggled separately
+  const [mobileChannelOpen, setMobileChannelOpen] = useState(false);
 
   // Persist active view to localStorage
   useEffect(() => {
@@ -192,6 +196,7 @@ export function ProjectWorkspace() {
     setShowContentPanel(view === 'content');
     setShowScheduler(view === 'scheduler');
     if (view === 'execution_graphs') setClaudePanelMounted(true);
+    if (view === 'terminal') setTerminalMounted(true);
   };
 
   const toggleView = (view: string) => {
@@ -314,9 +319,9 @@ export function ProjectWorkspace() {
   const isChatView = activeView === 'chat';
 
   return (
-    <div className={`flex h-screen ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
-      {/* ── Icon Rail ── */}
-      <nav className={`w-14 shrink-0 flex flex-col items-center py-3 gap-1 border-r ${
+    <div className={`flex flex-col md:flex-row h-screen ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+      {/* ── Icon Rail (desktop only) ── */}
+      <nav className={`hidden md:flex w-14 shrink-0 flex-col items-center py-3 gap-1 border-r ${
         darkMode ? 'bg-slate-950 border-slate-800' : 'bg-gray-50 border-gray-200'
       }`}>
         {/* Project initial — toggles channel panel */}
@@ -365,37 +370,65 @@ export function ProjectWorkspace() {
         <RailIcon icon={ChevronLeft} active={false} onClick={() => navigate('/projects')} title="All Projects" darkMode={darkMode} />
       </nav>
 
-      {/* ── Channel Panel (chat mode, collapsible) ── */}
+      {/* ── Channel Panel (desktop: inline sidebar; mobile: overlay) ── */}
+      {/* Desktop channel sidebar */}
       {isChatView && channelPanelOpen && (
-        <ChannelSidebar
-          project={currentProject}
-          channels={channels}
-          agents={agents}
-          currentChannelId={currentChannelId}
-          onChannelSelect={handleChannelSelect}
-          onDMSelect={handleDMSelect}
-          onAgentProfileClick={handleAgentClick}
-          onSettingsClick={() => switchTo('settings')}
-          unreadCounts={unreadCounts}
-        />
+        <div className="hidden md:flex">
+          <ChannelSidebar
+            project={currentProject}
+            channels={channels}
+            agents={agents}
+            currentChannelId={currentChannelId}
+            onChannelSelect={handleChannelSelect}
+            onDMSelect={handleDMSelect}
+            onAgentProfileClick={handleAgentClick}
+            onSettingsClick={() => switchTo('settings')}
+            unreadCounts={unreadCounts}
+          />
+        </div>
+      )}
+      {/* Mobile channel overlay */}
+      {mobileChannelOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileChannelOpen(false)} />
+          <div className={`absolute inset-y-0 left-0 w-72 z-10 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+            <ChannelSidebar
+              project={currentProject}
+              channels={channels}
+              agents={agents}
+              currentChannelId={currentChannelId}
+              onChannelSelect={(id) => { handleChannelSelect(id); setMobileChannelOpen(false); }}
+              onDMSelect={(id) => { handleDMSelect(id); setMobileChannelOpen(false); }}
+              onAgentProfileClick={handleAgentClick}
+              onSettingsClick={() => { switchTo('settings'); setMobileChannelOpen(false); }}
+              unreadCounts={unreadCounts}
+              onMobileClose={() => setMobileChannelOpen(false)}
+            />
+          </div>
+        </div>
       )}
 
       {/* ── Browser Chat Sidebar (browser/terminal/content mode) ── */}
+      {/* Single instance — CSS repositions between desktop sidebar and mobile stacked.
+          Uses order-1 on mobile to appear after the main content panel (order-0),
+          and order-none on desktop to stay in normal flow as a sidebar. */}
       {(activeView === 'browser' || activeView === 'terminal' || activeView === 'content') && projectId && (
-        <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />
+        <div className="order-1 md:order-none flex-shrink-0 h-64 md:h-auto border-t md:border-t-0 border-slate-700">
+          <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />
+        </div>
       )}
 
       {/* ── Main Content ── */}
-      <div className={`flex-1 flex flex-col min-w-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 order-0 md:order-none pb-14 md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
 
         {/* Browser Panel */}
         {activeView === 'browser' && projectId && (
           <BrowserPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
         )}
 
-        {/* Terminal Panel */}
-        {activeView === 'terminal' && projectId && (
-          <TerminalPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+        {/* Terminal Panel — persistent mount to preserve session */}
+        {terminalMounted && projectId && (
+          <TerminalPanel projectId={projectId} isVisible={showTerminalPanel} onClose={() => switchTo('chat')} />
         )}
 
         {/* Observability Panel */}
@@ -468,14 +501,24 @@ export function ProjectWorkspace() {
           <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
             {/* Minimal channel indicator */}
             {currentChannel && (
-              <div className={`px-5 pt-3 pb-1 flex items-center gap-2 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <div className={`px-3 md:px-5 pt-3 pb-1 flex items-center gap-2 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {/* Mobile-only hamburger to open channel sidebar */}
+                <button
+                  onClick={() => setMobileChannelOpen(true)}
+                  className={clsx(
+                    'md:hidden p-1.5 -ml-1 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center',
+                    darkMode ? 'hover:bg-slate-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+                  )}
+                >
+                  <MessageSquare className="w-5 h-5" />
+                </button>
                 <span className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                   {currentChannel.type === 'dm' ? '' : '# '}
                   {currentChannel.type === 'dm'
                     ? agents.find(a => a.id === currentChannel.dm_participants)?.name || currentChannel.name
                     : currentChannel.name}
                 </span>
-                <span className="text-xs">
+                <span className="text-xs hidden md:inline">
                   {currentChannel.type === 'dm'
                     ? '2 members'
                     : currentChannel.type === 'team'
@@ -512,15 +555,17 @@ export function ProjectWorkspace() {
         )}
       </div>
 
-      {/* Thread panel — only in chat view */}
+      {/* Thread panel — only in chat view (full-screen overlay on mobile) */}
       {activeThreadId && isChatView && (
-        <ThreadView
-          parentMessage={parentMessage}
-          replies={threadData?.messages || []}
-          agents={agents}
-          onSendReply={handleSendReply}
-          onClose={() => setActiveThreadId(null)}
-        />
+        <div className="fixed inset-0 z-40 md:relative md:inset-auto md:z-auto">
+          <ThreadView
+            parentMessage={parentMessage}
+            replies={threadData?.messages || []}
+            agents={agents}
+            onSendReply={handleSendReply}
+            onClose={() => setActiveThreadId(null)}
+          />
+        </div>
       )}
 
       {/* Profile modal */}
@@ -547,11 +592,80 @@ export function ProjectWorkspace() {
         onDMSelect={handleDMSelect}
         onSwitchView={switchTo}
       />
+
+      {/* ── Mobile Bottom Tab Bar ── */}
+      <nav className={clsx(
+        'md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t safe-area-bottom',
+        darkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-200'
+      )}>
+        <MobileTabButton
+          icon={MessageSquare}
+          label="Chat"
+          active={isChatView}
+          onClick={() => switchTo('chat')}
+          darkMode={darkMode}
+        />
+        <MobileTabButton
+          icon={ListTodo}
+          label="Tasks"
+          active={activeView === 'tasks'}
+          onClick={() => switchTo('tasks')}
+          darkMode={darkMode}
+        />
+        <MobileTabButton
+          icon={TerminalSquare}
+          label="Terminal"
+          active={activeView === 'terminal'}
+          onClick={() => switchTo('terminal')}
+          darkMode={darkMode}
+        />
+        <MobileTabButton
+          icon={Globe}
+          label="Browser"
+          active={activeView === 'browser'}
+          onClick={() => switchTo('browser')}
+          darkMode={darkMode}
+        />
+        <div className="relative">
+          <MobileTabButton
+            icon={MoreHorizontal}
+            label="More"
+            active={mobileMoreOpen}
+            onClick={() => setMobileMoreOpen(v => !v)}
+            darkMode={darkMode}
+          />
+          {mobileMoreOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMobileMoreOpen(false)} />
+              <div className={clsx(
+                'absolute bottom-full right-0 mb-2 z-50 rounded-xl shadow-lg border min-w-[180px] py-1',
+                darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'
+              )}>
+                <MobileMoreItem icon={Code} label="Files" active={activeView === 'files'} onClick={() => { switchTo('files'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                <MobileMoreItem icon={BookOpen} label="Prax's Space" active={activeView === 'content'} onClick={() => { switchTo('content'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                <MobileMoreItem icon={Brain} label="Memory" active={activeView === 'memory'} onClick={() => { switchTo('memory'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                <MobileMoreItem icon={Timer} label="Scheduler" active={activeView === 'scheduler'} onClick={() => { switchTo('scheduler'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                {!isCoachingProject && (
+                  <MobileMoreItem icon={Workflow} label="Exec Graphs" active={activeView === 'execution_graphs'} onClick={() => { switchTo('execution_graphs'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                )}
+                <MobileMoreItem icon={Activity} label="Observability" active={activeView === 'observability'} onClick={() => { switchTo('observability'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                {isCoachingProject && (
+                  <MobileMoreItem icon={BarChart3} label="Progress" active={activeView === 'progress'} onClick={() => { switchTo('progress'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                )}
+                <div className={`my-1 border-t ${darkMode ? 'border-slate-700' : 'border-gray-200'}`} />
+                <MobileMoreItem icon={Settings} label="Settings" active={activeView === 'settings'} onClick={() => { switchTo('settings'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                <MobileMoreItem icon={darkMode ? Sun : Moon} label={darkMode ? 'Light mode' : 'Dark mode'} active={false} onClick={() => { toggleDarkMode(); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                <MobileMoreItem icon={ChevronLeft} label="All Projects" active={false} onClick={() => { navigate('/projects'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+              </div>
+            </>
+          )}
+        </div>
+      </nav>
     </div>
   );
 }
 
-// ── Icon Rail button ──
+// ── Icon Rail button (desktop) ──
 function RailIcon({
   icon: Icon,
   active,
@@ -581,6 +695,70 @@ function RailIcon({
       title={title}
     >
       <Icon className="w-5 h-5" />
+    </button>
+  );
+}
+
+// ── Mobile bottom tab button ──
+function MobileTabButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  darkMode,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  darkMode: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={clsx(
+        'flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1.5 px-2 transition-colors',
+        active
+          ? 'text-tw-accent'
+          : darkMode
+            ? 'text-gray-500'
+            : 'text-gray-400'
+      )}
+    >
+      <Icon className="w-5 h-5" />
+      <span className="text-[10px] mt-0.5 leading-tight">{label}</span>
+    </button>
+  );
+}
+
+// ── Mobile "More" menu item ──
+function MobileMoreItem({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  darkMode,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  darkMode: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={clsx(
+        'w-full flex items-center gap-3 px-4 py-2.5 text-sm min-h-[44px] transition-colors',
+        active
+          ? 'text-tw-accent'
+          : darkMode
+            ? 'text-gray-300 hover:bg-slate-700'
+            : 'text-gray-700 hover:bg-gray-100'
+      )}
+    >
+      <Icon className="w-4 h-4" />
+      <span>{label}</span>
     </button>
   );
 }

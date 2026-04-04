@@ -676,7 +676,7 @@ async def create_activity_log(
     x_api_key: str | None = Header(None),
 ):
     """Create an activity log entry for an agent."""
-    await _get_external_project(project_id, db, x_api_key)
+    await _get_external_project(project_id, db)
 
     from teamwork.models import ActivityLog
     log = ActivityLog(

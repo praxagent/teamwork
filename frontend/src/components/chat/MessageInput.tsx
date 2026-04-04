@@ -287,7 +287,7 @@ export function MessageInput({
   const canSend = content.trim().length > 0 || pendingFiles.length > 0;
 
   return (
-    <div className={`px-5 pt-2 pb-5 ${containerBg}`}>
+    <div className={`px-3 md:px-5 pt-2 pb-5 ${containerBg}`}>
       <div
         className="relative max-w-4xl mx-auto"
         onDragOver={handleDragOver}
@@ -374,7 +374,7 @@ export function MessageInput({
               />
               <button
                 type="button"
-                className={`p-1.5 rounded ${toolbarButtonColor}`}
+                className={`p-2.5 md:p-1.5 rounded ${toolbarButtonColor}`}
                 title="Attach file"
                 onClick={() => fileInputRef.current?.click()}
               >
@@ -382,7 +382,7 @@ export function MessageInput({
               </button>
               <button
                 type="button"
-                className={`p-1.5 rounded ${toolbarButtonColor}`}
+                className={`p-2.5 md:p-1.5 rounded ${toolbarButtonColor}`}
                 title="Mention someone"
                 onClick={() => {
                   setContent(content + '@');
@@ -396,7 +396,7 @@ export function MessageInput({
               <div className="relative">
                 <button
                   type="button"
-                  className={`p-1.5 rounded ${toolbarButtonColor}`}
+                  className={`p-2.5 md:p-1.5 rounded ${toolbarButtonColor}`}
                   title="Add emoji"
                   onClick={() => setShowEmojiPicker((v) => !v)}
                 >
@@ -443,7 +443,7 @@ export function MessageInput({
                 onClick={handleSend}
                 disabled={!canSend || disabled || uploading}
                 className={clsx(
-                  'p-1.5 rounded transition-colors',
+                  'p-2.5 md:p-1.5 rounded transition-colors',
                   uploading
                     ? 'bg-tw-accent/50 text-white'
                     : canSend

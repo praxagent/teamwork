@@ -115,6 +115,8 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 .message-content {
   word-wrap: break-word;
   overflow-wrap: break-word;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 /* Light mode message content - FORCE light colors for text */
@@ -345,4 +347,26 @@ html:not(.dark) .chat-message-text {
 
 .typing-dot:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+/* ============================================
+   MOBILE RESPONSIVE UTILITIES
+   ============================================ */
+
+/* Safe-area padding for iOS notch / home indicator */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* BrowserChatSidebar: full width on mobile, custom width on desktop */
+.browser-chat-sidebar {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .browser-chat-sidebar {
+    width: var(--bcs-width, 400px);
+    min-width: 200px;
+    max-width: 600px;
+  }
 }

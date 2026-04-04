@@ -143,7 +143,7 @@ export function MessageList({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 min-h-0 overflow-y-auto px-5 py-3 ${containerBg}`}
+      className={`flex-1 min-h-0 overflow-y-auto px-3 md:px-5 py-3 ${containerBg}`}
       onScroll={handleScroll}
     >
       {/* Loading spinner when fetching older messages */}
@@ -214,7 +214,13 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, 
   const toggleReaction = useToggleReaction();
   const [showReactionPicker, setShowReactionPicker] = useState(false);
 
-  const time = new Date(message.created_at).toLocaleTimeString([], {
+  // Timestamps from the DB are UTC but lack a 'Z' suffix — append it
+  // so JavaScript parses them correctly and toLocaleTimeString converts
+  // to the user's local timezone.
+  const utcTimestamp = message.created_at.endsWith('Z') || message.created_at.includes('+')
+    ? message.created_at
+    : message.created_at + 'Z';
+  const time = new Date(utcTimestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });
