@@ -30,6 +30,7 @@ from teamwork.routers import (
     messages_router,
     observability_router,
     plugins_router,
+    prax_router,
     projects_router,
     scheduler_router,
     tasks_router,
@@ -109,6 +110,7 @@ app.include_router(terminal_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
+app.include_router(prax_router, prefix="/api")
 
 
 @app.get("/health")

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, BookOpen, Brain, Timer, MoreHorizontal } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, BookOpen, Brain, Timer, MoreHorizontal, Cpu, Check } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -23,6 +23,8 @@ import {
   useGetOrCreateDMChannel,
   useExecuteCode,
   useLoadOlderMessages,
+  useCurrentModel,
+  useSetModel,
 } from '@/hooks/useApi';
 import { useProjectSubscription, useChannelSubscription } from '@/hooks/useWebSocket';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -124,6 +126,11 @@ export function ProjectWorkspace() {
   const getOrCreateDM = useGetOrCreateDMChannel();
   const executeCode = useExecuteCode();
   const loadOlderMutation = useLoadOlderMessages();
+
+  // Model picker
+  const { data: modelData } = useCurrentModel();
+  const setModelMutation = useSetModel();
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
 
   const handleLoadOlderMessages = useCallback(() => {
     if (!currentChannelId || loadOlderMutation.isPending) return;
@@ -525,10 +532,78 @@ export function ProjectWorkspace() {
                       ? `${agents.filter(a => a.team === currentChannel.team).length + 1} members`
                       : `${agents.length + 1} members`}
                 </span>
-                {['claude-code', 'codex', 'opencode'].includes(currentChannel.name) && (
+                {/* Model picker badge */}
+                {modelData && (
+                  <div className="relative ml-auto">
+                    <button
+                      onClick={() => setModelPickerOpen(v => !v)}
+                      className={clsx(
+                        'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
+                        modelData.override
+                          ? darkMode ? 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/25' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                          : darkMode ? 'bg-slate-700/60 text-gray-400 hover:bg-slate-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      )}
+                      title={`Model: ${modelData.current_model}${modelData.override ? ' (override)' : ''}`}
+                    >
+                      <Cpu className="w-3 h-3" />
+                      <span className="hidden sm:inline max-w-[120px] truncate">{modelData.current_model.split('/').pop()}</span>
+                    </button>
+                    {modelPickerOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setModelPickerOpen(false)} />
+                        <div className={clsx(
+                          'absolute right-0 top-full mt-1 z-50 rounded-lg shadow-lg border min-w-[200px] py-1',
+                          darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'
+                        )}>
+                          <div className={clsx('px-3 py-1.5 text-xs font-semibold', darkMode ? 'text-gray-500' : 'text-gray-400')}>
+                            Model
+                          </div>
+                          <button
+                            onClick={() => { setModelMutation.mutate('auto'); setModelPickerOpen(false); }}
+                            className={clsx(
+                              'w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors',
+                              !modelData.override
+                                ? darkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-900'
+                                : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'
+                            )}
+                          >
+                            {!modelData.override && <Check className="w-3.5 h-3.5 text-green-400" />}
+                            <span className={!modelData.override ? '' : 'ml-5'}>Auto</span>
+                            <span className={clsx('ml-auto text-xs', darkMode ? 'text-gray-500' : 'text-gray-400')}>default</span>
+                          </button>
+                          {modelData.available.map((m) => {
+                            const isActive = modelData.override === m.model;
+                            return (
+                              <button
+                                key={m.model}
+                                onClick={() => { setModelMutation.mutate(m.model); setModelPickerOpen(false); }}
+                                className={clsx(
+                                  'w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors',
+                                  isActive
+                                    ? darkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-900'
+                                    : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'
+                                )}
+                              >
+                                {isActive && <Check className="w-3.5 h-3.5 text-green-400" />}
+                                <span className={isActive ? '' : 'ml-5'}>{m.model}</span>
+                                <span className={clsx('ml-auto text-xs uppercase', darkMode ? 'text-gray-500' : 'text-gray-400')}>
+                                  {m.tier}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                {['claude-code', 'codex', 'opencode'].includes(currentChannel.name) && !modelData && (
                   <div className="ml-auto">
                     <ClaudeCodeStatus darkMode={darkMode} />
                   </div>
+                )}
+                {['claude-code', 'codex', 'opencode'].includes(currentChannel.name) && modelData && (
+                  <ClaudeCodeStatus darkMode={darkMode} />
                 )}
               </div>
             )}

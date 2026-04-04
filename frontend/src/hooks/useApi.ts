@@ -1047,6 +1047,85 @@ export function useRemoveAgentProfileImage() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Model Picker
+// ---------------------------------------------------------------------------
+
+export interface ModelInfo {
+  current_model: string;
+  current_tier: string;
+  override: string | null;
+  available: Array<{ tier: string; model: string }>;
+}
+
+export function useCurrentModel() {
+  return useQuery({
+    queryKey: ['current-model'],
+    queryFn: () => fetchJson<ModelInfo>('/prax/model'),
+    staleTime: 10000,
+  });
+}
+
+export function useSetModel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (model: string) =>
+      fetchJson<{ override: string | null; message: string }>('/prax/model', {
+        method: 'PUT',
+        body: JSON.stringify({ model }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['current-model'] });
+      queryClient.invalidateQueries({ queryKey: ['context-stats'] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Context Inspector
+// ---------------------------------------------------------------------------
+
+export interface ContextStats {
+  history_messages: number;
+  history_tokens: number;
+  system_prompt_tokens: number;
+  total_tokens: number;
+  context_limit: number;
+  current_model: string;
+  current_tier: string;
+  limits: Record<string, number>;
+}
+
+export function useContextStats() {
+  return useQuery({
+    queryKey: ['context-stats'],
+    queryFn: () => fetchJson<ContextStats>('/prax/context/stats'),
+    staleTime: 15000,
+  });
+}
+
+export function useCompactContext() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      fetchJson<{
+        compacted: boolean;
+        dry_run?: boolean;
+        before_tokens?: number;
+        after_tokens?: number;
+        messages_before?: number;
+        messages_after?: number;
+        savings_tokens?: number;
+        reason?: string;
+      }>('/prax/context/compact', { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['context-stats'] });
+    },
+  });
+}
+
 // Agent Prompts - stored in .agents/{agent-name}/ folder
 export interface AgentPrompts {
   soul_prompt: string | null;
