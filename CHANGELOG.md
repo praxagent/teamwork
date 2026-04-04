@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/praxagent/teamwork/compare/v0.9.0...v0.10.0) (2026-04-04)
+
+
+### Features
+
+* adds cron and alarms ([fb5d3c6](https://github.com/praxagent/teamwork/commit/fb5d3c69eb6b9c9bbf07e4a52fcd7ae4d6bc208e))
+
 ## [0.9.0](https://github.com/praxagent/teamwork/compare/v0.8.0...v0.9.0) (2026-04-03)
 
 
