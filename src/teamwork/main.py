@@ -31,6 +31,7 @@ from teamwork.routers import (
     observability_router,
     plugins_router,
     projects_router,
+    scheduler_router,
     tasks_router,
     terminal_router,
     uploads_router,
@@ -95,6 +96,7 @@ app.add_middleware(
 app.include_router(observability_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(claude_code_router, prefix="/api")
+app.include_router(scheduler_router, prefix="/api")
 app.include_router(plugins_router, prefix="/api")
 app.include_router(content_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")

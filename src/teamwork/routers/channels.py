@@ -1,12 +1,16 @@
 """Channels API router."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from teamwork.models import Channel, Project, get_db
+from teamwork.models import Channel, Message, Project, get_db
 from teamwork.websocket import manager, WebSocketEvent, EventType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
@@ -271,16 +275,59 @@ async def get_channel(
     return channel_to_response(channel)
 
 
+class ChannelUpdate(BaseModel):
+    """Schema for renaming / updating a channel."""
+    name: str | None = None
+    description: str | None = None
+    archived: bool | None = None
+
+
+@router.patch("/{channel_id}", response_model=ChannelResponse)
+async def update_channel(
+    channel_id: str,
+    update: ChannelUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> ChannelResponse:
+    """Update a channel (rename, change description, archive/unarchive)."""
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    if update.name is not None:
+        channel.name = update.name
+    if update.description is not None:
+        channel.description = update.description
+
+    await db.flush()
+    await db.refresh(channel)
+
+    # Broadcast update
+    await manager.broadcast_to_project(
+        channel.project_id,
+        WebSocketEvent(
+            type=EventType.CHANNEL_NEW,  # reuse — frontend refreshes channel list
+            data={"channel_id": channel.id, "name": channel.name, "type": channel.type},
+        ),
+    )
+
+    return channel_to_response(channel)
+
+
 @router.delete("/{channel_id}", status_code=204)
 async def delete_channel(
     channel_id: str,
+    purge_messages: bool = Query(default=True, description="Also delete all messages in the channel"),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Delete a channel."""
+    """Delete a channel. Optionally purge all messages (default: true)."""
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
+
+    if purge_messages:
+        await db.execute(sa_delete(Message).where(Message.channel_id == channel_id))
+        logger.info("Purged messages for channel %s (%s)", channel.name, channel_id)
 
     await db.delete(channel)

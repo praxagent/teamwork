@@ -287,6 +287,39 @@ export function useCreateChannel() {
   });
 }
 
+export function useUpdateChannel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ channelId, ...data }: { channelId: string; name?: string; description?: string }) =>
+      fetchJson<Channel>(`/channels/${channelId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+    },
+  });
+}
+
+// Backward compat alias
+export const useRenameChannel = useUpdateChannel;
+
+export function useDeleteChannel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ channelId, purgeMessages = true }: { channelId: string; purgeMessages?: boolean }) => {
+      const resp = await fetch(`${API_BASE}/channels/${channelId}?purge_messages=${purgeMessages}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!resp.ok) throw new Error('Failed to delete channel');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+    },
+  });
+}
+
 export function useGetOrCreateDMChannel() {
   const queryClient = useQueryClient();
 
@@ -914,6 +947,7 @@ export interface ExecutionGraph {
   node_count: number;
   nodes: GraphNode[];
   trigger?: string;
+  session_id?: string;
 }
 
 export function useExecutionGraphs(enabled: boolean = true) {
@@ -936,6 +970,20 @@ export function useDeleteExecutionGraph() {
   return useMutation({
     mutationFn: (traceId: string) =>
       fetchJson<{ ok: boolean }>(`/agents/graphs/${traceId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['execution-graphs'] });
+    },
+  });
+}
+
+export function useMoveGraphSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ traceId, sessionId }: { traceId: string; sessionId: string }) =>
+      fetchJson<{ ok: boolean }>(`/agents/graphs/${traceId}/session`, {
+        method: 'PATCH',
+        body: JSON.stringify({ session_id: sessionId }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['execution-graphs'] });
     },
@@ -1501,5 +1549,97 @@ export function useKillClaudeCodeSession() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claude-code-sessions'] });
     },
+  });
+}
+
+
+// Scheduler
+
+export interface Schedule {
+  id: string;
+  description: string;
+  prompt: string;
+  cron: string;
+  timezone: string;
+  enabled: boolean;
+  created_at: string;
+  last_run: string | null;
+  next_run: string | null;
+}
+
+export interface Reminder {
+  id: string;
+  description: string;
+  prompt: string;
+  fire_at: string;
+  timezone: string;
+  channel?: string;
+}
+
+export function useSchedules() {
+  return useQuery({
+    queryKey: ['schedules'],
+    queryFn: () => fetchJson<{ schedules: Schedule[]; reminders: Reminder[] }>('/scheduler/schedules'),
+  });
+}
+
+export function useCreateSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { description: string; prompt: string; cron: string; timezone?: string; channel?: string }) =>
+      fetchJson('/scheduler/schedules', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); },
+  });
+}
+
+export function useUpdateSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; description?: string; prompt?: string; cron?: string; timezone?: string; enabled?: boolean }) =>
+      fetchJson(`/scheduler/schedules/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); },
+  });
+}
+
+export function useDeleteSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/scheduler/schedules/${id}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); },
+  });
+}
+
+export function useCreateReminder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { description: string; prompt: string; fire_at: string; timezone?: string; channel?: string }) =>
+      fetchJson('/scheduler/reminders', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); },
+  });
+}
+
+export function useDeleteReminder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/scheduler/reminders/${id}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); },
+  });
+}
+
+// Timezone
+
+export function useUserTimezone() {
+  return useQuery({
+    queryKey: ['user-timezone'],
+    queryFn: () => fetchJson<{ timezone: string }>('/scheduler/timezone'),
+  });
+}
+
+export function useSetUserTimezone() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (timezone: string) =>
+      fetchJson('/scheduler/timezone', { method: 'PUT', body: JSON.stringify({ timezone }) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['user-timezone'] }); },
   });
 }

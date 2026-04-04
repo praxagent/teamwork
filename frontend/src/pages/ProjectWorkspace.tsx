@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, BookOpen, Brain } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, BookOpen, Brain, Timer } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -10,7 +10,7 @@ import {
 } from '@/components/chat';
 import { ClaudeCodeStatus } from '@/components/chat/ClaudeCodeStatus';
 import { ProfileModal } from '@/components/profiles';
-import { BrowserPanel, BrowserChatSidebar, ContentPanel, FileBrowser, TaskBoard, SettingsPanel, GraphPanel, ProgressPanel, TerminalPanel, ObservabilityPanel, MemoryPanel } from '@/components/workspace';
+import { BrowserPanel, BrowserChatSidebar, ContentPanel, FileBrowser, TaskBoard, SettingsPanel, GraphPanel, ProgressPanel, TerminalPanel, ObservabilityPanel, MemoryPanel, SchedulerPanel } from '@/components/workspace';
 import { CommandPalette } from '@/components/common';
 import {
   useProject,
@@ -47,6 +47,7 @@ export function ProjectWorkspace() {
   const [showObservabilityPanel, setShowObservabilityPanel] = useState(savedView === 'observability');
   const [showContentPanel, setShowContentPanel] = useState(savedView === 'content');
   const [showMemoryPanel, setShowMemoryPanel] = useState(savedView === 'memory');
+  const [showScheduler, setShowScheduler] = useState(savedView === 'scheduler');
   // Track if Claude panel has ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(savedView === 'claude');
   const [focusTraceId, setFocusTraceId] = useState<string | null>(null);
@@ -65,9 +66,10 @@ export function ProjectWorkspace() {
       : showFileBrowser ? 'files'
       : showSettings ? 'settings'
       : showProgressPanel ? 'progress'
+      : showScheduler ? 'scheduler'
       : 'chat';
     localStorage.setItem(`tw:view:${projectId}`, view);
-  }, [projectId, showTerminalPanel, showBrowserPanel, showClaudePanel, showObservabilityPanel, showMemoryPanel, showContentPanel, showTaskPanel, showFileBrowser, showSettings, showProgressPanel]);
+  }, [projectId, showTerminalPanel, showBrowserPanel, showClaudePanel, showObservabilityPanel, showMemoryPanel, showContentPanel, showTaskPanel, showFileBrowser, showSettings, showProgressPanel, showScheduler]);
   // Content context for sidebar chat (which note/course/news is being viewed)
   const [contentContext, setContentContext] = useState<{ category: string; slug: string; title: string } | null>(null);
   // Track if profile modal should open in edit mode
@@ -188,6 +190,7 @@ export function ProjectWorkspace() {
     setShowObservabilityPanel(view === 'observability');
     setShowMemoryPanel(view === 'memory');
     setShowContentPanel(view === 'content');
+    setShowScheduler(view === 'scheduler');
     if (view === 'execution_graphs') setClaudePanelMounted(true);
   };
 
@@ -233,6 +236,7 @@ export function ProjectWorkspace() {
     : showFileBrowser ? 'files'
     : showSettings ? 'settings'
     : showProgressPanel ? 'progress'
+    : showScheduler ? 'scheduler'
     : 'chat';
 
   const handleSendMessage = (content: string, attachments?: Attachment[]) => {
@@ -351,6 +355,7 @@ export function ProjectWorkspace() {
           <RailIcon icon={Workflow} active={activeView === 'execution_graphs'} onClick={() => toggleView('execution_graphs')} title="Execution Graphs" darkMode={darkMode} />
         )}
         <RailIcon icon={Brain} active={activeView === 'memory'} onClick={() => toggleView('memory')} title="Memory" darkMode={darkMode} activeColor="bg-purple-500/15 text-purple-400" />
+        <RailIcon icon={Timer} active={activeView === 'scheduler'} onClick={() => toggleView('scheduler')} title="Scheduler" darkMode={darkMode} activeColor="bg-indigo-500/15 text-indigo-400" />
         <RailIcon icon={Activity} active={activeView === 'observability'} onClick={() => toggleView('observability')} title="Observability" darkMode={darkMode} activeColor="bg-green-500/15 text-green-400" />
 
         <div className={`w-6 border-t my-1 ${darkMode ? 'border-slate-800' : 'border-gray-200'}`} />
@@ -406,6 +411,11 @@ export function ProjectWorkspace() {
         {/* Content Panel — Prax's Space */}
         {activeView === 'content' && (
           <ContentPanel isVisible={true} onClose={() => switchTo('chat')} projectId={projectId} onContentSelect={setContentContext} />
+        )}
+
+        {/* Scheduler */}
+        {activeView === 'scheduler' && projectId && (
+          <SchedulerPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
         )}
 
         {/* Graph Panel — persistent mount */}

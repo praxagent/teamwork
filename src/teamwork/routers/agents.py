@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -699,4 +699,25 @@ async def delete_execution_graph(trace_id: str):
         raise HTTPException(status_code=exc.response.status_code, detail="Graph not found")
     except Exception as exc:
         _logger.debug("Failed to delete execution graph from Prax: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to reach Prax backend")
+
+
+@router.patch("/graphs/{trace_id}/session")
+async def move_graph_session(trace_id: str, data: dict = Body(...)):
+    """Move a trace to a different session (proxied to Prax)."""
+    prax_url = settings.prax_url
+    if not prax_url:
+        raise HTTPException(status_code=502, detail="Prax backend not configured")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.patch(
+                f"{prax_url.rstrip('/')}/execution/graphs/{trace_id}/session",
+                json=data,
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=exc.response.status_code, detail="Trace not found")
+    except Exception as exc:
+        _logger.debug("Failed to move graph session: %s", exc)
         raise HTTPException(status_code=502, detail="Failed to reach Prax backend")

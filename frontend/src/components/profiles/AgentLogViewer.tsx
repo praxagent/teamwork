@@ -359,7 +359,7 @@ export function AgentLogViewer({ agent, onClose }: AgentLogViewerProps) {
                    liveOutput?.status === 'failed' ? 'Task Failed - Session Log' :
                    liveOutput?.status === 'timeout' ? 'Task Timed Out - Session Log' :
                    liveOutput?.status === 'retry_loop' ? 'Retry Loop Detected - Session Log' :
-                   'Live Claude Code Output'}
+                   `Live ${agent.name} Output`}
                 </span>
                 {liveOutput?.status && (
                   <span className={`text-xs px-2 py-0.5 rounded ${

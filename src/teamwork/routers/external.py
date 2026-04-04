@@ -656,3 +656,35 @@ async def _get_external_project(project_id: str, db: AsyncSession) -> Project:
             detail="This endpoint is only for external-mode projects",
         )
     return project
+
+
+# ── Activity Logs ─────────────────────────────────────────────────────
+
+
+class ActivityLogRequest(BaseModel):
+    agent_id: str
+    activity_type: str  # tool_use, task_started, task_completed, message, etc.
+    description: str
+    extra_data: dict[str, Any] | None = None
+
+
+@router.post("/projects/{project_id}/activity")
+async def create_activity_log(
+    project_id: str,
+    request: ActivityLogRequest,
+    db: AsyncSession = Depends(get_db),
+    x_api_key: str | None = Header(None),
+):
+    """Create an activity log entry for an agent."""
+    await _get_external_project(project_id, db, x_api_key)
+
+    from teamwork.models import ActivityLog
+    log = ActivityLog(
+        agent_id=request.agent_id,
+        activity_type=request.activity_type,
+        description=request.description,
+        extra_data=request.extra_data,
+    )
+    db.add(log)
+    await db.commit()
+    return {"log_id": log.id}
