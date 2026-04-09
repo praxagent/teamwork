@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/praxagent/teamwork/compare/v0.11.0...v0.12.0) (2026-04-09)
+
+
+### Features
+
+* improve context management, create spaces, various other improvements ([#22](https://github.com/praxagent/teamwork/issues/22)) ([00dd4bb](https://github.com/praxagent/teamwork/commit/00dd4bbd5a39ccc0ee8b430a996e249d63f42be7))
+
 ## [0.11.0](https://github.com/praxagent/teamwork/compare/v0.10.0...v0.11.0) (2026-04-04)
 
 
