@@ -1,10 +1,11 @@
 """API routers for TeamWork."""
 
+from teamwork.routers.agent_plan import router as agent_plan_router
 from teamwork.routers.agents import router as agents_router
 from teamwork.routers.browser import router as browser_router
 from teamwork.routers.claude_code import router as claude_code_router
 from teamwork.routers.channels import router as channels_router
-from teamwork.routers.content import router as content_router
+from teamwork.routers.library import router as library_router
 from teamwork.routers.memory import router as memory_router
 from teamwork.routers.messages import router as messages_router
 from teamwork.routers.observability import router as observability_router
@@ -19,12 +20,13 @@ from teamwork.routers.prax import router as prax_router
 from teamwork.routers.workspace import router as workspace_router
 
 __all__ = [
+    "agent_plan_router",
     "agents_router",
     "browser_router",
     "claude_code_router",
     "channels_router",
-    "content_router",
     "external_router",
+    "library_router",
     "memory_router",
     "messages_router",
     "observability_router",

@@ -80,6 +80,15 @@ async def create_reminder(data: dict = Body(...)):
     return result
 
 
+@router.patch("/reminders/{reminder_id}")
+async def update_reminder(reminder_id: str, data: dict = Body(...)):
+    """Update a reminder."""
+    result = await _proxy("PATCH", f"/reminders/{reminder_id}", json=data)
+    if result is None:
+        return {"error": "Prax backend unavailable"}
+    return result
+
+
 @router.delete("/reminders/{reminder_id}")
 async def delete_reminder(reminder_id: str):
     """Delete a reminder."""

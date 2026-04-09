@@ -38,6 +38,11 @@ interface UIState {
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
 
+  // Library: hide the chat panel while browsing the library (persists
+  // across mounts via localStorage).  Default: chat visible.
+  libraryHideChat: boolean;
+  toggleLibraryHideChat: () => void;
+
   // Profile modal
   selectedAgent: Agent | null;
   setSelectedAgent: (agent: Agent | null) => void;
@@ -165,6 +170,18 @@ export const useUIStore = create<UIState>((set) => ({
 
   sidebarCollapsed: false,
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+  libraryHideChat: (() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('libraryHideChat') === 'true';
+  })(),
+  toggleLibraryHideChat: () => set((state) => {
+    const next = !state.libraryHideChat;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('libraryHideChat', String(next));
+    }
+    return { libraryHideChat: next };
+  }),
 
   selectedAgent: null,
   setSelectedAgent: (agent) => set({ selectedAgent: agent }),

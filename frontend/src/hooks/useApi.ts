@@ -10,8 +10,6 @@ import type {
   ClarifyingQuestionsResponse,
   OnboardingStatus,
   TeamMemberSuggestion,
-  ContentListResponse,
-  ContentSearchResponse,
 } from '@/types';
 
 const API_BASE = '/api';
@@ -1496,110 +1494,1011 @@ export function useUpdateAllPlugins() {
   });
 }
 
-// Content — Prax's Space (notes, courses, news)
-export function useContent(enabled: boolean = true) {
+// Library — Project → Notebook → Note hierarchy
+// See docs/library.md in the Prax repo for the design.
+
+export interface LibraryNote {
+  slug: string;
+  title: string;
+  author: 'human' | 'prax';
+  project: string;
+  notebook: string;
+  prax_may_edit: boolean;
+  last_edited_by?: string;
+  tags?: string[];
+  wikilinks?: string[];
+  lesson_order?: number;
+  status?: 'todo' | 'done';
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface LibraryNotebook {
+  slug: string;
+  name: string;
+  description?: string;
+  project: string;
+  note_count: number;
+  sequenced?: boolean;
+  current_slug?: string;
+  progress_percent?: number;
+  notes: LibraryNote[];
+}
+
+export interface LibrarySpace {
+  slug: string;
+  name: string;
+  description?: string;
+  kind?: string;
+  status?: 'active' | 'paused' | 'completed' | 'archived';
+  target_date?: string;
+  started_at?: string;
+  pinned?: boolean;
+  tasks_enabled?: boolean;
+  reminder_channel?: 'all' | 'sms' | 'discord' | 'teamwork';
+  /** Optional cover image — relative URL like
+   *  /library/spaces/{slug}/cover rendered at runtime. */
+  cover_image?: string;
+  notebook_count: number;
+  progress_percent?: number;
+  notebooks: LibraryNotebook[];
+}
+
+export interface LibraryTree {
+  /** Renamed from `projects` in 2026-04 — the hierarchy is now
+   *  TeamWork > Project > Space > Notebook > Note. */
+  spaces: LibrarySpace[];
+}
+
+export function useLibrary() {
   return useQuery({
-    queryKey: ['content'],
-    queryFn: () => fetchJson<ContentListResponse>('/content'),
-    enabled,
-    staleTime: 30_000,
+    queryKey: ['library'],
+    queryFn: () => fetchJson<LibraryTree>('/library'),
   });
 }
 
-export function useContentSearch(query: string) {
-  return useQuery({
-    queryKey: ['content-search', query],
-    queryFn: () =>
-      fetchJson<ContentSearchResponse>(
-        `/content/search?q=${encodeURIComponent(query)}`
-      ),
-    enabled: query.length >= 2,
-    staleTime: 10_000,
-  });
-}
-
-export function useContentItem(category: string | null, slug: string | null) {
-  return useQuery({
-    queryKey: ['content-item', category, slug],
-    queryFn: () =>
-      fetchJson<Record<string, unknown>>(`/content/${category}/${slug}`),
-    enabled: !!category && !!slug,
-  });
-}
-
-export function useDeleteNote() {
+export function useCreateLibrarySpace() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      fetchJson<{ slug: string; title: string; deleted: boolean }>(
-        `/content/notes/${encodeURIComponent(slug)}`,
+    mutationFn: (data: { name: string; description?: string }) =>
+      fetchJson('/library/spaces', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
+  });
+}
+
+export function useDeleteLibrarySpace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (project: string) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
+  });
+}
+
+export function useCreateLibraryNotebook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, ...data }: { project: string; name: string; description?: string }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/notebooks`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
+  });
+}
+
+export function useDeleteLibraryNotebook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, notebook }: { project: string; notebook: string }) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(project)}/notebooks/${encodeURIComponent(notebook)}`,
         { method: 'DELETE' },
       ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['content'] });
-      queryClient.invalidateQueries({ queryKey: ['content-search'] });
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
   });
 }
 
-export function useUpdateNote() {
+export function useCreateLibraryNote() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { slug: string; content?: string; title?: string; tags?: string[] }) => {
-      const { slug, ...body } = data;
-      return fetchJson<Record<string, unknown>>(
-        `/content/notes/${encodeURIComponent(slug)}`,
-        { method: 'PUT', body: JSON.stringify(body) },
-      );
-    },
+    mutationFn: (data: {
+      project: string;
+      notebook: string;
+      title: string;
+      content: string;
+      author?: 'human' | 'prax';
+      tags?: string[];
+      prax_may_edit?: boolean;
+    }) => fetchJson('/library/notes', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
+  });
+}
+
+export function useLibraryNote(project: string | null, notebook: string | null, slug: string | null) {
+  return useQuery({
+    queryKey: ['library-note', project, notebook, slug],
+    queryFn: () =>
+      fetchJson<{ meta: LibraryNote; content: string }>(
+        `/library/notes/${encodeURIComponent(project || '')}/${encodeURIComponent(
+          notebook || '',
+        )}/${encodeURIComponent(slug || '')}`,
+      ),
+    enabled: !!project && !!notebook && !!slug,
+  });
+}
+
+export function useUpdateLibraryNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      project,
+      notebook,
+      slug,
+      ...data
+    }: {
+      project: string;
+      notebook: string;
+      slug: string;
+      content?: string;
+      title?: string;
+      tags?: string[];
+      editor?: 'human' | 'prax';
+      override_permission?: boolean;
+    }) =>
+      fetchJson(
+        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
+          notebook,
+        )}/${encodeURIComponent(slug)}`,
+        { method: 'PATCH', body: JSON.stringify(data) },
+      ),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['content'] });
-      queryClient.invalidateQueries({ queryKey: ['content-item', 'notes', variables.slug] });
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({
+        queryKey: ['library-note', variables.project, variables.notebook, variables.slug],
+      });
     },
   });
 }
 
-export interface NoteVersion {
-  commit: string;
-  date: string;
-  message: string;
+export function useDeleteLibraryNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, notebook, slug }: { project: string; notebook: string; slug: string }) =>
+      fetchJson(
+        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
+          notebook,
+        )}/${encodeURIComponent(slug)}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
+  });
 }
 
-export function useNoteVersions(slug: string | null) {
+export function useMoveLibraryNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      project,
+      notebook,
+      slug,
+      to_project,
+      to_notebook,
+    }: {
+      project: string;
+      notebook: string;
+      slug: string;
+      to_project: string;
+      to_notebook: string;
+    }) =>
+      fetchJson(
+        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
+          notebook,
+        )}/${encodeURIComponent(slug)}/move`,
+        { method: 'PATCH', body: JSON.stringify({ to_project, to_notebook }) },
+      ),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
+  });
+}
+
+export function useSetLibraryNoteEditable() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      project,
+      notebook,
+      slug,
+      editable,
+    }: {
+      project: string;
+      notebook: string;
+      slug: string;
+      editable: boolean;
+    }) =>
+      fetchJson(
+        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
+          notebook,
+        )}/${encodeURIComponent(slug)}/editable`,
+        { method: 'PATCH', body: JSON.stringify({ editable }) },
+      ),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({
+        queryKey: ['library-note', variables.project, variables.notebook, variables.slug],
+      });
+    },
+  });
+}
+
+// Library Phase 2: schema, index, backlinks, refine, raw, outputs, health
+
+export function useLibrarySchema() {
   return useQuery({
-    queryKey: ['note-versions', slug],
+    queryKey: ['library-schema'],
+    queryFn: () => fetchJson<{ content: string }>('/library/schema'),
+  });
+}
+
+export function useSaveLibrarySchema() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (content: string) =>
+      fetchJson('/library/schema', { method: 'PUT', body: JSON.stringify({ content }) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library-schema'] }); },
+  });
+}
+
+export function useLibraryIndex() {
+  return useQuery({
+    queryKey: ['library-index'],
+    queryFn: () => fetchJson<{ content: string }>('/library/index'),
+  });
+}
+
+export function useRebuildLibraryIndex() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      fetchJson<{ status: string; content: string }>('/library/index/rebuild', {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-index'] });
+    },
+  });
+}
+
+// --- Library Space cover images ---
+
+/** Returns an absolute URL for a space's cover image with a
+ *  cache-busting token.  Prefers the filename from the space
+ *  metadata; falls back to a null return when no cover is set. */
+export function spaceCoverUrl(space: { slug: string; cover_image?: string }): string | null {
+  if (!space.cover_image) return null;
+  return `/api/teamwork/library/spaces/${encodeURIComponent(space.slug)}/cover?v=${encodeURIComponent(space.cover_image)}`;
+}
+
+export function useUploadSpaceCover() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ space, file }: { space: string; file: File }) => {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch(
+        `/api/teamwork/library/spaces/${encodeURIComponent(space)}/cover`,
+        { method: 'POST', body, credentials: 'include' },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({ queryKey: ['library-space'] });
+    },
+  });
+}
+
+export function useGenerateSpaceCover() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ space, prompt_hint }: { space: string; prompt_hint?: string }) =>
+      fetchJson<{ status: string; filename: string; prompt: string }>(
+        `/library/spaces/${encodeURIComponent(space)}/cover/generate`,
+        { method: 'POST', body: JSON.stringify({ prompt_hint: prompt_hint || '' }) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({ queryKey: ['library-space'] });
+    },
+  });
+}
+
+export function useDeleteSpaceCover() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (space: string) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(space)}/cover`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({ queryKey: ['library-space'] });
+    },
+  });
+}
+
+
+// --- Library Archive (long-term keepers: PDFs, reference docs) ---
+
+export interface ArchiveItem {
+  slug: string;
+  title: string;
+  kind?: string;
+  archived_at?: string;
+  source_url?: string;
+  source_filename?: string;
+  binary_path?: string;
+  tags?: string[];
+}
+
+export function useLibraryArchive() {
+  return useQuery({
+    queryKey: ['library-archive'],
+    queryFn: () => fetchJson<{ archive: ArchiveItem[] }>('/library/archive'),
+  });
+}
+
+export function useGetLibraryArchive(slug: string | null) {
+  return useQuery({
+    queryKey: ['library-archive', slug],
     queryFn: () =>
-      fetchJson<{ versions: NoteVersion[] }>(
-        `/content/notes/${encodeURIComponent(slug || '')}/versions`,
+      fetchJson<{ meta: ArchiveItem; content: string }>(
+        `/library/archive/${encodeURIComponent(slug || '')}`,
       ),
     enabled: !!slug,
   });
 }
 
-export function useNoteAtVersion(slug: string | null, commit: string | null) {
-  return useQuery({
-    queryKey: ['note-version', slug, commit],
-    queryFn: () =>
-      fetchJson<Record<string, unknown>>(
-        `/content/notes/${encodeURIComponent(slug || '')}/versions/${commit}`,
-      ),
-    enabled: !!slug && !!commit,
+export function useDeleteLibraryArchive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      fetchJson(`/library/archive/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-archive'] });
+    },
   });
 }
 
-export function useRestoreNoteVersion() {
+export interface LibraryBacklink {
+  project: string;
+  notebook: string;
+  slug: string;
+  title: string;
+  author: 'human' | 'prax';
+}
+
+export function useLibraryBacklinks(
+  project: string | null,
+  notebook: string | null,
+  slug: string | null,
+) {
+  return useQuery({
+    queryKey: ['library-backlinks', project, notebook, slug],
+    queryFn: () =>
+      fetchJson<{ backlinks: LibraryBacklink[] }>(
+        `/library/notes/${encodeURIComponent(project || '')}/${encodeURIComponent(
+          notebook || '',
+        )}/${encodeURIComponent(slug || '')}/backlinks`,
+      ),
+    enabled: !!project && !!notebook && !!slug,
+  });
+}
+
+export interface RefineResult {
+  status?: string;
+  before: string;
+  after: string;
+  title: string;
+  error?: string;
+}
+
+export function useRefineLibraryNote() {
+  return useMutation({
+    mutationFn: ({
+      project,
+      notebook,
+      slug,
+      instructions,
+    }: {
+      project: string;
+      notebook: string;
+      slug: string;
+      instructions: string;
+    }) =>
+      fetchJson<RefineResult>(
+        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
+          notebook,
+        )}/${encodeURIComponent(slug)}/refine`,
+        { method: 'POST', body: JSON.stringify({ instructions }) },
+      ),
+  });
+}
+
+export function useRefineViaAgent() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { slug: string; commit: string }) =>
-      fetchJson<Record<string, unknown>>(
-        `/content/notes/${encodeURIComponent(data.slug)}/versions/${data.commit}/restore`,
-        { method: 'POST' },
+    mutationFn: ({ project, notebook, slug, instructions }: {
+      project: string;
+      notebook: string;
+      slug: string;
+      instructions: string;
+    }) =>
+      fetchJson<{ status: string; response: string }>(
+        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
+          notebook,
+        )}/${encodeURIComponent(slug)}/refine-via-agent`,
+        { method: 'POST', body: JSON.stringify({ instructions }) },
       ),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['content'] });
-      queryClient.invalidateQueries({ queryKey: ['content-item', 'notes', variables.slug] });
-      queryClient.invalidateQueries({ queryKey: ['note-versions', variables.slug] });
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({
+        queryKey: ['library-note', variables.project, variables.notebook, variables.slug],
+      });
     },
+  });
+}
+
+export function useApplyLibraryRefine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      project,
+      notebook,
+      slug,
+      content,
+    }: {
+      project: string;
+      notebook: string;
+      slug: string;
+      content: string;
+    }) =>
+      fetchJson(
+        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
+          notebook,
+        )}/${encodeURIComponent(slug)}/apply-refine`,
+        { method: 'POST', body: JSON.stringify({ content }) },
+      ),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({
+        queryKey: ['library-note', variables.project, variables.notebook, variables.slug],
+      });
+    },
+  });
+}
+
+export interface RawItem {
+  slug: string;
+  title: string;
+  source_url?: string;
+  captured_at?: string;
+  kind?: string;
+}
+
+export function useLibraryRaw() {
+  return useQuery({
+    queryKey: ['library-raw'],
+    queryFn: () => fetchJson<{ raw: RawItem[] }>('/library/raw'),
+  });
+}
+
+export function useCaptureRaw() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { title: string; content: string; source_url?: string }) =>
+      fetchJson('/library/raw', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library-raw'] }); },
+  });
+}
+
+export function useGetRaw(slug: string | null) {
+  return useQuery({
+    queryKey: ['library-raw-item', slug],
+    queryFn: () =>
+      fetchJson<{ meta: RawItem; content: string }>(
+        `/library/raw/${encodeURIComponent(slug || '')}`,
+      ),
+    enabled: !!slug,
+  });
+}
+
+export function useDeleteRaw() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      fetchJson(`/library/raw/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library-raw'] }); },
+  });
+}
+
+export function usePromoteRaw() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      slug,
+      project,
+      notebook,
+      title,
+    }: {
+      slug: string;
+      project: string;
+      notebook: string;
+      title?: string;
+    }) =>
+      fetchJson(`/library/raw/${encodeURIComponent(slug)}/promote`, {
+        method: 'POST',
+        body: JSON.stringify({ project, notebook, title }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-raw'] });
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+    },
+  });
+}
+
+export interface OutputItem {
+  slug: string;
+  title: string;
+  kind: string;
+  generated_at?: string;
+}
+
+export function useLibraryOutputs() {
+  return useQuery({
+    queryKey: ['library-outputs'],
+    queryFn: () => fetchJson<{ outputs: OutputItem[] }>('/library/outputs'),
+  });
+}
+
+export function useGetOutput(slug: string | null) {
+  return useQuery({
+    queryKey: ['library-output-item', slug],
+    queryFn: () =>
+      fetchJson<{ meta: OutputItem; content: string }>(
+        `/library/outputs/${encodeURIComponent(slug || '')}`,
+      ),
+    enabled: !!slug,
+  });
+}
+
+export interface HealthCheckReport {
+  generated_at: string;
+  static: {
+    note_count: number;
+    dead_wikilinks: Array<{
+      source_project: string;
+      source_notebook: string;
+      source_slug: string;
+      dead_target: string;
+    }>;
+    empty_notebooks: Array<{ project: string; notebook: string; name: string }>;
+    orphans: Array<{ project: string; notebook: string; slug: string; title: string }>;
+    short_notes: Array<{ project: string; notebook: string; slug: string; title: string }>;
+  };
+  llm:
+    | {
+        skipped?: boolean;
+        error?: string;
+        reason?: string;
+        contradictions?: Array<{ note_a: string; note_b: string; issue: string }>;
+        unsourced?: Array<{ note: string; claim: string }>;
+        gaps?: Array<{ topic: string; mentioned_in: string[] }>;
+      }
+    | Record<string, unknown>;
+}
+
+export function useLibraryHealthCheck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      fetchJson<HealthCheckReport>('/library/health-check', { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-outputs'] });
+    },
+  });
+}
+
+export function useScheduleLibraryHealthCheck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { cron_expr?: string; channel?: string; timezone?: string }) =>
+      fetchJson<{ status: string; schedule: { id: string } }>(
+        '/library/health-check/schedule',
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedules'] });
+    },
+  });
+}
+
+// Library Phase 3: project metadata, notebook sequencing, Kanban tasks
+
+export interface LibrarySpaceDetail extends LibrarySpace {
+  status: 'active' | 'paused' | 'completed' | 'archived';
+  kind: string;
+  target_date: string;
+  started_at: string;
+  pinned: boolean;
+  tasks_enabled: boolean;
+  reminder_channel: 'all' | 'sms' | 'discord' | 'teamwork';
+  note_count: number;
+  progress_percent: number;
+}
+
+export function useLibrarySpace(project: string | null) {
+  return useQuery({
+    queryKey: ['library-space', project],
+    queryFn: () => fetchJson<LibrarySpaceDetail>(`/library/spaces/${encodeURIComponent(project || '')}`),
+    enabled: !!project,
+  });
+}
+
+export function useUpdateLibrarySpace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, ...data }: {
+      project: string;
+      name?: string;
+      description?: string;
+      kind?: string;
+      status?: 'active' | 'paused' | 'completed' | 'archived';
+      target_date?: string;
+      pinned?: boolean;
+      tasks_enabled?: boolean;
+      reminder_channel?: 'all' | 'sms' | 'discord' | 'teamwork';
+    }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({ queryKey: ['library-space', variables.project] });
+    },
+  });
+}
+
+export function useUpdateLibraryNotebook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, notebook, ...data }: {
+      project: string;
+      notebook: string;
+      name?: string;
+      description?: string;
+      sequenced?: boolean;
+      current_slug?: string;
+    }) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(project)}/notebooks/${encodeURIComponent(notebook)}`,
+        { method: 'PATCH', body: JSON.stringify(data) },
+      ),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
+  });
+}
+
+export function useReorderNotebook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, notebook, slug_order }: {
+      project: string;
+      notebook: string;
+      slug_order: string[];
+    }) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(project)}/notebooks/${encodeURIComponent(notebook)}/reorder`,
+        { method: 'POST', body: JSON.stringify({ slug_order }) },
+      ),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
+  });
+}
+
+export function useSetNoteStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, notebook, slug, status }: {
+      project: string;
+      notebook: string;
+      slug: string;
+      status: 'todo' | 'done';
+    }) =>
+      fetchJson(
+        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(notebook)}/${encodeURIComponent(slug)}/status`,
+        { method: 'PATCH', body: JSON.stringify({ status }) },
+      ),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({
+        queryKey: ['library-note', variables.project, variables.notebook, variables.slug],
+      });
+    },
+  });
+}
+
+// --- Tasks ---
+
+export interface TaskActivity {
+  actor: 'human' | 'prax' | string;
+  at: string;
+  action: 'created' | 'updated' | 'moved' | 'commented' | 'deleted' | string;
+  from?: string;
+  to?: string;
+  fields?: string[];
+  text?: string;
+}
+
+export interface TaskComment {
+  actor: string;
+  at: string;
+  text: string;
+}
+
+export interface ChecklistItem {
+  text: string;
+  done: boolean;
+}
+
+export type TaskSource = 'user_request' | 'agent_derived' | 'tool_output';
+export type Confidence = 'low' | 'medium' | 'high';
+
+export interface LibraryTask {
+  id: string;
+  title: string;
+  description: string;
+  column: string;
+  author: 'human' | 'prax';
+  /** Where the request to create this task came from.  See P1 in
+   * docs/research/prax-changes-from-todo-research.md. */
+  source?: TaskSource;
+  source_justification?: string;
+  /** Prax's self-reported confidence the task is well-scoped.  Not
+   * calibrated — shown as a colored dot in the UI. */
+  confidence?: Confidence;
+  assignees: string[];
+  due_date: string;
+  reminder_enabled: boolean;
+  reminder_id: string | null;
+  reminder_channel: string;
+  checklist: ChecklistItem[];
+  activity: TaskActivity[];
+  comments: TaskComment[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LibraryTaskColumn {
+  id: string;
+  name: string;
+}
+
+export function useProjectTasks(project: string | null) {
+  return useQuery({
+    queryKey: ['library-tasks', project],
+    queryFn: () => fetchJson<{ tasks: LibraryTask[] }>(`/library/spaces/${encodeURIComponent(project || '')}/tasks`),
+    enabled: !!project,
+  });
+}
+
+export function useProjectTaskColumns(project: string | null) {
+  return useQuery({
+    queryKey: ['library-task-columns', project],
+    queryFn: () => fetchJson<{ columns: LibraryTaskColumn[] }>(`/library/spaces/${encodeURIComponent(project || '')}/tasks/columns`),
+    enabled: !!project,
+  });
+}
+
+export function useCreateLibraryTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, ...data }: {
+      project: string;
+      title: string;
+      description?: string;
+      column?: string;
+      author?: 'human' | 'prax';
+      assignees?: string[];
+      due_date?: string;
+      reminder_enabled?: boolean;
+      reminder_channel?: string;
+      checklist?: ChecklistItem[];
+      source?: TaskSource;
+      source_justification?: string;
+      confidence?: Confidence;
+    }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/tasks`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library-tasks', variables.project] });
+    },
+  });
+}
+
+export function useGetLibraryTask(project: string | null, taskId: string | null) {
+  return useQuery({
+    queryKey: ['library-task', project, taskId],
+    queryFn: () => fetchJson<LibraryTask>(
+      `/library/spaces/${encodeURIComponent(project || '')}/tasks/${encodeURIComponent(taskId || '')}`,
+    ),
+    enabled: !!project && !!taskId,
+  });
+}
+
+export function useUpdateLibraryTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, task_id, ...data }: {
+      project: string;
+      task_id: string;
+      title?: string;
+      description?: string;
+      due_date?: string;
+      reminder_enabled?: boolean;
+      reminder_channel?: string;
+      assignees?: string[];
+      checklist?: ChecklistItem[];
+      confidence?: Confidence;
+      editor?: 'human' | 'prax';
+    }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task_id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library-tasks', variables.project] });
+      queryClient.invalidateQueries({ queryKey: ['library-task', variables.project, variables.task_id] });
+    },
+  });
+}
+
+export function useDeleteLibraryTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, task_id }: { project: string; task_id: string }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task_id)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library-tasks', variables.project] });
+    },
+  });
+}
+
+export function useMoveLibraryTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, task_id, column, editor }: {
+      project: string;
+      task_id: string;
+      column: string;
+      editor?: 'human' | 'prax';
+    }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task_id)}/move`, {
+        method: 'PATCH',
+        body: JSON.stringify({ column, editor }),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library-tasks', variables.project] });
+      queryClient.invalidateQueries({ queryKey: ['library-task', variables.project, variables.task_id] });
+    },
+  });
+}
+
+export function useCommentLibraryTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, task_id, text, actor }: {
+      project: string;
+      task_id: string;
+      text: string;
+      actor?: 'human' | 'prax';
+    }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task_id)}/comment`, {
+        method: 'POST',
+        body: JSON.stringify({ text, actor }),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library-task', variables.project, variables.task_id] });
+    },
+  });
+}
+
+export function useAddColumn() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, name }: { project: string; name: string }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/tasks/columns`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library-task-columns', variables.project] });
+    },
+  });
+}
+
+export function useRenameColumn() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, column_id, name }: { project: string; column_id: string; name: string }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/tasks/columns/${encodeURIComponent(column_id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library-task-columns', variables.project] });
+    },
+  });
+}
+
+export function useRemoveColumn() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, column_id }: { project: string; column_id: string }) =>
+      fetchJson(`/library/spaces/${encodeURIComponent(project)}/tasks/columns/${encodeURIComponent(column_id)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library-task-columns', variables.project] });
+    },
+  });
+}
+
+
+// Agent plan — Prax's private working-memory to-do list (NOT the Library Kanban)
+
+export interface AgentPlanStep {
+  step: number;
+  description: string;
+  done: boolean;
+}
+
+export interface AgentPlan {
+  id: string;
+  goal: string;
+  /** Prax's self-reported confidence the plan is correct/complete.
+   * Not calibrated — shown as a colored dot in AgentPlanCard. */
+  confidence?: Confidence;
+  steps: AgentPlanStep[];
+  done_count: number;
+  total: number;
+  current_step: AgentPlanStep | null;
+  created_at?: string;
+}
+
+/**
+ * Poll for Prax's current agent_plan.  Returns `null` when no plan is
+ * active (Prax isn't mid-task) and the full plan object otherwise.
+ *
+ * This is read-only on purpose — mid-execution editing of plans was
+ * shown to *reduce* quality in the CHI 2025 Plan-Then-Execute study
+ * when the model's initial plan was already correct.  See
+ * `docs/library.md` and `docs/research/agentic-todo-flows.md` in the
+ * Prax repo.
+ */
+export function useAgentPlan(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['agent-plan'],
+    queryFn: () => fetchJson<AgentPlan | null>('/agent-plan'),
+    enabled,
+    refetchInterval: 3_000,   // poll while active turns are running
+    staleTime: 0,
   });
 }
 
@@ -1693,6 +2592,15 @@ export function useCreateReminder() {
   return useMutation({
     mutationFn: (data: { description: string; prompt: string; fire_at: string; timezone?: string; channel?: string }) =>
       fetchJson('/scheduler/reminders', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); },
+  });
+}
+
+export function useUpdateReminder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; description?: string; prompt?: string; fire_at?: string; timezone?: string; channel?: string }) =>
+      fetchJson(`/scheduler/reminders/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); },
   });
 }
