@@ -190,48 +190,6 @@ export interface WebSocketEvent {
   channelId?: string;
 }
 
-// Content types (Prax's Space)
-export interface ContentNote {
-  slug: string;
-  title: string;
-  tags?: string[];
-  content?: string;
-  created_at: string;
-  updated_at: string;
-  snippet?: string;
-}
-
-export interface ContentCourse {
-  id: string;
-  title: string;
-  subject: string;
-  status: string;
-  level?: string;
-  progress?: Record<string, unknown>;
-  content?: string;
-}
-
-export interface ContentNews {
-  slug: string;
-  title: string;
-  content?: string;
-  created_at: string;
-  updated_at: string;
-  snippet?: string;
-}
-
-export interface ContentListResponse {
-  notes: ContentNote[];
-  courses: ContentCourse[];
-  news: ContentNews[];
-}
-
-export interface ContentSearchResponse {
-  notes: ContentNote[];
-  courses: ContentCourse[];
-  news: ContentNews[];
-}
-
 // API response types
 export interface PaginatedResponse<T> {
   items: T[];
