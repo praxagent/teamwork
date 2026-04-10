@@ -63,12 +63,13 @@ export function MessageList({
 
     // --- Initial scroll or channel change: snap to bottom ---
     if (scrolledForChannelRef.current !== channelId) {
-      // Use setTimeout(0) to guarantee we run after ALL layout/paint/reflow.
-      // This is the nuclear option — works even when flex parents haven't
-      // finished computing heights during the initial effect pass.
-      setTimeout(() => {
-        el.scrollTop = el.scrollHeight;
-      }, 0);
+      // Multiple deferred scrolls to handle mobile layout timing:
+      // setTimeout(0) catches desktop; the 100ms catches mobile
+      // where flex layout may not be computed during the first pass.
+      const snapToBottom = () => { el.scrollTop = el.scrollHeight; };
+      setTimeout(snapToBottom, 0);
+      setTimeout(snapToBottom, 100);
+      requestAnimationFrame(snapToBottom);
       scrolledForChannelRef.current = channelId;
       prevFirstIdRef.current = firstId;
       prevLastIdRef.current = lastId;

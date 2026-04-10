@@ -210,10 +210,16 @@ export function MarkdownContent({ content, className, darkMode: darkModeProp }: 
           <h4 className="text-sm font-semibold mt-2 mb-1 text-gray-800 dark:text-gray-200">{children}</h4>
         ),
         
-        // Paragraphs - with @mention highlighting
-        p: ({ children }) => (
-          <p className="mb-2 last:mb-0 leading-relaxed text-gray-900 dark:text-gray-100">{processChildren(children)}</p>
-        ),
+        // Paragraphs - with @mention highlighting.
+        // Use <div> when children contain block-level elements (e.g. code blocks
+        // rendered as <div> by SyntaxHighlighter) to avoid validateDOMNesting warnings.
+        p: ({ children }) => {
+          const hasBlock = Array.isArray(children)
+            ? children.some((c) => typeof c === 'object' && c !== null && 'type' in c && typeof (c as any).type === 'string' && ['div', 'pre', 'table', 'ul', 'ol', 'blockquote', 'hr'].includes((c as any).type))
+            : typeof children === 'object' && children !== null && 'type' in children && typeof (children as any).type === 'string' && ['div', 'pre', 'table', 'ul', 'ol', 'blockquote', 'hr'].includes((children as any).type);
+          const Tag = hasBlock ? 'div' : 'p';
+          return <Tag className="mb-2 last:mb-0 leading-relaxed text-gray-900 dark:text-gray-100">{processChildren(children)}</Tag>;
+        },
         
         // Lists
         ul: ({ children }) => (

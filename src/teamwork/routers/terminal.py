@@ -252,7 +252,7 @@ async def _run_sandbox_terminal(
         )
         return
 
-    sandbox_ws = f"/workspaces/{workspace_subdir}"
+    sandbox_ws = f"/workspace/{workspace_subdir}"
 
     if start_claude:
         inner_cmd = (
@@ -261,9 +261,11 @@ async def _run_sandbox_terminal(
             f" {container} claude --dangerously-skip-permissions"
         )
     else:
+        # Use the container's $SHELL (tmux-shell.sh) for persistent sessions.
+        # Falls back to bash if $SHELL is not set.
         inner_cmd = (
             f"docker exec -it -w {sandbox_ws} -e TERM=xterm-256color"
-            f" {container} bash"
+            f' {container} sh -c \'exec "${{SHELL:-bash}}"\''
         )
 
     await websocket.send_text(f"\x1b[32mConnecting to sandbox ({container})...\x1b[0m\r\n")

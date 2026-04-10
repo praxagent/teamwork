@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, Home, Library, Brain, Timer, MoreHorizontal, Cpu, Check } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, Home, Library, Brain, Timer, MoreHorizontal, Cpu, Check, Monitor } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -11,6 +11,8 @@ import {
 import { ClaudeCodeStatus } from '@/components/chat/ClaudeCodeStatus';
 import { ProfileModal } from '@/components/profiles';
 import { BrowserPanel, BrowserChatSidebar, LibraryPanel, HomeDashboard, AgentPlanCard, FileBrowser, TaskBoard, SettingsPanel, GraphPanel, ProgressPanel, TerminalPanel, ObservabilityPanel, MemoryPanel, SchedulerPanel } from '@/components/workspace';
+import { SpacePage } from '@/components/workspace/SpacePage';
+import { DesktopPanel } from '@/components/workspace/DesktopPanel';
 import { CommandPalette } from '@/components/common';
 import {
   useProject,
@@ -45,10 +47,21 @@ export function ProjectWorkspace() {
   const [showClaudePanel, setShowClaudePanel] = useState(savedView === 'claude');
   const [showProgressPanel, setShowProgressPanel] = useState(savedView === 'progress');
   const [showBrowserPanel, setShowBrowserPanel] = useState(savedView === 'browser');
+  const [showDesktopPanel, setShowDesktopPanel] = useState(savedView === 'desktop');
   const [showTerminalPanel, setShowTerminalPanel] = useState(savedView === 'terminal');
   const [showObservabilityPanel, setShowObservabilityPanel] = useState(savedView === 'observability');
-  const [showHomeDashboard, setShowHomeDashboard] = useState(savedView === 'home');
+  // Spaces landing is the default view when loading a project —
+  // the user sees their spaces grid first, not the chat.
+  // Restore focused space slug from localStorage so refresh stays
+  // on the space you were viewing, not back to the Spaces grid.
+  const savedSpaceSlug = projectId ? localStorage.getItem(`tw:space:${projectId}`) : null;
+  const [showHomeDashboard, setShowHomeDashboard] = useState(
+    (savedView === 'home' || savedView === 'spaces' || savedView === null) && !savedSpaceSlug,
+  );
   const [showLibraryPanel, setShowLibraryPanel] = useState(savedView === 'library');
+  const [focusedSpaceSlug, setFocusedSpaceSlug] = useState<string | null>(
+    savedView === 'space' || savedSpaceSlug ? savedSpaceSlug : null,
+  );
   const [showMemoryPanel, setShowMemoryPanel] = useState(savedView === 'memory');
   // Track which project the Library should open to when we jump from Home.
   const [libraryFocusProject, setLibraryFocusProject] = useState<string | null>(null);
@@ -70,7 +83,7 @@ export function ProjectWorkspace() {
       : showClaudePanel ? 'claude'
       : showObservabilityPanel ? 'observability'
       : showMemoryPanel ? 'memory'
-      : showHomeDashboard ? 'home'
+      : showHomeDashboard ? 'spaces'
       : showLibraryPanel ? 'library'
       : showTaskPanel ? 'tasks'
       : showFileBrowser ? 'files'
@@ -196,19 +209,31 @@ export function ProjectWorkspace() {
   }, [messagesData, currentChannelId, setMessages, setHasMore]);
 
   // View switching helpers
-  const switchTo = (view: string) => {
+  const switchTo = (view: string, spaceSlug?: string) => {
     setShowTaskPanel(view === 'tasks');
     setShowFileBrowser(view === 'files');
     setShowSettings(view === 'settings');
     setShowClaudePanel(view === 'execution_graphs');
     setShowProgressPanel(view === 'progress');
     setShowBrowserPanel(view === 'browser');
+    setShowDesktopPanel(view === 'desktop');
     setShowTerminalPanel(view === 'terminal');
     setShowObservabilityPanel(view === 'observability');
     setShowMemoryPanel(view === 'memory');
-    setShowHomeDashboard(view === 'home');
+    setShowHomeDashboard(view === 'home' || view === 'spaces');
     setShowLibraryPanel(view === 'library');
     setShowScheduler(view === 'scheduler');
+    // Focused single-space view — persist to localStorage so refresh
+    // returns to the same space instead of the grid.
+    const newSlug = view === 'space' ? (spaceSlug ?? null) : null;
+    setFocusedSpaceSlug(newSlug);
+    if (projectId) {
+      if (newSlug) {
+        localStorage.setItem(`tw:space:${projectId}`, newSlug);
+      } else {
+        localStorage.removeItem(`tw:space:${projectId}`);
+      }
+    }
     if (view === 'execution_graphs') setClaudePanelMounted(true);
     if (view === 'terminal') setTerminalMounted(true);
   };
@@ -245,12 +270,14 @@ export function ProjectWorkspace() {
   };
 
   // Derive current active view for context.
-  const activeView = showTerminalPanel ? 'terminal'
+  const activeView = focusedSpaceSlug ? 'space'
+    : showDesktopPanel ? 'desktop'
+    : showTerminalPanel ? 'terminal'
     : showBrowserPanel ? 'browser'
     : showClaudePanel ? 'execution_graphs'
     : showObservabilityPanel ? 'observability'
     : showMemoryPanel ? 'memory'
-    : showHomeDashboard ? 'home'
+    : showHomeDashboard ? 'spaces'
     : showLibraryPanel ? 'library'
     : showTaskPanel ? 'tasks'
     : showFileBrowser ? 'files'
@@ -334,7 +361,8 @@ export function ProjectWorkspace() {
   const isChatView = activeView === 'chat';
 
   return (
-    <div className={`flex flex-col md:flex-row h-screen ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+    <div className={`flex flex-col md:flex-row overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}
+      style={{ height: 'var(--app-height, 100dvh)', position: 'fixed', inset: 0 }}>
       {/* ── Icon Rail (desktop only) ── */}
       <nav className={`hidden md:flex w-14 shrink-0 flex-col items-center py-3 gap-1 border-r ${
         darkMode ? 'bg-slate-950 border-slate-800' : 'bg-gray-50 border-gray-200'
@@ -358,13 +386,14 @@ export function ProjectWorkspace() {
 
         <div className={`w-6 border-t mb-1 ${darkMode ? 'border-slate-800' : 'border-gray-200'}`} />
 
+        <RailIcon icon={Home} active={activeView === 'spaces'} onClick={() => switchTo('spaces')} title="Spaces" darkMode={darkMode} activeColor="bg-sky-500/15 text-sky-400" />
         <RailIcon icon={Search} active={false} onClick={() => window.dispatchEvent(new Event('open-command-palette'))} title="Search (⌘K)" darkMode={darkMode} />
         <RailIcon icon={MessageSquare} active={isChatView} onClick={() => switchTo('chat')} title="Chat" darkMode={darkMode} />
         <RailIcon icon={ListTodo} active={activeView === 'tasks'} onClick={() => toggleView('tasks')} title="Tasks" darkMode={darkMode} />
         <RailIcon icon={Code} active={activeView === 'files'} onClick={() => toggleView('files')} title="Files" darkMode={darkMode} />
         <RailIcon icon={TerminalSquare} active={activeView === 'terminal'} onClick={() => toggleView('terminal')} title="Terminal" darkMode={darkMode} activeColor="bg-green-500/15 text-green-400" />
         <RailIcon icon={Globe} active={activeView === 'browser'} onClick={() => toggleView('browser')} title="Browser" darkMode={darkMode} activeColor="bg-blue-500/15 text-blue-400" />
-        <RailIcon icon={Home} active={activeView === 'home'} onClick={() => toggleView('home')} title="Home" darkMode={darkMode} activeColor="bg-sky-500/15 text-sky-400" />
+        <RailIcon icon={Monitor} active={activeView === 'desktop'} onClick={() => toggleView('desktop')} title="Desktop" darkMode={darkMode} activeColor="bg-purple-500/15 text-purple-400" />
         <RailIcon icon={Library} active={activeView === 'library'} onClick={() => toggleView('library')} title="Library" darkMode={darkMode} activeColor="bg-purple-500/15 text-purple-400" />
         {isCoachingProject && (
           <RailIcon icon={BarChart3} active={activeView === 'progress'} onClick={() => toggleView('progress')} title="Progress" darkMode={darkMode} />
@@ -429,13 +458,20 @@ export function ProjectWorkspace() {
           Uses order-1 on mobile to appear after the main content panel (order-0),
           and order-none on desktop to stay in normal flow as a sidebar. */}
       {(activeView === 'browser' || activeView === 'terminal' || activeView === 'library') && projectId && (
-        <div className="order-1 md:order-none flex-shrink-0 h-64 md:h-auto border-t md:border-t-0 border-slate-700">
-          <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />
+        <div className="order-1 md:order-none flex-shrink-0 flex flex-col h-[35vh] md:h-auto border-t md:border-t-0 border-slate-700">
+          <div className="flex-1 min-h-0 flex flex-col pb-14 md:pb-0">
+            <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />
+          </div>
         </div>
       )}
 
       {/* ── Main Content ── */}
-      <div className={`flex-1 flex flex-col min-w-0 order-0 md:order-none pb-14 md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 order-0 md:order-none ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+
+        {/* Desktop Panel — full Linux desktop via noVNC */}
+        {activeView === 'desktop' && (
+          <DesktopPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+        )}
 
         {/* Browser Panel */}
         {activeView === 'browser' && projectId && (
@@ -457,15 +493,23 @@ export function ProjectWorkspace() {
           <MemoryPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
         )}
 
-        {/* Home dashboard — grid of active projects */}
-        {activeView === 'home' && (
+        {/* Spaces landing — grid of spaces (was "Home dashboard") */}
+        {activeView === 'spaces' && (
           <HomeDashboard
             isVisible={true}
             onClose={() => switchTo('chat')}
             onOpenProject={(slug) => {
-              setLibraryFocusProject(slug);
-              switchTo('library');
+              // Open the focused SpacePage, NOT the library
+              switchTo('space', slug);
             }}
+          />
+        )}
+
+        {/* Focused single-space view — opened from the Spaces grid */}
+        {activeView === 'space' && focusedSpaceSlug && (
+          <SpacePage
+            spaceSlug={focusedSpaceSlug}
+            onBack={() => switchTo('spaces')}
           />
         )}
 
@@ -473,8 +517,8 @@ export function ProjectWorkspace() {
         {activeView === 'library' && (
           <LibraryPanel
             isVisible={true}
-            onClose={() => switchTo('chat')}
-            onGoHome={() => switchTo('home')}
+            onClose={() => switchTo('spaces')}
+            onGoHome={() => switchTo('spaces')}
             focusProject={libraryFocusProject}
             onFocusProjectConsumed={() => setLibraryFocusProject(null)}
           />
@@ -532,7 +576,7 @@ export function ProjectWorkspace() {
 
         {/* Chat View */}
         {isChatView && (
-          <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+          <div className={`flex-1 flex flex-col min-h-0 overflow-hidden pb-14 md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
             {/* Minimal channel indicator */}
             {currentChannel && (
               <div className={`px-3 md:px-5 pt-3 pb-1 flex items-center gap-2 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -702,9 +746,16 @@ export function ProjectWorkspace() {
 
       {/* ── Mobile Bottom Tab Bar ── */}
       <nav className={clsx(
-        'md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t safe-area-bottom',
+        'md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t',
         darkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-200'
-      )}>
+      )} style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <MobileTabButton
+          icon={Home}
+          label="Spaces"
+          active={activeView === 'spaces' || activeView === 'space'}
+          onClick={() => switchTo('spaces')}
+          darkMode={darkMode}
+        />
         <MobileTabButton
           icon={MessageSquare}
           label="Chat"
@@ -713,24 +764,17 @@ export function ProjectWorkspace() {
           darkMode={darkMode}
         />
         <MobileTabButton
-          icon={ListTodo}
-          label="Tasks"
-          active={activeView === 'tasks'}
-          onClick={() => switchTo('tasks')}
-          darkMode={darkMode}
-        />
-        <MobileTabButton
-          icon={TerminalSquare}
-          label="Terminal"
-          active={activeView === 'terminal'}
-          onClick={() => switchTo('terminal')}
-          darkMode={darkMode}
-        />
-        <MobileTabButton
           icon={Globe}
           label="Browser"
           active={activeView === 'browser'}
           onClick={() => switchTo('browser')}
+          darkMode={darkMode}
+        />
+        <MobileTabButton
+          icon={Timer}
+          label="Scheduler"
+          active={activeView === 'scheduler'}
+          onClick={() => switchTo('scheduler')}
           darkMode={darkMode}
         />
         <div className="relative">
@@ -748,8 +792,10 @@ export function ProjectWorkspace() {
                 'absolute bottom-full right-0 mb-2 z-50 rounded-xl shadow-lg border min-w-[180px] py-1',
                 darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'
               )}>
+                <MobileMoreItem icon={ListTodo} label="Tasks" active={activeView === 'tasks'} onClick={() => { switchTo('tasks'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                <MobileMoreItem icon={TerminalSquare} label="Terminal" active={activeView === 'terminal'} onClick={() => { switchTo('terminal'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                <MobileMoreItem icon={Monitor} label="Desktop" active={activeView === 'desktop'} onClick={() => { switchTo('desktop'); setMobileMoreOpen(false); }} darkMode={darkMode} />
                 <MobileMoreItem icon={Code} label="Files" active={activeView === 'files'} onClick={() => { switchTo('files'); setMobileMoreOpen(false); }} darkMode={darkMode} />
-                <MobileMoreItem icon={Home} label="Home" active={activeView === 'home'} onClick={() => { switchTo('home'); setMobileMoreOpen(false); }} darkMode={darkMode} />
                 <MobileMoreItem icon={Library} label="Library" active={activeView === 'library'} onClick={() => { switchTo('library'); setMobileMoreOpen(false); }} darkMode={darkMode} />
                 <MobileMoreItem icon={Brain} label="Memory" active={activeView === 'memory'} onClick={() => { switchTo('memory'); setMobileMoreOpen(false); }} darkMode={darkMode} />
                 <MobileMoreItem icon={Timer} label="Scheduler" active={activeView === 'scheduler'} onClick={() => { switchTo('scheduler'); setMobileMoreOpen(false); }} darkMode={darkMode} />

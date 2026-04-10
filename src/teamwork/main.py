@@ -1,7 +1,9 @@
 """Main FastAPI application for TeamWork."""
 
+import asyncio
 import json
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -113,6 +115,104 @@ app.include_router(uploads_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
 app.include_router(prax_router, prefix="/api")
+
+
+# Desktop VNC proxy — forwards /api/desktop/* to the sandbox's noVNC server
+@app.api_route("/api/desktop/{path:path}", methods=["GET", "POST"])
+async def desktop_vnc_proxy(path: str):
+    """Reverse-proxy noVNC from the sandbox container."""
+    import httpx
+    desktop_url = getattr(settings, 'desktop_vnc_url', None) or os.environ.get("DESKTOP_VNC_URL", "")
+    if not desktop_url:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "DESKTOP_VNC_URL not configured"}, status_code=503)
+    from starlette.requests import Request
+    from starlette.responses import Response
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{desktop_url.rstrip('/')}/{path}")
+            # Only forward safe headers — transfer-encoding, content-length,
+            # and hop-by-hop headers cause issues when re-served by FastAPI.
+            skip = {"transfer-encoding", "content-encoding", "content-length", "connection"}
+            headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip}
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                headers=headers,
+            )
+    except Exception:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Desktop not available"}, status_code=502)
+
+
+# Desktop VNC WebSocket proxy — noVNC needs a WebSocket connection to websockify.
+# The HTTP proxy above handles static files (vnc.html, JS, CSS).
+# This route forwards the live VNC stream.
+@app.websocket("/api/desktop/websockify")
+async def desktop_vnc_ws_proxy(websocket: WebSocket):
+    """WebSocket reverse-proxy: browser ↔ websockify in the sandbox."""
+    desktop_url = getattr(settings, 'desktop_vnc_url', None) or os.environ.get("DESKTOP_VNC_URL", "")
+    if not desktop_url:
+        await websocket.close(code=1008, reason="DESKTOP_VNC_URL not configured")
+        return
+
+    # Convert http://sandbox:6080 → ws://sandbox:6080/websockify
+    ws_target = desktop_url.replace("http://", "ws://").replace("https://", "wss://").rstrip("/") + "/websockify"
+
+    await websocket.accept()
+
+    import websockets
+
+    try:
+        async with websockets.connect(
+            ws_target,
+            subprotocols=["binary"],
+            max_size=10 * 1024 * 1024,
+        ) as upstream:
+            stop = asyncio.Event()
+
+            async def client_to_upstream():
+                try:
+                    while not stop.is_set():
+                        data = await websocket.receive()
+                        if "bytes" in data and data["bytes"]:
+                            await upstream.send(data["bytes"])
+                        elif "text" in data and data["text"]:
+                            await upstream.send(data["text"])
+                except (WebSocketDisconnect, Exception):
+                    pass
+                finally:
+                    stop.set()
+
+            async def upstream_to_client():
+                try:
+                    async for msg in upstream:
+                        if isinstance(msg, bytes):
+                            await websocket.send_bytes(msg)
+                        else:
+                            await websocket.send_text(msg)
+                except (websockets.ConnectionClosed, Exception):
+                    pass
+                finally:
+                    stop.set()
+
+            c2u = asyncio.create_task(client_to_upstream())
+            u2c = asyncio.create_task(upstream_to_client())
+
+            await asyncio.wait([c2u, u2c], return_when=asyncio.FIRST_COMPLETED)
+            stop.set()
+            for t in [c2u, u2c]:
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
+    except Exception as e:
+        logger.error("Desktop WS proxy error: %s", e)
+        try:
+            await websocket.close(code=1011, reason="Upstream connection failed")
+        except Exception:
+            pass
 
 
 @app.get("/health")

@@ -2,7 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global styles - Light mode default */
+/* Global styles — prevent horizontal scroll on mobile Safari.
+   Vertical scroll is allowed on standalone pages (lander, projects list).
+   The app layout (ProjectWorkspace) manages its own overflow. */
+html, body {
+  margin: 0;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  width: 100%;
+}
+#root {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+/* Prevent Safari from zooming in on input focus (triggers at font < 16px) */
+@media screen and (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 :root {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
@@ -62,8 +83,12 @@ html.dark #root {
   padding: 0;
 }
 
-html, body, #root {
+html, body {
   height: 100%;
+  width: 100%;
+}
+#root {
+  min-height: 100%;
   width: 100%;
 }
 

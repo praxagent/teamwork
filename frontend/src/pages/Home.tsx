@@ -1,305 +1,90 @@
 import { useNavigate, Navigate } from 'react-router-dom';
-import { Button } from '@/components/common';
 import { useProjects } from '@/hooks/useApi';
-import { Users, Rocket, ArrowRight, FolderOpen, RotateCcw, Github, Server, Key, AlertTriangle, Zap, BookOpen, MessageSquare, Layout, Terminal, UserCheck, Eye, FileCode, GraduationCap, Brain, TrendingUp } from 'lucide-react';
-
-type Mode = 'startup' | 'coaching';
-
-import { useState } from 'react';
+import { Rocket, Github, Server, Key, Layout, MessageSquare, Brain, Monitor, Globe, BookOpen } from 'lucide-react';
 
 export function Home() {
   const navigate = useNavigate();
   const { data: projectsData, isLoading } = useProjects();
   const projects = projectsData?.projects || [];
-  const [activeMode, setActiveMode] = useState<Mode>('startup');
 
   // Skip lander and go straight to projects if any exist
   if (!isLoading && projects.length > 0) {
     return <Navigate to="/projects" replace />;
   }
 
-  // Show nothing while checking for projects
   if (isLoading) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-slate-900 to-indigo-950">
-      {/* Navbar */}
-      <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-        <a 
-          href="http://praxagent.ai" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 text-white/80 text-sm hover:text-white transition-colors"
-        >
-          <Users className="w-4 h-4" />
-          by praxagent
-        </a>
-        {projects.length > 0 && (
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/projects')}
-            className="!text-white/80 hover:!text-white hover:!bg-white/10"
-          >
-            <FolderOpen className="w-4 h-4 mr-2" />
-            My Projects ({projects.length})
-          </Button>
-        )}
-      </div>
-
-      {/* Hero section */}
-      <div className="max-w-6xl mx-auto px-4 pt-12 pb-16 text-center">
-        <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
+    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-slate-900 to-indigo-950 overflow-y-auto">
+      {/* Hero */}
+      <div className="max-w-3xl mx-auto px-5 pt-16 pb-10 text-center">
+        <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 leading-tight">
           <span className="bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-transparent">TeamWork</span>
-          <span className="ml-3 text-xs font-medium bg-indigo-400/20 text-indigo-300 px-2 py-1 rounded-full align-middle">BETA</span>
-          <br />
-          <span className="text-3xl md:text-4xl font-normal text-white/90">AI-Powered Virtual Teams</span>
         </h1>
-
-        <p className="text-xl text-white/80 max-w-2xl mx-auto mb-4">
-          An open-source research project exploring human-friendly ways to interact with multiple AI agents.
-          Not to replace teams, but to magnify human talent by empowering individuals with their own dedicated teams.
+        <p className="text-xl md:text-2xl text-white/90 font-medium mb-3">
+          Human + Agent collaboration, elevated.
         </p>
-        <p className="text-lg text-white/70 max-w-2xl mx-auto mb-6">
-          Build apps with AI dev teams or accelerate your learning with personalized AI coaches. Two modes, one platform.
+        <p className="text-base md:text-lg text-white/70 mb-6 leading-relaxed max-w-2xl mx-auto">
+          Work side-by-side with your own AI agent.  TeamWork ships with Prax — an agent
+          that browses the web, writes code, manages your projects, and learns alongside
+          you — but you can bring your own.  Not a chatbot portal. A shared workspace
+          where humans and agents have the same tools, desktop, and memory.
         </p>
 
-        {/* Proof of Concept Warning */}
-        <div className="max-w-2xl mx-auto mb-8 bg-amber-500/10 border border-amber-400/30 rounded-lg px-4 py-3">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-            <div className="text-left">
-              <p className="text-amber-200 font-semibold text-sm">Proof of Concept Only</p>
-              <p className="text-amber-200/70 text-sm">This is an experimental project for demonstration purposes. Do not rely on it for actual product development or production use.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Open Source Badges */}
-        <div className="flex flex-wrap items-center justify-center gap-3 mb-8 text-sm">
-          <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/90 px-3 py-1.5 rounded-full">
-            <Github className="w-4 h-4" />
-            Open Source
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-8 text-xs">
+          <span className="inline-flex items-center gap-1 bg-white/10 border border-white/20 text-white/80 px-2.5 py-1 rounded-full">
+            <Github className="w-3 h-3" /> Open Source
           </span>
-          <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/90 px-3 py-1.5 rounded-full">
-            <Server className="w-4 h-4" />
-            Self-Hosted
+          <span className="inline-flex items-center gap-1 bg-white/10 border border-white/20 text-white/80 px-2.5 py-1 rounded-full">
+            <Server className="w-3 h-3" /> Self-Hosted
           </span>
-          <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/90 px-3 py-1.5 rounded-full">
-            <Key className="w-4 h-4" />
-            Bring Your Own API Key
+          <span className="inline-flex items-center gap-1 bg-white/10 border border-white/20 text-white/80 px-2.5 py-1 rounded-full">
+            <Key className="w-3 h-3" /> Bring Your Own Keys
           </span>
         </div>
 
-        <Button
-          variant="secondary"
-          size="lg"
+        <button
           onClick={() => navigate('/new')}
-          className="!bg-white !text-indigo-600 hover:!bg-gray-100 text-lg px-8 py-4"
+          className="px-8 py-3.5 bg-white text-indigo-600 font-semibold rounded-xl text-base hover:bg-gray-100 transition-colors shadow-lg shadow-indigo-500/20"
         >
-          <Rocket className="w-5 h-5 mr-2" />
-          Start Building
-        </Button>
+          <Rocket className="w-5 h-5 inline -mt-0.5 mr-2" />
+          Get Started
+        </button>
       </div>
 
-      {/* Mode Selector Tabs */}
-      <div className="max-w-6xl mx-auto px-4 pb-16">
-        <h2 className="text-2xl font-bold text-white text-center mb-6">Choose Your Mode</h2>
-        
-        <div className="flex justify-center gap-4 mb-8">
-          <button 
-            onClick={() => setActiveMode('startup')}
-            className={`px-6 py-3 rounded-lg font-medium text-lg transition-all flex items-center gap-2 ${
-              activeMode === 'startup'
-                ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25'
-                : 'bg-white/10 text-white/70 hover:bg-white/15'
-            }`}
-          >
-            <Zap className="w-5 h-5" />
-            Startup Mode
-          </button>
-          <button 
-            onClick={() => setActiveMode('coaching')}
-            className={`px-6 py-3 rounded-lg font-medium text-lg transition-all flex items-center gap-2 ${
-              activeMode === 'coaching'
-                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
-                : 'bg-white/10 text-white/70 hover:bg-white/15'
-            }`}
-          >
-            <BookOpen className="w-5 h-5" />
-            Coaching Mode
-          </button>
+      {/* Features */}
+      <div className="max-w-4xl mx-auto px-5 pb-16">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Feature icon={Layout} title="Spaces"
+            desc="Organize work into themed spaces — courses, projects, goals. Each with its own Kanban, notebooks, wiki, and chat." />
+          <Feature icon={MessageSquare} title="Chat with Prax"
+            desc="AI assistant with 100+ tools. Research, write notes, manage tasks, create presentations — all conversationally." />
+          <Feature icon={Globe} title="Live Browser"
+            desc="Prax browses the web for you. Watch live, take over to log in, or let him work autonomously." />
+          <Feature icon={Monitor} title="Linux Desktop"
+            desc="Full graphical desktop via noVNC. Run GUI apps, handle OAuth popups, interact with everything Prax sees." />
+          <Feature icon={BookOpen} title="Knowledge Base"
+            desc="Library with notes, wiki, archive, wikilinks, and graph view. Prax writes deep-dive notes you can edit." />
+          <Feature icon={Brain} title="Memory"
+            desc="Prax remembers across sessions. Short-term scratchpad, long-term knowledge graph, and conversation history." />
         </div>
-
-        {/* Startup Mode Content */}
-        {activeMode === 'startup' && (
-          <div>
-            <div className="text-center mb-8">
-              <h3 className="text-xl font-semibold text-white mb-2">Build Your App with AI</h3>
-              <p className="text-white/70 max-w-2xl mx-auto">
-                Describe your app idea and watch as a virtual team of AI developers, product managers, and QA engineers collaborate to bring it to life.
-              </p>
-            </div>
-
-            {/* How it works - Startup */}
-            <div className="hidden md:flex items-center justify-center gap-6 text-white/80 mb-12">
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-indigo-500 text-white rounded-full flex items-center justify-center font-bold">1</span>
-                <span>Describe your app idea</span>
-              </div>
-              <ArrowRight className="w-5 h-5 text-white/40" />
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-indigo-500 text-white rounded-full flex items-center justify-center font-bold">2</span>
-                <span>AI generates your team</span>
-              </div>
-              <ArrowRight className="w-5 h-5 text-white/40" />
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-indigo-500 text-white rounded-full flex items-center justify-center font-bold">3</span>
-                <span>Manage the build</span>
-              </div>
-              <RotateCcw className="w-5 h-5 text-white/40" />
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-indigo-500 text-white rounded-full flex items-center justify-center font-bold">↺</span>
-                <span>Feedback & Direction</span>
-              </div>
-            </div>
-
-            {/* Startup Features Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <FeatureCard
-                icon={MessageSquare}
-                title="Real-time Team Chat"
-                description="Communicate with your AI team through familiar channels. Each agent has unique personality."
-                color="yellow"
-              />
-              <FeatureCard
-                icon={Layout}
-                title="Kanban Task Board"
-                description="Drag-and-drop task management. Your PM creates tasks and developers execute autonomously."
-                color="yellow"
-              />
-              <FeatureCard
-                icon={Terminal}
-                title="Executive Access Terminal"
-                description="Launch Claude Code or drop to raw terminal. Run locally or in isolated Docker containers."
-                color="yellow"
-              />
-              <FeatureCard
-                icon={UserCheck}
-                title="Unique AI Personalities"
-                description="Each team member has distinct skills and personality. Meet your team before they start building."
-                color="yellow"
-              />
-              <FeatureCard
-                icon={Eye}
-                title="Live Sessions & Takeover"
-                description="Watch agents work in real-time. Take over anytime to work directly, then hand control back."
-                color="yellow"
-              />
-              <FeatureCard
-                icon={FileCode}
-                title="Built-in File Browser"
-                description="Browse generated code, view diffs, and explore your workspace. Code is written locally."
-                color="yellow"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Coaching Mode Content */}
-        {activeMode === 'coaching' && (
-          <div>
-            <div className="text-center mb-8">
-              <h3 className="text-xl font-semibold text-white mb-2">Accelerate Your Learning</h3>
-              <p className="text-white/70 max-w-2xl mx-auto">
-                Get personalized AI coaches for any goal. Languages, math, interview prep, fitness, professional skills, and more - learn and grow with adaptive, intelligent tutors.
-              </p>
-            </div>
-
-            {/* How it works - Coaching */}
-            <div className="hidden md:flex items-center justify-center gap-6 text-white/80 mb-12">
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold">1</span>
-                <span>Describe your learning goals</span>
-              </div>
-              <ArrowRight className="w-5 h-5 text-white/40" />
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold">2</span>
-                <span>AI creates your coaches</span>
-              </div>
-              <ArrowRight className="w-5 h-5 text-white/40" />
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold">3</span>
-                <span>Learn & track progress</span>
-              </div>
-            </div>
-
-            {/* Coaching Features Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <FeatureCard
-                icon={GraduationCap}
-                title="Personalized Coaching"
-                description="Each coach adapts to your level and learning style. Get explanations, practice problems, and instant feedback."
-                color="green"
-              />
-              <FeatureCard
-                icon={Users}
-                title="Meet Your Coaches"
-                description="AI generates personalized coaches for each topic, each with unique teaching styles and expertise."
-                color="green"
-              />
-              <FeatureCard
-                icon={TrendingUp}
-                title="Progress Tracking"
-                description="Track your learning journey with detailed progress metrics, skill ratings, and topic coverage."
-                color="green"
-              />
-              <FeatureCard
-                icon={Brain}
-                title="Long-term Memory"
-                description="Coaches remember your strengths, weaknesses, and learning style across sessions."
-                color="green"
-              />
-              <FeatureCard
-                icon={FileCode}
-                title="Markdown Notes"
-                description="All progress stored in editable markdown files you can view and customize."
-                color="green"
-              />
-              <FeatureCard
-                icon={Layout}
-                title="Learning Tasks"
-                description="Kanban board for tracking learning goals and practice assignments."
-                color="green"
-              />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-function FeatureCard({
-  icon: Icon,
-  title,
-  description,
-  color,
-}: {
+function Feature({ icon: Icon, title, desc }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
-  description: string;
-  color: 'yellow' | 'green';
+  desc: string;
 }) {
-  const iconBgColor = color === 'yellow' ? 'bg-indigo-400/15' : 'bg-emerald-400/15';
-  const iconTextColor = color === 'yellow' ? 'text-indigo-400' : 'text-emerald-400';
-  
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm hover:bg-white/8 transition-colors">
-      <div className={`w-12 h-12 ${iconBgColor} rounded-lg flex items-center justify-center mb-4`}>
-        <Icon className={`w-6 h-6 ${iconTextColor}`} />
+    <div className="bg-white/5 border border-white/10 rounded-xl p-5 hover:bg-white/8 transition-colors">
+      <div className="w-10 h-10 bg-indigo-400/15 rounded-lg flex items-center justify-center mb-3">
+        <Icon className="w-5 h-5 text-indigo-400" />
       </div>
-      <h3 className="font-bold text-white text-lg mb-2">{title}</h3>
-      <p className="text-white/70 text-sm">{description}</p>
+      <h3 className="font-semibold text-white mb-1">{title}</h3>
+      <p className="text-white/60 text-sm leading-relaxed">{desc}</p>
     </div>
   );
 }

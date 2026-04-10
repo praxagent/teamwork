@@ -919,8 +919,8 @@ export function useAgentLiveOutput(agentId: string | null, enabled: boolean = tr
     queryKey: ['agent-live-output', agentId],
     queryFn: () => fetchJson<LiveOutputResponse>(`/agents/${agentId}/live-output`),
     enabled: !!agentId && enabled,
-    refetchInterval: 1000, // Poll every 1 second when enabled for more responsive updates
-    staleTime: 500,
+    refetchInterval: 5000, // Poll every 5 seconds (was 1s — caused UI jank on mobile)
+    staleTime: 3000,
   });
 }
 
@@ -1539,6 +1539,9 @@ export interface LibrarySpace {
   /** Optional cover image — relative URL like
    *  /library/spaces/{slug}/cover rendered at runtime. */
   cover_image?: string;
+  /** Color theme — hue value (0–360) that shifts all accent colors
+   *  for this space.  null = use the global default (indigo = 240). */
+  theme_hue?: number | null;
   notebook_count: number;
   progress_percent?: number;
   notebooks: LibraryNotebook[];
@@ -1569,8 +1572,10 @@ export function useCreateLibrarySpace() {
 export function useDeleteLibrarySpace() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (project: string) =>
-      fetchJson(`/library/spaces/${encodeURIComponent(project)}`, { method: 'DELETE' }),
+    mutationFn: ({ slug, archiveNotes }: { slug: string; archiveNotes?: boolean }) => {
+      const qs = archiveNotes ? '?archive_notes=true' : '';
+      return fetchJson(`/library/spaces/${encodeURIComponent(slug)}${qs}`, { method: 'DELETE' });
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library'] }); },
   });
 }
@@ -1775,7 +1780,7 @@ export function useRebuildLibraryIndex() {
  *  metadata; falls back to a null return when no cover is set. */
 export function spaceCoverUrl(space: { slug: string; cover_image?: string }): string | null {
   if (!space.cover_image) return null;
-  return `/api/teamwork/library/spaces/${encodeURIComponent(space.slug)}/cover?v=${encodeURIComponent(space.cover_image)}`;
+  return `/api/library/spaces/${encodeURIComponent(space.slug)}/cover?v=${encodeURIComponent(space.cover_image)}`;
 }
 
 export function useUploadSpaceCover() {
@@ -1785,7 +1790,7 @@ export function useUploadSpaceCover() {
       const body = new FormData();
       body.append('file', file);
       const res = await fetch(
-        `/api/teamwork/library/spaces/${encodeURIComponent(space)}/cover`,
+        `/api/library/spaces/${encodeURIComponent(space)}/cover`,
         { method: 'POST', body, credentials: 'include' },
       );
       if (!res.ok) {
@@ -1804,10 +1809,10 @@ export function useUploadSpaceCover() {
 export function useGenerateSpaceCover() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ space, prompt_hint }: { space: string; prompt_hint?: string }) =>
+    mutationFn: ({ space, prompt_hint, dark_mode }: { space: string; prompt_hint?: string; dark_mode?: boolean }) =>
       fetchJson<{ status: string; filename: string; prompt: string }>(
         `/library/spaces/${encodeURIComponent(space)}/cover/generate`,
-        { method: 'POST', body: JSON.stringify({ prompt_hint: prompt_hint || '' }) },
+        { method: 'POST', body: JSON.stringify({ prompt_hint: prompt_hint || '', dark_mode: dark_mode ?? true }) },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['library'] });
@@ -2497,8 +2502,8 @@ export function useAgentPlan(enabled: boolean = true) {
     queryKey: ['agent-plan'],
     queryFn: () => fetchJson<AgentPlan | null>('/agent-plan'),
     enabled,
-    refetchInterval: 3_000,   // poll while active turns are running
-    staleTime: 0,
+    refetchInterval: 10_000,  // poll every 10s (was 3s — caused jank)
+    staleTime: 5_000,         // consider fresh for 5s (was 0 — refetched every render)
   });
 }
 
@@ -2612,6 +2617,181 @@ export function useDeleteReminder() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Flashcards
+// ---------------------------------------------------------------------------
+
+export interface FlashcardCard {
+  id: string;
+  front: string;
+  back: string;
+  confidence?: number;
+  last_reviewed?: string;
+}
+
+export interface FlashcardDeck {
+  slug: string;
+  title: string;
+  card_count: number;
+  created_at?: string;
+  cards?: FlashcardCard[];
+}
+
+export function useFlashcardDecks(spaceSlug: string | null) {
+  return useQuery({
+    queryKey: ['flashcard-decks', spaceSlug],
+    queryFn: () =>
+      fetchJson<{ decks: FlashcardDeck[] }>(
+        `/library/spaces/${encodeURIComponent(spaceSlug || '')}/flashcards`,
+      ),
+    enabled: !!spaceSlug,
+  });
+}
+
+export function useFlashcardDeck(spaceSlug: string | null, deckSlug: string | null) {
+  return useQuery({
+    queryKey: ['flashcard-deck', spaceSlug, deckSlug],
+    queryFn: () =>
+      fetchJson<FlashcardDeck>(
+        `/library/spaces/${encodeURIComponent(spaceSlug || '')}/flashcards/${encodeURIComponent(deckSlug || '')}`,
+      ),
+    enabled: !!spaceSlug && !!deckSlug,
+  });
+}
+
+export function useCreateFlashcardDeck(spaceSlug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { title: string }) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(spaceSlug)}/flashcards`,
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flashcard-decks', spaceSlug] });
+    },
+  });
+}
+
+export function useDeleteFlashcardDeck(spaceSlug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (deckSlug: string) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(spaceSlug)}/flashcards/${encodeURIComponent(deckSlug)}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flashcard-decks', spaceSlug] });
+    },
+  });
+}
+
+export function useAddFlashcard(spaceSlug: string, deckSlug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { front: string; back: string }) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(spaceSlug)}/flashcards/${encodeURIComponent(deckSlug)}/cards`,
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flashcard-deck', spaceSlug, deckSlug] });
+      queryClient.invalidateQueries({ queryKey: ['flashcard-decks', spaceSlug] });
+    },
+  });
+}
+
+export function useUpdateFlashcard(spaceSlug: string, deckSlug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ cardId, ...data }: { cardId: string; front?: string; back?: string; confidence?: number }) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(spaceSlug)}/flashcards/${encodeURIComponent(deckSlug)}/cards/${encodeURIComponent(cardId)}`,
+        { method: 'PATCH', body: JSON.stringify(data) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flashcard-deck', spaceSlug, deckSlug] });
+    },
+  });
+}
+
+export function useDeleteFlashcard(spaceSlug: string, deckSlug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (cardId: string) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(spaceSlug)}/flashcards/${encodeURIComponent(deckSlug)}/cards/${encodeURIComponent(cardId)}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flashcard-deck', spaceSlug, deckSlug] });
+      queryClient.invalidateQueries({ queryKey: ['flashcard-decks', spaceSlug] });
+    },
+  });
+}
+
+// --- Space Files (per-space reference-file store) ---
+
+export interface SpaceFile {
+  name: string;
+  size: number;
+  mime_type: string;
+  uploaded_at: string;
+}
+
+export function spaceFileUrl(space: string, filename: string): string {
+  return `${API_BASE}/library/spaces/${encodeURIComponent(space)}/files/${encodeURIComponent(filename)}`;
+}
+
+export function useSpaceFiles(spaceSlug: string | null) {
+  return useQuery({
+    queryKey: ['space-files', spaceSlug],
+    queryFn: () =>
+      fetchJson<{ files: SpaceFile[] }>(
+        `/library/spaces/${encodeURIComponent(spaceSlug || '')}/files`,
+      ),
+    enabled: !!spaceSlug,
+  });
+}
+
+export function useUploadSpaceFile(spaceSlug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch(
+        `${API_BASE}/library/spaces/${encodeURIComponent(spaceSlug)}/files`,
+        { method: 'POST', body, credentials: 'include' },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+      }
+      return res.json() as Promise<SpaceFile>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['space-files', spaceSlug] });
+    },
+  });
+}
+
+export function useDeleteSpaceFile(spaceSlug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (filename: string) =>
+      fetchJson(
+        `/library/spaces/${encodeURIComponent(spaceSlug)}/files/${encodeURIComponent(filename)}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['space-files', spaceSlug] });
+    },
+  });
+}
+
 
 // Timezone
 
