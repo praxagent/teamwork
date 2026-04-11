@@ -453,14 +453,26 @@ export function ProjectWorkspace() {
         </div>
       )}
 
-      {/* ── Browser Chat Sidebar (browser/terminal/library mode) ── */}
-      {/* Single instance — CSS repositions between desktop sidebar and mobile stacked.
+      {/* ── Panel Chat Sidebars — one per panel, each with its own channel ── */}
+      {/* Each panel gets a dedicated channel so conversation history is separate.
+          CSS repositions between desktop sidebar and mobile stacked.
           Uses order-1 on mobile to appear after the main content panel (order-0),
           and order-none on desktop to stay in normal flow as a sidebar. */}
-      {(activeView === 'browser' || activeView === 'terminal' || activeView === 'library') && projectId && (
+      {(activeView === 'browser' || activeView === 'terminal' || activeView === 'desktop' || activeView === 'files' || activeView === 'library') && projectId && (
         <div className="order-1 md:order-none flex-shrink-0 flex flex-col h-[35vh] md:h-auto border-t md:border-t-0 border-slate-700">
           <div className="flex-1 min-h-0 flex flex-col pb-14 md:pb-0">
-            <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />
+            {activeView === 'library' ? (
+              <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />
+            ) : (
+              <BrowserChatSidebar
+                key={activeView}
+                projectId={projectId}
+                activeView={activeView}
+                onTraceClick={handleTraceClick}
+                contentContext={contentContext}
+                panel={activeView as 'browser' | 'desktop' | 'terminal' | 'files'}
+              />
+            )}
           </div>
         </div>
       )}

@@ -102,8 +102,8 @@ export function CommandPalette({ onChannelSelect, onDMSelect, onSwitchView }: Co
   const localItems = useMemo<CommandItem[]>(() => {
     const result: CommandItem[] = [];
 
-    // Channels
-    channels.forEach((ch) => {
+    // Channels (exclude panel channels — those are accessed via their panels)
+    channels.filter((ch) => ch.type !== 'panel').forEach((ch) => {
       result.push({
         id: `ch-${ch.id}`,
         label: ch.type === 'dm' ? ch.name : `#${ch.name}`,

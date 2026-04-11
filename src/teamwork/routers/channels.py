@@ -260,6 +260,105 @@ async def get_or_create_dm_channel(
     return channel_to_response(dm_channel)
 
 
+class PanelChannelRequest(BaseModel):
+    """Schema for getting/creating a panel channel."""
+
+    project_id: str
+    panel: str  # browser, desktop, terminal, files
+
+
+@router.post("/panels/get-or-create", response_model=ChannelResponse)
+async def get_or_create_panel_channel(
+    req: PanelChannelRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ChannelResponse:
+    """Get or create a dedicated channel for a workspace panel.
+
+    Panel channels have a fixed slug like 'panel-browser-{project_id[:8]}'
+    so they're reusable across sessions.
+    """
+    VALID_PANELS = {"browser", "desktop", "terminal", "files"}
+    if req.panel not in VALID_PANELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid panel: {req.panel}. Must be one of {sorted(VALID_PANELS)}",
+        )
+
+    # Verify project exists
+    project_result = await db.execute(
+        select(Project).where(Project.id == req.project_id)
+    )
+    if not project_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Deterministic channel name so it's idempotent
+    channel_name = f"panel-{req.panel}-{req.project_id[:8]}"
+
+    # Look for existing panel channel
+    result = await db.execute(
+        select(Channel).where(
+            Channel.project_id == req.project_id,
+            Channel.type == "panel",
+            Channel.name == channel_name,
+        ).limit(1)
+    )
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        return channel_to_response(existing)
+
+    # Create new panel channel
+    panel_labels = {
+        "browser": "Browser Chat",
+        "desktop": "Desktop Chat",
+        "terminal": "Terminal Chat",
+        "files": "Files Chat",
+    }
+    panel_channel = Channel(
+        project_id=req.project_id,
+        name=channel_name,
+        type="panel",
+        description=panel_labels.get(req.panel, f"{req.panel.title()} Chat"),
+    )
+    db.add(panel_channel)
+    await db.flush()
+    await db.refresh(panel_channel)
+    await db.commit()
+
+    logger.info("Created panel channel %s for project %s", channel_name, req.project_id)
+
+    return channel_to_response(panel_channel)
+
+
+@router.delete("/{channel_id}/messages", status_code=204)
+async def clear_channel_messages(
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete all messages in a channel (reset conversation).
+
+    The channel itself is preserved — only messages are removed.
+    """
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    await db.execute(sa_delete(Message).where(Message.channel_id == channel_id))
+    await db.commit()
+
+    logger.info("Cleared all messages in channel %s (%s)", channel.name, channel_id)
+
+    # Broadcast so other clients refresh
+    await manager.broadcast_to_project(
+        channel.project_id,
+        WebSocketEvent(
+            type=EventType.CHANNEL_NEW,  # reuse — frontend refreshes
+            data={"channel_id": channel.id, "name": channel.name, "type": channel.type},
+        ),
+    )
+
+
 @router.get("/{channel_id}", response_model=ChannelResponse)
 async def get_channel(
     channel_id: str,

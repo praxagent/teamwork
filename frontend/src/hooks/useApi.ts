@@ -335,6 +335,43 @@ export function useGetOrCreateDMChannel() {
   });
 }
 
+export function useGetOrCreatePanelChannel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { projectId: string; panel: string }) =>
+      fetchJson<Channel>(
+        '/channels/panels/get-or-create',
+        {
+          method: 'POST',
+          body: JSON.stringify({ project_id: data.projectId, panel: data.panel }),
+        }
+      ),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['channels', variables.projectId],
+      });
+    },
+  });
+}
+
+export function useClearChannelMessages() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (channelId: string) =>
+      fetch(`${API_BASE}/channels/${channelId}/messages`, { method: 'DELETE' })
+        .then((res) => {
+          if (!res.ok) throw new Error(`Failed to clear messages: ${res.status}`);
+        }),
+    onSuccess: (_, channelId) => {
+      queryClient.invalidateQueries({
+        queryKey: ['messages', channelId],
+      });
+    },
+  });
+}
+
 // Messages
 export function useMessages(channelId: string | null, skip = 0, limit = 50) {
   return useQuery({

@@ -110,7 +110,7 @@ export interface Channel {
   id: string;
   project_id: string;
   name: string;
-  type: 'public' | 'team' | 'dm';
+  type: 'public' | 'team' | 'dm' | 'panel';
   team: string | null;
   description: string | null;
   dm_participants: string | null;
