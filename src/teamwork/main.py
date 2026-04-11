@@ -215,6 +215,68 @@ async def desktop_vnc_ws_proxy(websocket: WebSocket):
             pass
 
 
+# Desktop clipboard WebSocket proxy — forwards JSON text messages to the
+# clipboard bridge daemon running on port 6090 in the sandbox container.
+@app.websocket("/api/desktop/clipboard")
+async def desktop_clipboard_ws_proxy(websocket: WebSocket):
+    """WebSocket reverse-proxy: browser clipboard ↔ clipboard bridge in sandbox."""
+    desktop_url = getattr(settings, 'desktop_vnc_url', None) or os.environ.get("DESKTOP_VNC_URL", "")
+    if not desktop_url:
+        await websocket.close(code=1008, reason="DESKTOP_VNC_URL not configured")
+        return
+
+    # Derive clipboard bridge URL from the VNC URL (same host, port 6090)
+    # e.g. http://sandbox:6080 → ws://sandbox:6090
+    from urllib.parse import urlparse
+    parsed = urlparse(desktop_url)
+    ws_target = f"ws://{parsed.hostname}:6090"
+
+    await websocket.accept()
+
+    import websockets
+
+    try:
+        async with websockets.connect(ws_target, max_size=1 * 1024 * 1024) as upstream:
+            stop = asyncio.Event()
+
+            async def client_to_upstream():
+                try:
+                    while not stop.is_set():
+                        text = await websocket.receive_text()
+                        await upstream.send(text)
+                except (WebSocketDisconnect, Exception):
+                    pass
+                finally:
+                    stop.set()
+
+            async def upstream_to_client():
+                try:
+                    async for msg in upstream:
+                        await websocket.send_text(msg if isinstance(msg, str) else msg.decode())
+                except (websockets.ConnectionClosed, Exception):
+                    pass
+                finally:
+                    stop.set()
+
+            c2u = asyncio.create_task(client_to_upstream())
+            u2c = asyncio.create_task(upstream_to_client())
+
+            await asyncio.wait([c2u, u2c], return_when=asyncio.FIRST_COMPLETED)
+            stop.set()
+            for t in [c2u, u2c]:
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
+    except Exception as e:
+        logger.error("Clipboard WS proxy error: %s", e)
+        try:
+            await websocket.close(code=1011, reason="Upstream connection failed")
+        except Exception:
+            pass
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint."""

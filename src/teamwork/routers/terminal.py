@@ -261,9 +261,6 @@ async def _run_sandbox_terminal(
             f" {container} claude --dangerously-skip-permissions"
         )
     else:
-        # Use bash directly — tmux-shell.sh causes exit issues with the
-        # PTY bridge.  The user's terminal session is still persistent via
-        # the WebSocket reconnect mechanism in the frontend.
         inner_cmd = (
             f"docker exec -it -w {sandbox_ws} -e TERM=xterm-256color"
             f" {container} bash"
