@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/praxagent/teamwork/compare/v0.13.0...v0.14.0) (2026-04-11)
+
+
+### Features
+
+* give Prax a desktop ([1e0e4d8](https://github.com/praxagent/teamwork/commit/1e0e4d85ae4adf8eb40e46d486ea3a94ba733445))
+
 ## [0.13.0](https://github.com/praxagent/teamwork/compare/v0.12.0...v0.13.0) (2026-04-10)
 
 
