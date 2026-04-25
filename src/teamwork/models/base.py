@@ -19,7 +19,7 @@ class Base(DeclarativeBase):
 # Configure engine with SQLite-specific settings for better concurrency
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,
+    echo=settings.sqlalchemy_echo,
     # Use StaticPool for SQLite to share connection across threads
     poolclass=StaticPool,
     # Required for aiosqlite

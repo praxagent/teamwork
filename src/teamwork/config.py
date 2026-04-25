@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = False
+    # Echo every SQL statement to stdout — only flip on when actively
+    # debugging queries.  Kept off by default so DEBUG mode (Flask reloader,
+    # better tracebacks) doesn't drown the logs in BEGIN/SELECT/COMMIT.
+    sqlalchemy_echo: bool = False
 
     # Prax backend URL (for plugin management proxy)
     prax_url: str = ""

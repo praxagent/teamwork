@@ -19,6 +19,11 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
+# Quiet down third-party INFO chatter that fires on polling loops:
+#   - httpx/httpcore: the browser panel's tab_watcher hits
+#     http://sandbox:9223/json every 2s — one line per poll is too loud.
+for noisy in ("httpx", "httpcore"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 from teamwork.models import init_db, AsyncSessionLocal
 from teamwork.routers import (

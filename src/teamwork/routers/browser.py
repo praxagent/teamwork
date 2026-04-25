@@ -312,3 +312,82 @@ async def browser_websocket(
             await cdp_ws.close()
         except Exception:
             pass
+
+
+# ─── Tab-cast signaling relay ─────────────────────────────────────────
+# The sandbox Chrome extension (prax-cast-ext) opens a persistent
+# connection to /api/browser/cast/sandbox.  The client (BrowserPanel in
+# the user's browser) opens one to /api/browser/cast/client on demand.
+# Any frame sent by one side is forwarded verbatim to the other — JSON
+# control messages (``{type: "start"}``, ``{type: "meta", ...}``) and
+# binary WebM chunks all flow through the same pipe.
+_cast_peers: dict[str, WebSocket] = {}
+_cast_lock = asyncio.Lock()
+
+
+@router.websocket("/cast/{role}")
+async def cast_signaling(websocket: WebSocket, role: str):
+    """Bidirectional relay between the sandbox extension and a client."""
+    if role not in ("sandbox", "client"):
+        await websocket.close(code=1008, reason="role must be 'sandbox' or 'client'")
+        return
+
+    await websocket.accept()
+
+    async with _cast_lock:
+        existing = _cast_peers.get(role)
+        if existing is not None and existing is not websocket:
+            try:
+                await existing.close(code=1000, reason="replaced by newer peer")
+            except Exception:
+                pass
+        _cast_peers[role] = websocket
+
+    logger.info("cast peer connected: role=%s", role)
+    # Tell the other side (if present) about the new connection so it can
+    # reset any stale state.  Clients use this to re-send `start`.
+    other_role = "client" if role == "sandbox" else "sandbox"
+    other = _cast_peers.get(other_role)
+    if other is not None:
+        try:
+            await other.send_text(json.dumps({"type": "peer_joined", "role": role}))
+        except Exception:
+            pass
+
+    try:
+        while True:
+            msg = await websocket.receive()
+            msg_type = msg.get("type")
+            if msg_type == "websocket.disconnect":
+                break
+            if msg_type != "websocket.receive":
+                continue
+
+            other = _cast_peers.get(other_role)
+            if other is None:
+                continue  # no peer yet — drop the frame
+
+            try:
+                if msg.get("bytes") is not None:
+                    await other.send_bytes(msg["bytes"])
+                elif msg.get("text") is not None:
+                    await other.send_text(msg["text"])
+            except Exception as exc:
+                logger.warning("cast forward to %s failed: %s", other_role, exc)
+                break
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.warning("cast relay error (role=%s): %s", role, exc)
+    finally:
+        async with _cast_lock:
+            if _cast_peers.get(role) is websocket:
+                _cast_peers.pop(role, None)
+        # Notify the remaining peer so it can clean up its video element.
+        other = _cast_peers.get(other_role)
+        if other is not None:
+            try:
+                await other.send_text(json.dumps({"type": "peer_left", "role": role}))
+            except Exception:
+                pass
+        logger.info("cast peer disconnected: role=%s", role)
