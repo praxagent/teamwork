@@ -169,7 +169,16 @@ async def desktop_vnc_ws_proxy(websocket: WebSocket):
     # Convert http://sandbox:6080 → ws://sandbox:6080/websockify
     ws_target = desktop_url.replace("http://", "ws://").replace("https://", "wss://").rstrip("/") + "/websockify"
 
-    await websocket.accept()
+    # Echo the requested subprotocol back — noVNC sends Sec-WebSocket-Protocol:
+    # binary and treats a server response that omits the header as a fatal
+    # protocol mismatch (closes with code 1006).  Pick "binary" if present,
+    # otherwise fall back to the first offered subprotocol so we at least
+    # echo *something*.  This matters more behind a TLS-terminating proxy
+    # like Tailscale serve where any deviation from the spec is exposed.
+    requested = websocket.headers.get("sec-websocket-protocol", "")
+    offered = [p.strip() for p in requested.split(",") if p.strip()]
+    chosen = "binary" if "binary" in offered else (offered[0] if offered else None)
+    await websocket.accept(subprotocol=chosen)
 
     import websockets
 
