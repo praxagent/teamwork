@@ -464,7 +464,7 @@ export function ProjectWorkspace() {
           outer sidebar since they don't own their chrome. */}
       {(activeView === 'files' || activeView === 'library') && projectId && (
         <div className="order-1 md:order-none flex-shrink-0 flex flex-col h-[35vh] md:h-auto border-t md:border-t-0 border-slate-700">
-          <div className="flex-1 min-h-0 flex flex-col pb-14 md:pb-0">
+          <div className="flex-1 min-h-0 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
             {activeView === 'library' ? (
               <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />
             ) : (
@@ -481,8 +481,13 @@ export function ProjectWorkspace() {
         </div>
       )}
 
-      {/* ── Main Content ── */}
-      <div className={`flex-1 flex flex-col min-w-0 order-0 md:order-none ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+      {/* ── Main Content ──
+          Bottom padding on mobile leaves room for the fixed-bottom tab
+          bar (which is `md:hidden`) plus the iOS safe-area inset, so
+          panels (Terminal/Browser/Desktop/etc.) don't render under the
+          nav.  Tailwind arbitrary value evaluates env() at runtime; the
+          md:pb-0 override clears it on desktop where the nav isn't shown. */}
+      <div className={`flex-1 flex flex-col min-w-0 order-0 md:order-none pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
 
         {/* Desktop Panel — full Linux desktop via noVNC */}
         {activeView === 'desktop' && (
@@ -594,7 +599,7 @@ export function ProjectWorkspace() {
 
         {/* Chat View */}
         {isChatView && (
-          <div className={`flex-1 flex flex-col min-h-0 overflow-hidden pb-14 md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+          <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
             {/* Minimal channel indicator */}
             {currentChannel && (
               <div className={`px-3 md:px-5 pt-3 pb-1 flex items-center gap-2 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
