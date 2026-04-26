@@ -69,6 +69,10 @@ export function ProjectWorkspace() {
   // Track if panels have ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(savedView === 'claude');
   const [terminalMounted, setTerminalMounted] = useState(savedView === 'terminal');
+  // Once you visit Browser, keep it mounted — otherwise the tab-cast
+  // WebSocket closes and the SW push from clicking the prax-cast icon
+  // (in the Desktop tab) lands with no peer to deliver to.
+  const [browserMounted, setBrowserMounted] = useState(savedView === 'browser');
   const [focusTraceId, setFocusTraceId] = useState<string | null>(null);
   const [channelPanelOpen, setChannelPanelOpen] = useState(true);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
@@ -236,6 +240,7 @@ export function ProjectWorkspace() {
     }
     if (view === 'execution_graphs') setClaudePanelMounted(true);
     if (view === 'terminal') setTerminalMounted(true);
+    if (view === 'browser') setBrowserMounted(true);
   };
 
   const toggleView = (view: string) => {
@@ -484,9 +489,11 @@ export function ProjectWorkspace() {
           <DesktopPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
         )}
 
-        {/* Browser Panel */}
-        {activeView === 'browser' && projectId && (
-          <BrowserPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+        {/* Browser Panel — persistent mount so the tab-cast WebSocket
+            stays connected while the user is over in the Desktop tab
+            clicking the prax-cast extension icon. */}
+        {browserMounted && projectId && (
+          <BrowserPanel projectId={projectId} isVisible={activeView === 'browser'} onClose={() => switchTo('chat')} />
         )}
 
         {/* Terminal Panel — persistent mount to preserve session */}

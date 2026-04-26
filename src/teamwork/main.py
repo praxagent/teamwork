@@ -32,6 +32,7 @@ from teamwork.routers import (
     browser_router,
     claude_code_router,
     channels_router,
+    content_router,
     external_router,
     library_router,
     memory_router,
@@ -120,6 +121,10 @@ app.include_router(uploads_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
 app.include_router(prax_router, prefix="/api")
+# Content router is mounted at root (no /api prefix) so /courses/<id>/
+# and /notes/<slug>/ are valid public-looking URLs.  Must be registered
+# before the SPA catch-all at the bottom of this file or it'd be shadowed.
+app.include_router(content_router)
 
 
 # Desktop VNC proxy — forwards /api/desktop/* to the sandbox's noVNC server
