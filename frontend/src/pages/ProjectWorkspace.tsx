@@ -119,6 +119,7 @@ export function ProjectWorkspace() {
   const { messagesByChannel, setMessages, prependMessages, hasMore: storeHasMore, setHasMore } = useMessageStore();
   const { selectedAgent, setSelectedAgent, unreadCounts, activeThreadId, setActiveThreadId, darkMode, toggleDarkMode } =
     useUIStore();
+  const libraryHideChat = useUIStore((state) => state.libraryHideChat);
 
   // Check if this is a coaching project
   const isCoachingProject = currentProject?.config?.project_type === 'coaching';
@@ -461,8 +462,10 @@ export function ProjectWorkspace() {
       {/* ── Panel Chat Sidebars — files/library only ──
           Desktop, Terminal, and Browser render their own right-side toggleable
           chat inside the panel (see *Panel.tsx).  Files/Library keep the
-          outer sidebar since they don't own their chrome. */}
-      {(activeView === 'files' || activeView === 'library') && projectId && (
+          outer sidebar since they don't own their chrome.  Library has its
+          own header toggle (libraryHideChat) so the chat column can be
+          hidden without leaving the library view. */}
+      {((activeView === 'files') || (activeView === 'library' && !libraryHideChat)) && projectId && (
         <div className="order-1 md:order-none flex-shrink-0 flex flex-col h-[35vh] md:h-auto border-t md:border-t-0 border-slate-700">
           <div className="flex-1 min-h-0 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
             {activeView === 'library' ? (
@@ -487,7 +490,7 @@ export function ProjectWorkspace() {
           panels (Terminal/Browser/Desktop/etc.) don't render under the
           nav.  Tailwind arbitrary value evaluates env() at runtime; the
           md:pb-0 override clears it on desktop where the nav isn't shown. */}
-      <div className={`flex-1 flex flex-col min-w-0 order-0 md:order-none pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 min-h-0 order-0 md:order-none pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
 
         {/* Desktop Panel — full Linux desktop via noVNC */}
         {activeView === 'desktop' && (

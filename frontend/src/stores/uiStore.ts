@@ -172,13 +172,13 @@ export const useUIStore = create<UIState>((set) => ({
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
   libraryHideChat: (() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('libraryHideChat') === 'true';
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('libraryShowChatV2') !== 'true';
   })(),
   toggleLibraryHideChat: () => set((state) => {
     const next = !state.libraryHideChat;
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('libraryHideChat', String(next));
+      localStorage.setItem('libraryShowChatV2', next ? 'false' : 'true');
     }
     return { libraryHideChat: next };
   }),

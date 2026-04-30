@@ -2117,6 +2117,15 @@ export function useGetOutput(slug: string | null) {
   });
 }
 
+export function useDeleteOutput() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      fetchJson(`/library/outputs/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['library-outputs'] }); },
+  });
+}
+
 export interface HealthCheckReport {
   generated_at: string;
   static: {

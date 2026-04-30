@@ -310,6 +310,15 @@ async def get_output(slug: str):
     return result
 
 
+@router.delete("/outputs/{slug}")
+async def delete_output(slug: str):
+    """Delete a generated output."""
+    result = await _proxy("DELETE", f"/outputs/{slug}")
+    if result is None:
+        return {"error": "Prax backend unavailable"}
+    return result
+
+
 # --- Health check ---
 
 @router.post("/health-check")
