@@ -10,9 +10,9 @@ import {
 } from '@/components/chat';
 import { ClaudeCodeStatus } from '@/components/chat/ClaudeCodeStatus';
 import { ProfileModal } from '@/components/profiles';
-import { BrowserPanel, BrowserChatSidebar, LibraryPanel, HomeDashboard, AgentPlanCard, FileBrowser, TaskBoard, SettingsPanel, GraphPanel, ProgressPanel, TerminalPanel, ObservabilityPanel, MemoryPanel, SchedulerPanel } from '@/components/workspace';
-import { SpacePage } from '@/components/workspace/SpacePage';
-import { DesktopPanel } from '@/components/workspace/DesktopPanel';
+import { BrowserPanel, BrowserChatSidebar, LibraryPanel, HomeDashboard, AgentPlanCard, FileBrowser, TaskBoard, SettingsPanel, GraphPanel, ProgressPanel, TerminalPanel, ObservabilityPanel, MemoryPanel, SchedulerPanel } from '@/components/panels';
+import { SpacePage } from '@/components/panels/SpacePage';
+import { DesktopPanel } from '@/components/panels/DesktopPanel';
 import { CommandPalette } from '@/components/common';
 import {
   useProject,
