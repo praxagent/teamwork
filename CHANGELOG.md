@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/praxagent/teamwork/compare/v0.14.0...v0.14.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* add panels unintentionally excluded due to prior naming scheme ([cae2c94](https://github.com/praxagent/teamwork/commit/cae2c942b87c6117f5eb1ea156a2f4281123b110))
+
 ## [0.14.0](https://github.com/praxagent/teamwork/compare/v0.13.0...v0.14.0) (2026-04-11)
 
 
