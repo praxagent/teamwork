@@ -59,12 +59,12 @@ coverage/
 .nyc_output/
 
 # Workspace directories (generated code)
-/workspace/
-/backend/workspace/
+workspace/
+backend/workspace/
 
 # Data directories (database)
-/data/
-/backend/data/
+data/
+backend/data/
 
 # Backups
 backups/
