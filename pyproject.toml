@@ -39,7 +39,7 @@ build-backend = "hatchling.build"
 packages = ["src/teamwork"]
 
 [tool.hatch.build]
-artifacts = ["src/teamwork/static/**"]
+artifacts = ["src/teamwork/static/**", "src/teamwork/desktop_vnc.html"]
 
 [tool.ruff]
 line-length = 100

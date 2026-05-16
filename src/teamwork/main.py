@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -125,6 +126,22 @@ app.include_router(prax_router, prefix="/api")
 # and /notes/<slug>/ are valid public-looking URLs.  Must be registered
 # before the SPA catch-all at the bottom of this file or it'd be shadowed.
 app.include_router(content_router)
+
+
+@app.get("/api/desktop/teamwork.html")
+async def desktop_vnc_client():
+    """Serve TeamWork's noVNC wrapper page.
+
+    The page imports noVNC modules through the existing /api/desktop/*
+    proxy, but exposes a small postMessage API so the React shell can send
+    host-reserved key chords like Ctrl+= or Super+Arrow directly to VNC.
+    """
+    from fastapi.responses import FileResponse
+
+    return FileResponse(
+        Path(__file__).parent / "desktop_vnc.html",
+        media_type="text/html; charset=utf-8",
+    )
 
 
 # Desktop VNC proxy — forwards /api/desktop/* to the sandbox's noVNC server

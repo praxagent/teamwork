@@ -16,7 +16,20 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { Monitor, X, ExternalLink, MessageSquare, ClipboardCopy, ClipboardPaste } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ClipboardCopy,
+  ClipboardPaste,
+  ExternalLink,
+  Keyboard,
+  MessageSquare,
+  Monitor,
+  RotateCcw,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { useUIStore } from '@/stores';
 import { useIsMobile } from '@/hooks';
 import { BrowserChatSidebar } from './BrowserChatSidebar';
@@ -33,14 +46,58 @@ function clipboardWsUrl(): string {
   return `${proto}//${window.location.host}/api/desktop/clipboard`;
 }
 
+type DesktopShortcutKey =
+  | 'ArrowLeft'
+  | 'ArrowRight'
+  | 'ControlLeft'
+  | 'Digit0'
+  | 'Equal'
+  | 'Minus'
+  | 'Plus'
+  | 'SuperLeft';
+
+function editableElementHasFocus(): boolean {
+  const active = document.activeElement as HTMLElement | null;
+  if (!active) return false;
+  return active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable;
+}
+
+function desktopShortcutFromEvent(e: KeyboardEvent): DesktopShortcutKey[] | null {
+  const primaryModifier = e.ctrlKey || e.metaKey;
+
+  // Treat Cmd as the user's local "primary" shortcut key, but send Linux
+  // Control to the remote desktop for app zoom/font-size shortcuts.
+  if (primaryModifier && !e.altKey) {
+    if (e.key === '=') return ['ControlLeft', 'Equal'];
+    if (e.key === '+') return ['ControlLeft', 'Plus'];
+    if (e.key === '-' || e.key === '_') return ['ControlLeft', 'Minus'];
+    if (e.key === '0' || e.key === ')') return ['ControlLeft', 'Digit0'];
+  }
+
+  if (e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.key === 'ArrowLeft') return ['SuperLeft', 'ArrowLeft'];
+    if (e.key === 'ArrowRight') return ['SuperLeft', 'ArrowRight'];
+  }
+
+  return null;
+}
+
+function isTeamWorkShortcut(e: KeyboardEvent): boolean {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') return true;
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'd') return true;
+  return e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown');
+}
+
 export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
   const dark = useUIStore((s) => s.darkMode);
   const isMobile = useIsMobile();
   const [showChat, setShowChat] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const [keyboardCaptured, setKeyboardCaptured] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Brief non-intrusive toast
   const showToast = useCallback((msg: string) => {
@@ -48,6 +105,23 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 1500);
   }, []);
+
+  const postDesktopMessage = useCallback((message: Record<string, unknown>) => {
+    iframeRef.current?.contentWindow?.postMessage(message, window.location.origin);
+  }, []);
+
+  const focusDesktop = useCallback(() => {
+    setKeyboardCaptured(true);
+    iframeRef.current?.focus();
+    iframeRef.current?.contentWindow?.focus();
+    postDesktopMessage({ type: 'teamwork-vnc:focus' });
+  }, [postDesktopMessage]);
+
+  const sendDesktopShortcut = useCallback((keys: DesktopShortcutKey[]) => {
+    setKeyboardCaptured(true);
+    postDesktopMessage({ type: 'teamwork-vnc:sendShortcut', keys });
+    iframeRef.current?.focus();
+  }, [postDesktopMessage]);
 
   // --- Clipboard WebSocket connection ---
   useEffect(() => {
@@ -95,6 +169,57 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
     };
   }, [isVisible, showToast]);
 
+  // The iframe page tells us when noVNC has grabbed focus.  This lets the
+  // parent shell suppress its own shortcuts while the user is driving the
+  // remote desktop.
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'teamwork-vnc:focused') {
+        setKeyboardCaptured(true);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isVisible]);
+
+  useEffect(() => {
+    if (!isVisible) return;
+    const timer = setTimeout(focusDesktop, 150);
+    return () => clearTimeout(timer);
+  }, [isVisible, focusDesktop]);
+
+  // If focus is still in TeamWork instead of inside the iframe, catch the
+  // shortcuts browsers commonly keep for themselves and send explicit VNC
+  // key events.  Once the iframe is focused, noVNC handles normal typing.
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!keyboardCaptured || editableElementHasFocus()) return;
+
+      const keys = desktopShortcutFromEvent(e);
+      if (keys) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        sendDesktopShortcut(keys);
+        return;
+      }
+
+      if (isTeamWorkShortcut(e)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        focusDesktop();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isVisible, keyboardCaptured, focusDesktop, sendDesktopShortcut]);
+
   // --- Paste handler: Ctrl+V while panel is focused ---
   useEffect(() => {
     if (!isVisible) return;
@@ -123,7 +248,13 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
   if (!isVisible) return null;
 
   // noVNC URL — proxied through TeamWork's backend.
-  const novncUrl = '/api/desktop/vnc_lite.html?autoconnect=true&scale=true&reconnect=true&reconnect_delay=1000&path=api/desktop/websockify';
+  const novncUrl = '/api/desktop/teamwork.html?autoconnect=true&scale=true&reconnect=true&reconnect_delay=1000&path=api/desktop/websockify';
+  const iconButton = (active = false) => clsx(
+    'p-1.5 rounded transition-colors',
+    active
+      ? dark ? 'bg-purple-600/30 text-purple-400' : 'bg-purple-100 text-purple-600'
+      : dark ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-500 hover:bg-gray-200',
+  );
 
   // Pull: request current desktop clipboard and write to browser clipboard
   const pullFromDesktop = () => {
@@ -159,6 +290,49 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
         <span className={clsx('text-sm font-medium flex-1', dark ? 'text-gray-300' : 'text-gray-700')}>
           Desktop
         </span>
+
+        <button
+          onClick={focusDesktop}
+          className={iconButton(keyboardCaptured)}
+          title={keyboardCaptured ? 'Desktop keyboard focused' : 'Focus desktop keyboard'}
+        >
+          <Keyboard className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => sendDesktopShortcut(['ControlLeft', 'Minus'])}
+          className={iconButton()}
+          title="Send Ctrl+-"
+        >
+          <ZoomOut className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => sendDesktopShortcut(['ControlLeft', 'Equal'])}
+          className={iconButton()}
+          title="Send Ctrl+="
+        >
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => sendDesktopShortcut(['ControlLeft', 'Digit0'])}
+          className={iconButton()}
+          title="Send Ctrl+0"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => sendDesktopShortcut(['SuperLeft', 'ArrowLeft'])}
+          className={iconButton()}
+          title="Send Super+Left"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => sendDesktopShortcut(['SuperLeft', 'ArrowRight'])}
+          className={iconButton()}
+          title="Send Super+Right"
+        >
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
 
         {/* Clipboard buttons */}
         <button
@@ -217,11 +391,14 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
           isMobile && showChat && 'hidden',
         )}>
           <iframe
+            ref={iframeRef}
             src={novncUrl}
             className="absolute inset-0 w-full h-full border-0"
             allow="clipboard-read; clipboard-write"
             title="Linux Desktop"
             style={{ objectFit: 'contain' }}
+            onFocus={() => setKeyboardCaptured(true)}
+            onLoad={focusDesktop}
           />
         </div>
 

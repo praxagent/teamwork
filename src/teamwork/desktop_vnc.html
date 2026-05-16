@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TeamWork Desktop</title>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #screen {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      outline: none;
+    }
+
+    #status {
+      position: fixed;
+      left: 8px;
+      bottom: 8px;
+      z-index: 2;
+      padding: 3px 7px;
+      border-radius: 4px;
+      color: #e5e7eb;
+      background: rgba(15, 23, 42, 0.72);
+      font: 11px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 160ms ease;
+    }
+
+    #status.visible {
+      opacity: 1;
+    }
+  </style>
+  <script type="module">
+    import RFB from './core/rfb.js';
+
+    const keyTable = {
+      AltLeft: { keysym: 0xffe9, code: 'AltLeft' },
+      ArrowLeft: { keysym: 0xff51, code: 'ArrowLeft' },
+      ArrowRight: { keysym: 0xff53, code: 'ArrowRight' },
+      ControlLeft: { keysym: 0xffe3, code: 'ControlLeft' },
+      Digit0: { keysym: 0x0030, code: 'Digit0' },
+      Equal: { keysym: 0x003d, code: 'Equal' },
+      Minus: { keysym: 0x002d, code: 'Minus' },
+      Plus: { keysym: 0x002b, code: 'Equal' },
+      ShiftLeft: { keysym: 0xffe1, code: 'ShiftLeft' },
+      SuperLeft: { keysym: 0xffeb, code: 'MetaLeft' },
+    };
+
+    const screen = document.getElementById('screen');
+    const statusNode = document.getElementById('status');
+    let rfb = null;
+    let desktopName = 'desktop';
+    let reconnectTimer = null;
+    let statusTimer = null;
+    let intentionalDisconnect = false;
+
+    function readQueryVariable(name, defaultValue = '') {
+      const value = new URLSearchParams(window.location.search).get(name);
+      return value == null ? defaultValue : value;
+    }
+
+    function showStatus(text, sticky = false) {
+      statusNode.textContent = text;
+      statusNode.classList.add('visible');
+      if (statusTimer) window.clearTimeout(statusTimer);
+      if (!sticky) {
+        statusTimer = window.setTimeout(() => statusNode.classList.remove('visible'), 1400);
+      }
+    }
+
+    function parentNotify(type, detail = {}) {
+      window.parent.postMessage({ type: `teamwork-vnc:${type}`, ...detail }, window.location.origin);
+    }
+
+    function focusRemote() {
+      if (!rfb) return;
+      rfb.focus({ preventScroll: true });
+      parentNotify('focused');
+    }
+
+    function sendKey(name, down) {
+      const key = keyTable[name];
+      if (!key || !rfb) return;
+      rfb.sendKey(key.keysym, key.code, down);
+    }
+
+    function tapKey(name) {
+      sendKey(name, true);
+      sendKey(name, false);
+    }
+
+    function sendShortcut(keys) {
+      if (!Array.isArray(keys) || keys.length === 0 || !rfb) return;
+      const modifiers = keys.slice(0, -1);
+      const key = keys[keys.length - 1];
+      focusRemote();
+      for (const modifier of modifiers) sendKey(modifier, true);
+      tapKey(key);
+      for (const modifier of modifiers.slice().reverse()) sendKey(modifier, false);
+      showStatus(keys.join('+'));
+    }
+
+    function buildWebSocketUrl() {
+      const host = readQueryVariable('host', window.location.hostname);
+      const port = readQueryVariable('port', window.location.port);
+      const path = readQueryVariable('path', 'api/desktop/websockify');
+      let url = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      url += host;
+      if (port) url += `:${port}`;
+      url += path.startsWith('/') ? path : `/${path}`;
+      return url;
+    }
+
+    function connect() {
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+
+      const password = readQueryVariable('password');
+      intentionalDisconnect = false;
+      showStatus('Connecting', true);
+
+      rfb = new RFB(screen, buildWebSocketUrl(), { credentials: { password } });
+      rfb.scaleViewport = readQueryVariable('scale', 'false') === 'true';
+      rfb.viewOnly = readQueryVariable('view_only', 'false') === 'true';
+
+      rfb.addEventListener('connect', () => {
+        showStatus(`Connected to ${desktopName}`);
+        focusRemote();
+        parentNotify('connected');
+      });
+
+      rfb.addEventListener('disconnect', (event) => {
+        parentNotify('disconnected', { clean: event.detail.clean });
+        if (event.detail.clean || intentionalDisconnect) {
+          showStatus('Disconnected', true);
+          return;
+        }
+        showStatus('Disconnected; reconnecting', true);
+        if (readQueryVariable('reconnect', 'false') === 'true') {
+          const delay = Number(readQueryVariable('reconnect_delay', '1000')) || 1000;
+          reconnectTimer = window.setTimeout(connect, delay);
+        }
+      });
+
+      rfb.addEventListener('credentialsrequired', () => {
+        const enteredPassword = window.prompt('Password required:');
+        rfb.sendCredentials({ password: enteredPassword });
+      });
+
+      rfb.addEventListener('desktopname', (event) => {
+        desktopName = event.detail.name || desktopName;
+      });
+    }
+
+    window.addEventListener('message', (event) => {
+      if (event.origin !== window.location.origin) return;
+      const message = event.data;
+      if (!message || typeof message !== 'object') return;
+      if (message.type === 'teamwork-vnc:focus') {
+        focusRemote();
+      } else if (message.type === 'teamwork-vnc:sendShortcut') {
+        sendShortcut(message.keys);
+      } else if (message.type === 'teamwork-vnc:sendCtrlAltDel' && rfb) {
+        focusRemote();
+        rfb.sendCtrlAltDel();
+        showStatus('Ctrl+Alt+Del');
+      }
+    });
+
+    screen.addEventListener('pointerdown', focusRemote);
+    screen.addEventListener('focusin', focusRemote);
+    window.addEventListener('beforeunload', () => {
+      intentionalDisconnect = true;
+      if (rfb) rfb.disconnect();
+    });
+
+    connect();
+  </script>
+</head>
+<body>
+  <div id="screen" tabindex="0"></div>
+  <div id="status" class="visible">Loading</div>
+</body>
+</html>
