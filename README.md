@@ -51,6 +51,56 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 - **Single container** — One Docker image serves both API and frontend (no nginx needed)
 - **Zero AI dependencies** — No LLM API keys, no anthropic/openai packages
 
+## Roadmap
+
+> The highlights above are a subset — TeamWork has grown well past a "display shell." This is the
+> fuller picture. Everything Prax-specific (memory, scheduling, plugins, model control) is surfaced
+> as a **proxy/display** over the Prax backend, not reimplemented here.
+
+### Shipped
+
+**Chat & messaging**
+- [x] Channels, DMs, threads, reactions, typing indicators (WebSocket)
+- [x] Cross-channel mirror channels (`#discord`, `#sms`)
+- [x] FTS5 + BM25 message search, surfaced through a `Cmd+K` command palette
+
+**Tasks, workspace & files**
+- [x] Drag-and-drop Kanban (status / assignee / subtasks / blockers + execution logs)
+- [x] In-browser file tree, read/write editor, git-log viewer, per-task diffs
+- [x] File uploads (extension allowlist + 10 MB cap) and one-click workspace backup zip
+
+**Embedded sessions**
+- [x] PTY terminal into the sandbox container (`docker exec` over WebSocket, xterm.js)
+- [x] Live headless-Chrome screencast (CDP proxy) with take-over mouse/keyboard
+- [x] Full Linux desktop tab via noVNC (HTTP + websockify + clipboard reverse-proxy)
+
+**Agent introspection (proxied from Prax)**
+- [x] Real-time execution-graph / delegation-tree visualization + live output + per-trace inspect
+- [x] Observability panel — Grafana dashboards, Tempo trace links, health events
+- [x] Memory review panel — STM/LTM CRUD, knowledge-graph view, stats
+- [x] Scheduler panel — cron schedules, one-time reminders, timezone
+- [x] In-chat model picker (auto + per-tier override) + context-window stats / manual compaction
+- [x] Plugin management proxy
+
+**Knowledge & content**
+- [x] Library / Spaces — notebooks, notes, wiki, flashcards, tags, backlinks, per-space tasks/files
+- [x] Public rendering for courses / notes / news at root URLs
+
+**Integration & platform**
+- [x] External REST API (projects / agents / messages / tasks / channels / live-output) + webhook push
+- [x] Agent roster — status, avatars, profiles, activity logs, editable prompts
+- [x] Responsive mobile layout; `Cmd+K` palette, keyboard shortcuts, dark mode, toasts, onboarding wizard
+- [x] Single-container build (FastAPI + bundled React SPA, SQLite WAL) + DB maintenance (stats / cleanup / VACUUM / compactify)
+
+### Planned
+
+- [ ] Surface the Prax **MCP server** (registered tools, connection status, per-tool call history) in a tab
+- [ ] **Eval / benchmark dashboard** (pass rates, regression trends, per-suite drilldown) proxied from Prax
+- [ ] Browser / OS **push notifications** via a service worker (new messages, task & schedule events)
+- [ ] **Multi-user (human) presence** — who's viewing a project/channel, live cursors / read receipts
+- [ ] **Cross-surface global search** (notes/library, files, tasks) beyond message FTS in the palette
+- [ ] **Notification preferences** — per-channel mute + digest settings
+
 ## Embedded Terminal & Browser
 
 Most agent UIs are chat-only — you talk to the agent but you can't *see* what it's doing. TeamWork fixes that.
@@ -578,6 +628,20 @@ TeamWork provides a one-click workspace backup in the Settings panel. The backup
 | `GET` | `/api/workspace/{project_id}/backup` | Download the zip (returns 413 if too large) |
 
 ## Database Management
+
+### Database location
+
+TeamWork stores its application data (projects, messages, tasks, the FTS index) in a single SQLite file. This is **separate from the workspace** — `WORKSPACE_PATH` holds agent file content; the database holds TeamWork's own records.
+
+- **Default:** `{project_root}/data/vteam.db`. TeamWork creates the `data/` directory automatically on first run, so a fresh checkout just works — no manual `mkdir` needed.
+- **Override:** set `DATABASE_URL`. Relative SQLite paths are resolved against the project root and the parent directory is created for you. Examples:
+
+  ```bash
+  DATABASE_URL="sqlite+aiosqlite:///./vteam.db"             # → {project_root}/data/vteam.db
+  DATABASE_URL="sqlite+aiosqlite:////var/lib/teamwork/tw.db" # absolute path (its dir is auto-created)
+  ```
+
+Because the database is independent of the workspace, the same TeamWork instance works for Prax or any other agent — point `WORKSPACE_PATH` at the agent's workspace root and leave the database wherever you like.
 
 The Settings panel includes two tools for managing message history as your database grows:
 

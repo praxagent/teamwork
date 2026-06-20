@@ -35,6 +35,20 @@ def resolve_database_path(db_url: str, project_root: Path) -> str:
     return db_url
 
 
+def ensure_database_dir(db_url: str) -> None:
+    """Create the parent directory for a file-backed sqlite database.
+
+    sqlite refuses to open a database whose parent directory is missing
+    ("unable to open database file"), so make sure it exists before the
+    engine connects. No-op for in-memory or non-sqlite URLs.
+    """
+    if not db_url.startswith("sqlite") or ":memory:" in db_url:
+        return
+    prefix_end = db_url.find(":///") + 4
+    db_path = Path(db_url[prefix_end:])
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+
 _project_root = get_project_root()
 
 _env_file = _project_root / ".env"
@@ -72,6 +86,7 @@ class Settings(BaseSettings):
         super().__init__(**data)
         resolved_db = resolve_database_path(self.database_url, _project_root)
         object.__setattr__(self, "database_url", resolved_db)
+        ensure_database_dir(resolved_db)
 
         ws_path = self.workspace_path
         if not ws_path.is_absolute():
