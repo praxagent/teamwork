@@ -58,6 +58,20 @@ async def set_model(data: dict = Body(...)):
 
 
 # ---------------------------------------------------------------------------
+# Deployment / reachability
+# ---------------------------------------------------------------------------
+
+@router.get("/deployment")
+async def get_deployment():
+    """Proxy Prax's deployment/reachability info (Tailscale/ngrok/local + the
+    base URL links actually use). Shown in the Settings panel."""
+    result = await _proxy("GET", "/deployment")
+    if result is None:
+        return {"available": False, "error": "Prax backend unavailable"}
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Context Inspector
 # ---------------------------------------------------------------------------
 

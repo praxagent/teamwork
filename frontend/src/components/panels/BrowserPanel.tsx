@@ -402,8 +402,9 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
   // to the Desktop tab to click the prax-cast icon.
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ display: isVisible ? 'flex' : 'none' }}>
-      {/* Browser toolbar */}
-      <div className={`flex items-center gap-1.5 px-2 py-1.5 border-b ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
+      {/* Browser toolbar — wraps on very narrow (mobile) widths so the trailing
+          actions (esp. the chat toggle) are never clipped off the right edge. */}
+      <div className={`flex flex-wrap items-center gap-1.5 px-2 py-1.5 border-b ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
         {/* Navigation buttons */}
         <button
           onClick={handleBack}
@@ -430,14 +431,14 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
         <Globe className={`w-3.5 h-3.5 flex-shrink-0 ml-1 ${connected ? 'text-green-500' : darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
 
         {/* URL bar */}
-        <div className="flex-1 flex">
+        <div className="flex-1 flex min-w-0">
           <input
             type="text"
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleNavigate(); } }}
             placeholder="Enter URL..."
-            className={`flex-1 px-3 py-1 text-sm rounded-l border ${
+            className={`flex-1 min-w-0 px-3 py-1 text-sm rounded-l border ${
               darkMode
                 ? 'bg-slate-700 border-slate-600 text-gray-200 placeholder-gray-500'
                 : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'

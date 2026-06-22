@@ -81,7 +81,10 @@ async def browser_websocket(
         cdp_ws = await websockets.connect(
             cdp_ws_url,
             max_size=10 * 1024 * 1024,
-            additional_headers={"Host": f"127.0.0.1:{settings.chrome_cdp_port}"},
+            # Match Chrome's --remote-allow-origins (set in the sandbox). Do NOT
+            # override Host: websockets already sets it from the URL, and a second
+            # Host header makes Chrome reject the CDP upgrade with HTTP 500.
+            additional_headers={"Origin": "http://127.0.0.1:9222"},
         )
         logger.info("CDP WebSocket connected")
     except Exception as e:
@@ -273,7 +276,10 @@ async def browser_websocket(
                     cdp_ws = await websockets.connect(
                         new_ws_url,
                         max_size=10 * 1024 * 1024,
-                        additional_headers={"Host": f"127.0.0.1:{settings.chrome_cdp_port}"},
+                        # Match Chrome's --remote-allow-origins (set in the sandbox). Do
+                        # NOT override Host: websockets sets it from the URL, and a second
+                        # Host header makes Chrome reject the CDP upgrade with HTTP 500.
+                        additional_headers={"Origin": "http://127.0.0.1:9222"},
                     )
                     current_target_ws = new_ws_url
                     cdp_msg_id = 0

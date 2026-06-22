@@ -154,7 +154,12 @@ make dev               # uvicorn with hot reload on :8000
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 18+ (only if building frontend from source)
+- **Node.js 18+** + npm — required to build (or dev-serve) the React UI. Without it the API runs
+  but `/` returns `{"detail":"Not Found"}` (no UI). Install:
+  - **macOS:** `brew install node` (or [nodejs.org](https://nodejs.org/) LTS installer)
+  - **Windows:** `winget install OpenJS.NodeJS.LTS` (or `choco install nodejs-lts`, or the [nodejs.org](https://nodejs.org/) installer)
+  - **Linux (Debian/Ubuntu):** `sudo apt install nodejs npm` (install both — Ubuntu's `nodejs` omits `npm`); for newer Node use [NodeSource](https://github.com/nodesource/distributions) or [nvm](https://github.com/nvm-sh/nvm)
+  - **Any OS:** [`nvm install --lts`](https://github.com/nvm-sh/nvm)
 
 ### From GitHub (latest)
 
@@ -456,6 +461,43 @@ info = httpx.get(f"{TW}/api/browser/info").json()
 ```
 
 The frontend connects via WebSocket at `/api/browser/ws/{project_id}` to stream screenshots and relay mouse/keyboard input back to Chrome.
+
+### 9. Desktop (noVNC)
+
+If your sandbox runs a desktop (Xvfb + a VNC server + noVNC/websockify), TeamWork
+proxies it so users get a full remote desktop in the UI. Point `DESKTOP_VNC_URL`
+at the sandbox's noVNC HTTP endpoint:
+
+```bash
+# .env
+DESKTOP_VNC_URL=http://sandbox:6080     # or http://localhost:6080 (see callout)
+```
+
+TeamWork reverse-proxies `GET /api/desktop/*` to that URL and bridges the noVNC
+WebSocket at `/api/desktop/websockify` to `<DESKTOP_VNC_URL>/websockify`. Unset →
+the desktop panel returns **503** (no upstream).
+
+> **⚠ Where does TeamWork run? (native vs. Docker)**
+>
+> The three panels above (terminal, browser, desktop) connect to the **sandbox
+> container**, so the host/port you give them depends on where *TeamWork itself*
+> runs:
+>
+> - **TeamWork inside Docker**, on the sandbox's compose network → use the Docker
+>   network hostname: `CHROME_CDP_HOST=sandbox`, `DESKTOP_VNC_URL=http://sandbox:6080`.
+> - **TeamWork running natively** on the host, with the (split) `prax-sandbox`
+>   compose publishing ports on `127.0.0.1` → use the container name + localhost:
+>   `SANDBOX_CONTAINER=prax-sandbox-sandbox-1`, `CHROME_CDP_HOST=localhost`,
+>   `CHROME_CDP_PORT=9223`, `DESKTOP_VNC_URL=http://localhost:6080`. The sandbox
+>   compose pins `name: prax-sandbox`, so the container name is deterministic.
+>
+> The defaults (`chrome_cdp_host=sandbox`, empty `sandbox_container`/`DESKTOP_VNC_URL`)
+> are the in-Docker values; a **native** TeamWork left on the defaults shows the
+> classic broken-panel triad: terminal **404** (no `docker exec` target → no
+> session), desktop **503**, browser CDP unreachable. Prax's
+> `make run-local-all*` targets set the native values automatically (see the
+> Makefile's `TW_SANDBOX_ENV`); you only need to set them by hand when running
+> TeamWork natively *without* that Makefile. See `.env.example`.
 
 ### The Contract
 

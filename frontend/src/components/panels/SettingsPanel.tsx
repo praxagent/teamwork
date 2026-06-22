@@ -13,6 +13,7 @@ import {
   Database,
   Trash2,
   Sparkles,
+  Globe,
 } from 'lucide-react';
 import {
   useUpdateProject,
@@ -181,6 +182,29 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
       .then(setBackupInfo)
       .catch(() => setBackupInfo(null));
   }, [project.id]);
+
+  // Deployment / reachability (how people reach Prax + the link base URL).
+  const [deployment, setDeployment] = useState<{
+    available: boolean;
+    in_docker?: boolean;
+    tailscale_active?: boolean;
+    tailscale_hostname?: string | null;
+    ts_hostname_env?: string | null;
+    ngrok_url?: string | null;
+    public_base_url?: string | null;
+    public_via?: string | null;
+    teamwork_base_url?: string | null;
+    effective_base_url?: string | null;
+    effective_via?: string | null;
+    autodetect?: boolean;
+    advisories?: string[];
+  } | null>(null);
+  useEffect(() => {
+    fetch('/api/prax/deployment')
+      .then((r) => r.json())
+      .then(setDeployment)
+      .catch(() => setDeployment(null));
+  }, []);
 
   const handleBackup = async () => {
     setBackingUp(true);
@@ -368,6 +392,77 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
           </span>
         </div>
       </div>
+
+      {/* Deployment / Reachability */}
+      {deployment?.available && (
+        <div className={card}>
+          <div className="px-6 py-4 border-b border-inherit flex items-center gap-2">
+            <Globe className={`w-4 h-4 ${subtext}`} />
+            <div>
+              <h3 className={`font-semibold ${heading}`}>Deployment &amp; Reachability</h3>
+              <p className={`text-sm mt-1 ${subtext}`}>
+                How people reach this Prax, and the base URL it uses for shared links.
+              </p>
+            </div>
+          </div>
+          <div className="px-6 py-4 space-y-3 text-sm">
+            <div className="flex gap-3">
+              <span className={`w-28 flex-shrink-0 ${subtext}`}>Network</span>
+              <span className={heading}>
+                {deployment.tailscale_active
+                  ? `Tailscale — ${deployment.tailscale_hostname}`
+                  : deployment.ts_hostname_env
+                  ? `Tailscale sidecar (${deployment.ts_hostname_env})`
+                  : deployment.ngrok_url
+                  ? 'ngrok tunnel'
+                  : 'Local only'}
+                {deployment.in_docker ? ' · Docker' : ''}
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <span className={`w-28 flex-shrink-0 ${subtext}`}>Public URL</span>
+              <span className={heading}>
+                {deployment.public_base_url ? (
+                  <a
+                    href={deployment.public_base_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-purple-500 hover:underline break-all"
+                  >
+                    {deployment.public_base_url}
+                  </a>
+                ) : (
+                  <span className={subtext}>none (not reachable off-network)</span>
+                )}
+                {deployment.public_via && (
+                  <span className={`ml-2 ${subtext}`}>via {deployment.public_via}</span>
+                )}
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <span className={`w-28 flex-shrink-0 ${subtext}`}>Links use</span>
+              <span className={`${heading} break-all`}>
+                {deployment.effective_base_url || '—'}
+                {deployment.effective_via?.startsWith('auto:') && (
+                  <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-green-500/10 text-green-500 align-middle">
+                    auto-detected
+                  </span>
+                )}
+              </span>
+            </div>
+            {deployment.advisories && deployment.advisories.length > 0 && (
+              <div
+                className={`flex items-start gap-2 text-xs pt-1 ${
+                  darkMode ? 'text-yellow-400' : 'text-yellow-600'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                <span>{deployment.advisories[0]}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Project Details */}
       <div className={card}>

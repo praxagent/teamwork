@@ -82,7 +82,12 @@ export function ProjectWorkspace() {
   // Persist active view to localStorage
   useEffect(() => {
     if (!projectId) return;
-    const view = showTerminalPanel ? 'terminal'
+    // Mirror the canonical `activeView` ordering below (space + desktop were
+    // missing here, so returning to a Desktop/Space view wrongly persisted
+    // 'chat' and reset on reload / app-switch).
+    const view = focusedSpaceSlug ? 'space'
+      : showDesktopPanel ? 'desktop'
+      : showTerminalPanel ? 'terminal'
       : showBrowserPanel ? 'browser'
       : showClaudePanel ? 'claude'
       : showObservabilityPanel ? 'observability'
@@ -96,7 +101,7 @@ export function ProjectWorkspace() {
       : showScheduler ? 'scheduler'
       : 'chat';
     localStorage.setItem(`tw:view:${projectId}`, view);
-  }, [projectId, showTerminalPanel, showBrowserPanel, showClaudePanel, showObservabilityPanel, showMemoryPanel, showHomeDashboard, showLibraryPanel, showTaskPanel, showFileBrowser, showSettings, showProgressPanel, showScheduler]);
+  }, [projectId, focusedSpaceSlug, showDesktopPanel, showTerminalPanel, showBrowserPanel, showClaudePanel, showObservabilityPanel, showMemoryPanel, showHomeDashboard, showLibraryPanel, showTaskPanel, showFileBrowser, showSettings, showProgressPanel, showScheduler]);
   // Content context for sidebar chat (which note/course/news is being viewed)
   // Currently always null — library-item context gets passed in a future
   // turn when the UI wires the selected note back into the chat sidebar.
