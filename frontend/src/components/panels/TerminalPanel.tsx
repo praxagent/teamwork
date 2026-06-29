@@ -6,7 +6,6 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal as TerminalIcon, X, RotateCcw, Lock, Unlock, MessageSquare } from 'lucide-react';
 import { useUIStore } from '@/stores';
-import { useIsMobile } from '@/hooks';
 import { BrowserChatSidebar } from './BrowserChatSidebar';
 import '@xterm/xterm/css/xterm.css';
 
@@ -18,7 +17,6 @@ interface TerminalPanelProps {
 
 export function TerminalPanel({ projectId, isVisible, onClose }: TerminalPanelProps) {
   const darkMode = useUIStore((s) => s.darkMode);
-  const isMobile = useIsMobile();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -208,16 +206,12 @@ export function TerminalPanel({ projectId, isVisible, onClose }: TerminalPanelPr
       </div>
 
       {/* Terminal body + optional chat sidebar.
-          Narrow viewport (< md): chat takes over the whole panel area
-          when open, instead of squeezing the terminal to nothing.  Wide
-          viewport: side-by-side as before. */}
-      <div className="flex-1 flex min-h-0 relative">
-        {/* Terminal — hidden when chat is open on narrow screens, since
-            we can't reasonably show both at once. */}
-        <div className={clsx(
-          'flex-1 flex flex-col min-w-0',
-          isMobile && showChat && 'hidden',
-        )}>
+          Narrow viewport (< md): stacked 50/50 — terminal on top, chat
+          below — so it's obvious there's more than chat (toggle chat off
+          to give the terminal the full panel).  Wide viewport (md+):
+          side-by-side, chat keeps its resizable width. */}
+      <div className="flex-1 flex flex-col md:flex-row min-h-0 relative">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <div
             ref={terminalRef}
             className="flex-1"
@@ -238,14 +232,17 @@ export function TerminalPanel({ projectId, isVisible, onClose }: TerminalPanelPr
         </div>
 
         {showChat && projectId && (
-          // BrowserChatSidebar's own CSS (.browser-chat-sidebar in
-          // index.css) gives it width: 100% on narrow viewports and the
-          // user-set pixel width on desktop, so no wrapper sizing needed.
-          <BrowserChatSidebar
-            projectId={projectId}
-            activeView="terminal"
-            panel="terminal"
-          />
+          // Mobile: this wrapper is a 50% flex row (terminal gets the other
+          // half). Desktop: md:contents removes the wrapper box so the
+          // sidebar is a direct flex child and keeps its resizable width
+          // (.browser-chat-sidebar in index.css).
+          <div className="flex-1 min-h-0 md:contents">
+            <BrowserChatSidebar
+              projectId={projectId}
+              activeView="terminal"
+              panel="terminal"
+            />
+          </div>
         )}
       </div>
     </div>

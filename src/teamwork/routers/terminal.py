@@ -269,7 +269,7 @@ async def terminal_websocket(
         session.drain_task = asyncio.create_task(_drain_pty(session))
     else:
         await websocket.send_text(
-            f"\x1b[32mReconnected to existing terminal session.\x1b[0m\r\n"
+            "\x1b[32mReconnected to existing terminal session.\x1b[0m\r\n"
         )
 
     # Attach this WS to the session so the drain task forwards live output

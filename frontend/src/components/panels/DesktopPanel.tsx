@@ -31,7 +31,6 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { useUIStore } from '@/stores';
-import { useIsMobile } from '@/hooks';
 import { BrowserChatSidebar } from './BrowserChatSidebar';
 
 interface Props {
@@ -90,7 +89,6 @@ function isTeamWorkShortcut(e: KeyboardEvent): boolean {
 
 export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
   const dark = useUIStore((s) => s.darkMode);
-  const isMobile = useIsMobile();
   const [showChat, setShowChat] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [keyboardCaptured, setKeyboardCaptured] = useState(false);
@@ -281,9 +279,12 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
 
   return (
     <div ref={containerRef} tabIndex={-1} className="flex-1 flex flex-col overflow-hidden outline-none">
-      {/* Toolbar */}
+      {/* Toolbar — wraps on narrow (mobile) widths so its many shortcut/
+          clipboard/chat/close buttons are never clipped off the right edge
+          (matches BrowserPanel). The flex-1 label keeps the desktop layout
+          unchanged: one row with actions pushed right. */}
       <div className={clsx(
-        'flex items-center gap-2 px-3 py-2 border-b shrink-0',
+        'flex flex-wrap items-center gap-2 px-3 py-2 border-b shrink-0',
         dark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50',
       )}>
         <Monitor className={clsx('w-4 h-4', dark ? 'text-purple-400' : 'text-purple-600')} />
@@ -382,14 +383,12 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
         </button>
       </div>
 
-      {/* noVNC iframe + optional chat sidebar.  On narrow viewports
-          chat takes over the whole panel area instead of squeezing the
-          desktop iframe to nothing. */}
-      <div className="flex-1 flex min-h-0 relative">
-        <div className={clsx(
-          'flex-1 bg-black relative',
-          isMobile && showChat && 'hidden',
-        )}>
+      {/* noVNC iframe + optional chat sidebar.  Narrow viewport (< md):
+          stacked 50/50 — desktop on top, chat below — so it's obvious there's
+          more than chat (toggle chat off for the full desktop). Wide viewport
+          (md+): side-by-side, chat keeps its resizable width. */}
+      <div className="flex-1 flex flex-col md:flex-row min-h-0 relative">
+        <div className="flex-1 bg-black relative min-h-0">
           <iframe
             ref={iframeRef}
             src={novncUrl}
@@ -403,12 +402,16 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
         </div>
 
         {showChat && projectId && (
-          <BrowserChatSidebar
-            projectId={projectId}
-            activeView="desktop"
-            panel="desktop"
-            contentContext={{ category: 'desktop', slug: 'linux-desktop', title: 'Linux Desktop' }}
-          />
+          // Mobile: 50% flex row (desktop gets the other half). Desktop:
+          // md:contents drops the wrapper so the sidebar keeps its width.
+          <div className="flex-1 min-h-0 md:contents">
+            <BrowserChatSidebar
+              projectId={projectId}
+              activeView="desktop"
+              panel="desktop"
+              contentContext={{ category: 'desktop', slug: 'linux-desktop', title: 'Linux Desktop' }}
+            />
+          </div>
         )}
 
         {/* Toast notification */}

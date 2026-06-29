@@ -373,7 +373,13 @@ export function ProjectWorkspace() {
 
   return (
     <div className={`flex flex-col md:flex-row overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-white'}`}
-      style={{ height: 'var(--app-height, 100dvh)', position: 'fixed', inset: 0 }}>
+      style={{
+        height: 'var(--app-height, 100dvh)',
+        position: 'fixed',
+        top: 'var(--app-top, 0px)',
+        left: 0,
+        right: 0,
+      }}>
       {/* ── Icon Rail (desktop only) ── */}
       <nav className={`hidden md:flex w-14 shrink-0 flex-col items-center py-3 gap-1 border-r ${
         darkMode ? 'bg-slate-950 border-slate-800' : 'bg-gray-50 border-gray-200'

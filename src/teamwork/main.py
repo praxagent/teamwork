@@ -94,6 +94,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Reverse-proxy authentication (defense-in-depth, default OFF). Added BEFORE CORS
+# so CORS remains the OUTERMOST middleware and still answers preflight; the
+# proxy-auth check then runs on actual requests. See docs/security/network-exposure.md.
+if settings.proxy_auth_enabled:
+    from teamwork.proxy_auth import ProxyAuthConfig, ProxyAuthMiddleware
+
+    app.add_middleware(ProxyAuthMiddleware, config=ProxyAuthConfig(settings))
+    logging.getLogger(__name__).info(
+        "Proxy auth ENABLED (provider=%s) — requests must carry a valid signed assertion",
+        settings.proxy_auth_provider or "custom",
+    )
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
