@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/praxagent/teamwork/compare/v0.14.1...v0.15.0) (2026-06-29)
+
+
+### Features
+
+* update teamwork to work with prax-sandbox separated from prax ([5300a6a](https://github.com/praxagent/teamwork/commit/5300a6a56adad7dcf0aec01685c50c492677fc19))
+
 ## [0.14.1](https://github.com/praxagent/teamwork/compare/v0.14.0...v0.14.1) (2026-05-09)
 
 

@@ -1,5 +1,5 @@
 """TeamWork — agent-agnostic collaboration shell for AI teams."""
-__version__ = "0.14.1"
+__version__ = "0.15.0"
 
 def create_app():
     """Create and return the configured FastAPI application."""
