@@ -10,6 +10,15 @@ interface ObservabilityConfig {
   tempo_url: string | null;
 }
 
+// Per-service reachability from GET /api/observability/services. null = not yet
+// probed (treat as available so we never hide a working link on a slow probe).
+interface ServiceAvailability {
+  grafana: boolean;
+  tempo: boolean;
+  loki: boolean;
+  prometheus: boolean;
+}
+
 interface ObservabilityPanelProps {
   projectId: string;
   isVisible: boolean;
@@ -267,10 +276,19 @@ function LiveAgentsTab({ projectId, darkMode }: { projectId: string; darkMode: b
 // Dashboards tab
 // ---------------------------------------------------------------------------
 
-function DashboardsTab({ config, darkMode }: { config: ObservabilityConfig; darkMode: boolean }) {
+function DashboardsTab({ config, services, darkMode }: { config: ObservabilityConfig; services: ServiceAvailability | null; darkMode: boolean }) {
   const text = darkMode ? 'text-gray-100' : 'text-gray-900';
   const subtext = darkMode ? 'text-gray-400' : 'text-gray-500';
   const cardBg = darkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-200';
+
+  // Which required services are down for a given link. Empty = available.
+  // services === null means "not probed yet" → assume up (don't hide a working
+  // link while the probe is in flight).
+  const serviceLabels: Record<keyof ServiceAvailability, string> = {
+    grafana: 'Grafana', tempo: 'Tempo', loki: 'Loki', prometheus: 'Prometheus',
+  };
+  const downFor = (requires: (keyof ServiceAvailability)[]): string[] =>
+    services ? requires.filter((s) => !services[s]).map((s) => serviceLabels[s]) : [];
 
   if (!config.enabled) {
     return (
@@ -320,36 +338,46 @@ function DashboardsTab({ config, darkMode }: { config: ObservabilityConfig; dark
     return `${grafanaUrl}/explore?schemaVersion=1&orgId=1&panes=${encodeURIComponent(JSON.stringify(panes))}`;
   };
 
-  const dashboards = [
+  // `requires` lists the services a link needs. Every link opens IN Grafana, so
+  // all require 'grafana'; the explore links also need their datasource backend.
+  const dashboards: {
+    title: string; description: string; url: string; icon: string;
+    requires: (keyof ServiceAvailability)[];
+  }[] = [
     {
       title: 'LLM Performance',
       description: 'Token usage, call counts, latency by model, error rates',
       url: `${grafanaUrl}/d/prax-llm-performance`,
       icon: '🧠',
+      requires: ['grafana'],
     },
     {
       title: 'Agent Overview',
       description: 'Spoke delegations, durations, success/failure, delegation trees',
       url: `${grafanaUrl}/d/prax-agent-overview`,
       icon: '🤖',
+      requires: ['grafana'],
     },
     {
       title: 'Trace Explorer',
       description: 'Search and inspect distributed traces across all agent flows',
       url: exploreUrl('tempo'),
       icon: '🔍',
+      requires: ['grafana', 'tempo'],
     },
     {
       title: 'Log Explorer',
       description: 'Search application logs with Loki — filter by service, level, trace ID',
       url: exploreUrl('loki'),
       icon: '📋',
+      requires: ['grafana', 'loki'],
     },
     {
       title: 'Metrics Explorer',
       description: 'Raw Prometheus metrics — build custom queries and dashboards',
       url: exploreUrl('prometheus'),
       icon: '📊',
+      requires: ['grafana', 'prometheus'],
     },
   ];
 
@@ -363,45 +391,78 @@ function DashboardsTab({ config, darkMode }: { config: ObservabilityConfig; dark
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {dashboards.map((d) => (
-            <a
-              key={d.title}
-              href={d.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`block p-4 rounded-lg border transition-colors ${cardBg} hover:border-blue-500/50`}
-            >
+          {dashboards.map((d) => {
+            const down = downFor(d.requires);
+            const unavailable = down.length > 0;
+            const inner = (
               <div className="flex items-start gap-3">
-                <span className="text-2xl">{d.icon}</span>
+                <span className={`text-2xl ${unavailable ? 'grayscale opacity-50' : ''}`}>{d.icon}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className={`font-semibold ${text}`}>{d.title}</h3>
                     <ExternalLink className={`w-3.5 h-3.5 ${subtext}`} />
                   </div>
                   <p className={`text-sm mt-1 ${subtext}`}>{d.description}</p>
+                  {unavailable && (
+                    <p className="text-xs mt-1.5 font-medium text-amber-500">
+                      {down.join(' & ')} {down.length > 1 ? 'are' : 'is'} not running — start the observability stack to enable this.
+                    </p>
+                  )}
                 </div>
               </div>
-            </a>
-          ))}
+            );
+            // Down → render a non-interactive, dimmed card (no dead link).
+            return unavailable ? (
+              <div
+                key={d.title}
+                aria-disabled="true"
+                title={`${down.join(', ')} not running`}
+                className={`block p-4 rounded-lg border ${cardBg} opacity-60 cursor-not-allowed`}
+              >
+                {inner}
+              </div>
+            ) : (
+              <a
+                key={d.title}
+                href={d.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`block p-4 rounded-lg border transition-colors ${cardBg} hover:border-blue-500/50`}
+              >
+                {inner}
+              </a>
+            );
+          })}
         </div>
 
         <div className={`mt-8 p-4 rounded-lg border ${cardBg}`}>
           <h3 className={`font-semibold mb-2 ${text}`}>Stack Components</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { name: 'Tempo', role: 'Distributed traces', port: '3200' },
-              { name: 'Loki', role: 'Log aggregation', port: '3100' },
-              { name: 'Prometheus', role: 'Metrics', port: '9090' },
-              { name: 'Grafana', role: 'Dashboards', port: '3002' },
-            ].map((s) => (
-              <div key={s.name} className={`text-sm ${subtext}`}>
-                <span className={`font-medium ${text}`}>{s.name}</span>
-                <br />
-                {s.role}
-                <br />
-                <span className="text-xs opacity-75">:{s.port}</span>
-              </div>
-            ))}
+            {([
+              { name: 'Tempo', role: 'Distributed traces', port: '3200', key: 'tempo' },
+              { name: 'Loki', role: 'Log aggregation', port: '3100', key: 'loki' },
+              { name: 'Prometheus', role: 'Metrics', port: '9090', key: 'prometheus' },
+              { name: 'Grafana', role: 'Dashboards', port: '3002', key: 'grafana' },
+            ] as { name: string; role: string; port: string; key: keyof ServiceAvailability }[]).map((s) => {
+              // null services = not probed yet → no dot (avoid a misleading red).
+              const up = services ? services[s.key] : null;
+              return (
+                <div key={s.name} className={`text-sm ${subtext}`}>
+                  <span className="flex items-center gap-1.5">
+                    {up !== null && (
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${up ? 'bg-green-500' : 'bg-red-500'}`}
+                        title={up ? 'running' : 'not running'}
+                      />
+                    )}
+                    <span className={`font-medium ${text}`}>{s.name}</span>
+                  </span>
+                  {s.role}
+                  <br />
+                  <span className="text-xs opacity-75">:{s.port}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -778,6 +839,7 @@ function HealthTab({ darkMode }: { darkMode: boolean }) {
 export function ObservabilityPanel({ projectId, isVisible, onClose }: ObservabilityPanelProps) {
   const darkMode = useUIStore((state) => state.darkMode);
   const [config, setConfig] = useState<ObservabilityConfig | null>(null);
+  const [services, setServices] = useState<ServiceAvailability | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('health');
 
@@ -790,6 +852,19 @@ export function ObservabilityPanel({ projectId, isVisible, onClose }: Observabil
       })
       .catch(() => setLoading(false));
   }, []);
+
+  // Per-service reachability, so the Dashboards tab can gray out links to
+  // services that aren't running instead of leading to a dead page. Re-probed
+  // when the Dashboards tab is opened (cheap; the backend caps each probe at 2s).
+  useEffect(() => {
+    if (activeTab !== 'dashboards') return;
+    let cancelled = false;
+    fetch('/api/observability/services')
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled) setServices(data); })
+      .catch(() => { if (!cancelled) setServices(null); });
+    return () => { cancelled = true; };
+  }, [activeTab]);
 
   if (!isVisible) return null;
 
@@ -825,34 +900,37 @@ export function ObservabilityPanel({ projectId, isVisible, onClose }: Observabil
 
   return (
     <div className={`flex-1 flex flex-col ${bg}`}>
-      {/* Tab bar */}
-      <div className={`flex items-center gap-1 px-4 pt-3 pb-0 border-b ${borderColor}`}>
-        <Activity className={`w-5 h-5 mr-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
-        <span className={`text-sm font-bold mr-4 ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
-          Observability
-        </span>
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeTab === tab.key
-                ? darkMode
-                  ? 'border-green-400 text-green-400'
-                  : 'border-green-600 text-green-700'
-                : darkMode
-                  ? 'border-transparent text-gray-400 hover:text-gray-200'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-        <div className="flex-1" />
+      {/* Tab bar. The title + tabs live in a horizontally-scrollable strip so
+          on narrow (mobile) widths they can be swiped into view instead of
+          being clipped off-screen; the close button stays pinned outside it. */}
+      <div className={`flex items-center gap-1 px-2 md:px-4 pt-3 pb-0 border-b ${borderColor}`}>
+        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+          <Activity className={`w-5 h-5 mr-2 shrink-0 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+          <span className={`hidden sm:inline text-sm font-bold mr-4 shrink-0 ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+            Observability
+          </span>
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px shrink-0 whitespace-nowrap transition-colors ${
+                activeTab === tab.key
+                  ? darkMode
+                    ? 'border-green-400 text-green-400'
+                    : 'border-green-600 text-green-700'
+                  : darkMode
+                    ? 'border-transparent text-gray-400 hover:text-gray-200'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={onClose}
-          className={`p-1.5 rounded transition-colors mb-1 ${
+          className={`p-1.5 rounded transition-colors mb-1 shrink-0 ${
             darkMode
               ? 'text-gray-400 hover:text-red-400 hover:bg-slate-700'
               : 'text-gray-500 hover:text-red-500 hover:bg-gray-100'
@@ -869,7 +947,7 @@ export function ObservabilityPanel({ projectId, isVisible, onClose }: Observabil
       ) : activeTab === 'live' ? (
         <LiveAgentsTab projectId={projectId} darkMode={darkMode} />
       ) : (
-        <DashboardsTab config={config || { enabled: false, grafana_url: null, tempo_url: null }} darkMode={darkMode} />
+        <DashboardsTab config={config || { enabled: false, grafana_url: null, tempo_url: null }} services={services} darkMode={darkMode} />
       )}
     </div>
   );

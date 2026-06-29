@@ -390,10 +390,31 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, 
                 if (onTraceClick) {
                   onTraceClick(traceId);
                 } else {
-                  // Fallback: open Grafana Tempo if no handler provided
+                  // Fallback: open the trace in Grafana Tempo. Derive the base
+                  // from where the USER is actually viewing from (window.location)
+                  // — a backend-supplied localhost URL is useless on a remote /
+                  // tailnet device. Local: Grafana on :3002; remote: served on
+                  // :3001 via the reverse proxy. (Mirrors DashboardsTab.)
                   const meta = message.extra_data as Record<string, string>;
-                  const url = meta.grafana_trace_url ||
-                    `http://localhost:3001/explore?left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22query%22:%22${traceId}%22%7D%5D%7D`;
+                  const provided = meta.grafana_trace_url;
+                  let url: string;
+                  if (provided && !/^https?:\/\/localhost(:|\/|$)/i.test(provided)) {
+                    url = provided;
+                  } else {
+                    const { protocol, hostname } = window.location;
+                    const base = (hostname === 'localhost' || hostname === '127.0.0.1')
+                      ? 'http://localhost:3002'
+                      : `${protocol}//${hostname}:3001`;
+                    // Grafana 10+ Explore schema (the legacy ?left= lands on a blank pane).
+                    const panes = {
+                      a: {
+                        datasource: 'tempo',
+                        queries: [{ refId: 'A', query: traceId, queryType: 'traceql' }],
+                        range: { from: 'now-1h', to: 'now' },
+                      },
+                    };
+                    url = `${base}/explore?schemaVersion=1&orgId=1&panes=${encodeURIComponent(JSON.stringify(panes))}`;
+                  }
                   window.open(url, '_blank', 'noopener');
                 }
               }}

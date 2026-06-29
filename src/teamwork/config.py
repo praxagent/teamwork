@@ -115,5 +115,23 @@ class Settings(BaseSettings):
         "http://localhost:80",
     ]
 
+    # ── Reverse-proxy authentication (defense-in-depth) ──────────────────────
+    # For the "bind 0.0.0.0 behind an authenticating proxy" deployment (Google
+    # IAP, Cloudflare Access, ...). When ON, every request (except exempt health
+    # paths) must carry a VALID SIGNED assertion from the fronting proxy, so a
+    # request that bypasses the proxy to the bound port is rejected by the app
+    # itself — not only by the firewall. Default OFF: a complete no-op for
+    # Tailscale / same-host-proxy / dev. See docs/security/network-exposure.md.
+    proxy_auth_enabled: bool = False
+    # Preset that fills header/algorithms/jwks/issuer: "iap" | "cloudflare_access"
+    # | "" (custom — supply the fields below explicitly).
+    proxy_auth_provider: str = ""
+    proxy_auth_audience: str = ""      # REQUIRED when enabled (IAP backend aud / CF AUD tag)
+    proxy_auth_issuer: str = ""        # CF: your team-domain URL; IAP: preset default
+    proxy_auth_jwks_url: str = ""      # override/preset (CF derives from issuer)
+    proxy_auth_header: str = ""        # override/preset
+    proxy_auth_algorithms: str = ""    # comma-separated; override/preset
+    proxy_auth_exempt_paths: str = "/health,/healthz"  # comma-separated path prefixes
+
 
 settings = Settings()

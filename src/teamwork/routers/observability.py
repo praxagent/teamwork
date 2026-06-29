@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 
 import httpx
 from fastapi import APIRouter
@@ -11,6 +13,43 @@ from teamwork.config import settings
 
 router = APIRouter(prefix="/observability", tags=["observability"])
 _logger = logging.getLogger(__name__)
+
+# Health endpoints for the LGTM stack. Used by /services to tell the UI which
+# dashboards are actually reachable so it can gray out dead links instead of
+# linking blindly. Defaults are the host-published ports (the stack runs in
+# Docker, TeamWork on the host); override via env for other topologies.
+_SERVICE_HEALTH_URLS = {
+    "grafana": os.environ.get("GRAFANA_HEALTH_URL", "http://localhost:3002/api/health"),
+    "tempo": os.environ.get("TEMPO_HEALTH_URL", "http://localhost:3200/ready"),
+    "loki": os.environ.get("LOKI_HEALTH_URL", "http://localhost:3100/ready"),
+    "prometheus": os.environ.get("PROMETHEUS_HEALTH_URL", "http://localhost:9090/-/healthy"),
+}
+
+
+async def _probe(client: httpx.AsyncClient, url: str) -> bool:
+    """A service is 'up' if its health URL answers at all (any HTTP status).
+
+    We care whether the process is reachable — not whether it's fully warmed
+    up — because that's what determines if a dashboard link will resolve. A
+    connection refusal / timeout means down → the UI grays the link out.
+    """
+    try:
+        await client.get(url)
+        return True
+    except Exception:
+        return False
+
+
+@router.get("/services")
+async def get_service_availability():
+    """Report reachability of each observability service (Grafana/Loki/Tempo/
+    Prometheus) so the UI can disable links to services that aren't running."""
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        names = list(_SERVICE_HEALTH_URLS)
+        results = await asyncio.gather(
+            *(_probe(client, _SERVICE_HEALTH_URLS[n]) for n in names)
+        )
+    return dict(zip(names, results))
 
 
 @router.get("/config")

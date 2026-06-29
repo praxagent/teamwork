@@ -35,20 +35,29 @@ function App() {
   // iOS Safari: fix keyboard hiding the send button.
   // Safari shrinks the visual viewport when the keyboard opens but
   // doesn't shrink the layout viewport — so fixed/flex elements get
-  // pushed off screen.  We set a CSS variable to the real visible
-  // height so components can use it instead of 100vh.
+  // pushed off screen.  We expose the real visible height (--app-height)
+  // AND the visual viewport's offset from the layout top (--app-top) so a
+  // `position:fixed` root can be anchored to the *visible* area instead of
+  // the layout-viewport top.  Without --app-top, when Safari scrolls a
+  // focused input into view the fixed container stays at layout top:0,
+  // drifts out from under the visible region, and leaves empty space below
+  // the input ("the box jumps to the top").  offsetTop changes on scroll,
+  // not just resize, so we listen to both.
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
     const update = () => {
-      document.documentElement.style.setProperty(
-        '--app-height',
-        `${vv.height}px`,
-      );
+      const root = document.documentElement.style;
+      root.setProperty('--app-height', `${vv.height}px`);
+      root.setProperty('--app-top', `${vv.offsetTop}px`);
     };
     update();
     vv.addEventListener('resize', update);
-    return () => vv.removeEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
   }, []);
 
   return (

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { clsx } from 'clsx';
 import { Globe, X, RefreshCw, ChevronLeft, ChevronRight, Lock, Unlock, MessageSquare, Radio } from 'lucide-react';
 import { useUIStore } from '@/stores';
-import { useIsMobile } from '@/hooks';
 import { BrowserChatSidebar } from './BrowserChatSidebar';
 
 interface BrowserPanelProps {
@@ -27,7 +26,6 @@ function jitter(v: number, range = 1): number {
 
 export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProps) {
   const darkMode = useUIStore((s) => s.darkMode);
-  const isMobile = useIsMobile();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -526,14 +524,12 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
         </div>
       )}
 
-      {/* Browser viewport + optional chat sidebar.  On narrow viewports
-          chat takes over the whole panel area instead of squeezing the
-          browser canvas to nothing. */}
-      <div className="flex-1 flex min-h-0">
-        <div className={clsx(
-          'flex-1 relative overflow-hidden bg-black min-w-0',
-          isMobile && showChat && 'hidden',
-        )}>
+      {/* Browser viewport + optional chat sidebar.  Narrow viewport (< md):
+          stacked 50/50 — browser on top, chat below — so it's obvious there's
+          more than chat (toggle chat off for the full canvas). Wide viewport
+          (md+): side-by-side, chat keeps its resizable width. */}
+      <div className="flex-1 flex flex-col md:flex-row min-h-0">
+        <div className="flex-1 relative overflow-hidden bg-black min-w-0 min-h-0">
           {!connected && !error && !isCasting && (
             <div className={`absolute inset-0 flex items-center justify-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               <div className="text-center">
@@ -605,11 +601,15 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
         </div>
 
         {showChat && projectId && (
-          <BrowserChatSidebar
-            projectId={projectId}
-            activeView="browser"
-            panel="browser"
-          />
+          // Mobile: 50% flex row (canvas gets the other half). Desktop:
+          // md:contents drops the wrapper so the sidebar keeps its width.
+          <div className="flex-1 min-h-0 md:contents">
+            <BrowserChatSidebar
+              projectId={projectId}
+              activeView="browser"
+              panel="browser"
+            />
+          </div>
         )}
       </div>
     </div>
