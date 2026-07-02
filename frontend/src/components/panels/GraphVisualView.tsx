@@ -630,6 +630,19 @@ export function GraphVisualView({
           {graph.trigger.length > 80 ? graph.trigger.slice(0, 80) + '...' : graph.trigger}
         </div>
       )}
+      {/* Source channel chip */}
+      {graph.source && (
+        <div
+          className={`absolute top-3 right-3 z-10 px-2 py-1 rounded-lg text-[11px] font-medium shadow-sm ${
+            darkMode
+              ? 'bg-slate-800/90 border border-slate-700 text-sky-300'
+              : 'bg-white/90 border border-gray-200 text-sky-700'
+          }`}
+          title={`Request source: ${graph.source}`}
+        >
+          {graph.source}
+        </div>
+      )}
 
       {/* Zoom controls */}
       <div className={`absolute top-3 right-3 z-10 flex flex-col gap-1 rounded-lg p-1 shadow-sm ${

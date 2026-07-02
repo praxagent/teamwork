@@ -19,6 +19,7 @@
  */
 import { useState, useMemo, useEffect } from 'react';
 import { clsx } from 'clsx';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   X, ChevronRight, ChevronDown, Plus, FolderOpen, Folder, FileText,
   Trash2, Save, Pencil, User, Sparkles, Lock, Unlock, ArrowRightCircle,
@@ -101,6 +102,9 @@ type MainView =
 
 export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFocusProjectConsumed }: Props) {
   const dark = useUIStore((s) => s.darkMode);
+  // Disable native HTML5 drag on mobile — it doesn't fire on touch and swallows
+  // touch-scroll, so a note/block "moves" instead of scrolling.
+  const isMobile = useIsMobile();
   const { data, isLoading } = useLibrary();
   const createProject = useCreateLibrarySpace();
   const createNotebook = useCreateLibraryNotebook();
@@ -767,7 +771,7 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
                       return (
                         <div
                           key={note.slug}
-                          draggable
+                          draggable={!isMobile}
                           onDragStart={() => setDragging({ project: project.slug, notebook: notebook.slug, slug: note.slug })}
                           onDragEnd={() => { setDragging(null); setDragOver(null); }}
                           onClick={() => {
@@ -2391,6 +2395,7 @@ function NotebookView({
   const t1 = dark ? 'text-slate-100' : 'text-slate-900';
   const t2 = dark ? 'text-slate-400' : 'text-slate-500';
   const t3 = dark ? 'text-slate-500' : 'text-slate-400';
+  const isMobile = useIsMobile();  // no native drag on touch — it blocks scroll
   const border = dark ? 'border-slate-700' : 'border-gray-200';
   const btnGhost = clsx('px-2 py-1 rounded text-xs', dark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-gray-200');
   const btnPrimary = 'px-2.5 py-1 rounded text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40';
@@ -2490,7 +2495,7 @@ function NotebookView({
           return (
             <div
               key={note.slug}
-              draggable={notebook.sequenced}
+              draggable={notebook.sequenced && !isMobile}
               onDragStart={() => notebook.sequenced && setDragSlug(note.slug)}
               onDragOver={(e) => { if (notebook.sequenced) { e.preventDefault(); setDragOverSlug(note.slug); } }}
               onDragLeave={() => dragOverSlug === note.slug && setDragOverSlug(null)}

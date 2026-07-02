@@ -983,6 +983,7 @@ export interface ExecutionGraph {
   nodes: GraphNode[];
   trigger?: string;
   session_id?: string;
+  source?: string; // origin channel: discord | sms | voice | teamwork | scheduler | task_runner
 }
 
 export function useExecutionGraphs(enabled: boolean = true) {
