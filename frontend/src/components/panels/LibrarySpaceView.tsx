@@ -7,6 +7,7 @@
  */
 import { useState, useMemo, useEffect } from 'react';
 import { clsx } from 'clsx';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   Star, Target, Pause, CheckCircle2, Archive as ArchiveIcon, Trash2,
   Plus, Calendar, User, Sparkles, X, Bell, BellOff, MessageSquare,
@@ -612,6 +613,9 @@ function TaskCard({
 }) {
   const t1 = dark ? 'text-slate-100' : 'text-slate-900';
   const t3 = dark ? 'text-slate-500' : 'text-slate-400';
+  // Native HTML5 drag doesn't fire on touch and swallows touch-scroll, so on
+  // mobile the whole card "moves" instead of scrolling. Disable drag there.
+  const isMobile = useIsMobile();
 
   const overdue = task.due_date && new Date(task.due_date) < new Date();
   const fromToolOutput = task.source === 'tool_output';
@@ -619,7 +623,7 @@ function TaskCard({
 
   return (
     <div
-      draggable
+      draggable={!isMobile}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}

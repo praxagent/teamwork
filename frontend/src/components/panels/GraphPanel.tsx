@@ -1053,6 +1053,14 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
                           {selectedGraph.node_count}
                         </span>
                       </div>
+                      {selectedGraph.source && (
+                        <div className={`mt-1 text-[11px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          Source:{' '}
+                          <span className={`px-1.5 py-0.5 rounded font-medium ${darkMode ? 'bg-slate-800 text-sky-300' : 'bg-sky-50 text-sky-700'}`}>
+                            {selectedGraph.source}
+                          </span>
+                        </div>
+                      )}
                       {selectedGraph.trigger && (
                         <details className={`mt-1 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                           <summary className="cursor-pointer select-none truncate">
