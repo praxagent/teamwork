@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/praxagent/teamwork/compare/v0.15.0...v0.16.0) (2026-07-03)
+
+
+### Features
+
+* request-source chip in trace graph + mobile drag-scroll fix ([#29](https://github.com/praxagent/teamwork/issues/29)) ([bba6cad](https://github.com/praxagent/teamwork/commit/bba6cadf9575ebd893ff062c7017e1102ce61730))
+
 ## [0.15.0](https://github.com/praxagent/teamwork/compare/v0.14.1...v0.15.0) (2026-06-29)
 
 
