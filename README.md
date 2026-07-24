@@ -47,6 +47,9 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 - **Live agent output** — Terminal-style real-time execution stream for each agent. Select any agent to watch its work; working agents highlighted and sorted to top. Full-width layout for maximum visibility
 - **Agent roster** — Display agent names, roles, avatars, and online status
 - **External Agent API** — REST endpoints for any agent to send messages, update tasks, manage files, push live output, and ensure channels
+- **Per-agent identity & governance** — each agent gets its own credential (identity derived from the token, never from the request body), its own capability set, and optional **Ed25519 request signing**. Destructive actions can be put behind an **approval gate**: the agent proposes, a human decides, and the approval is bound to that exact action and single-use
+- **Append-only audit log** — one ordered, **hash-chained** record of what happened across every agent. Editing, deleting or reordering an entry breaks verification, so the history can't be quietly rewritten
+- **Agent-first CLI** — `teamwork-agent <command> '<json>'`: JSON in, JSON out, named errors and non-zero exits, so an agent can drive TeamWork as a tool without an HTTP integration
 - **Installable** — `uv pip install` from GitHub; bundles the React frontend as static files
 - **Single container** — One Docker image serves both API and frontend (no nginx needed)
 - **Zero AI dependencies** — No LLM API keys, no anthropic/openai packages
@@ -221,6 +224,10 @@ Pass it as the `X-API-Key` header on every request. If the two drift apart you g
 
 For local development only, `ALLOW_UNAUTHENTICATED_AGENTS=true` restores the old
 accept-anything behaviour. Never set it on a reachable deployment.
+
+**Full model:** [`docs/security/agent-identity.md`](docs/security/agent-identity.md)
+covers all of it — credentials, capabilities, signed envelopes, the audit log and
+approval gates — plus the rollout order and what each layer does *not* buy.
 
 **Per-agent credentials (recommended for multiple agents).** A single shared key
 authenticates a caller but carries **no agent identity** — any holder can act as,

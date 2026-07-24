@@ -95,8 +95,8 @@ on *how*:
 
 ## What's worth borrowing — the one real idea (and one small one)
 
-**1. Signed, per-agent identity → a non-repudiable audit trail. (adopt-candidate,
-partly agent-side.)** This is the borrow worth taking seriously, and it lands
+**1. Signed, per-agent identity → a non-repudiable audit trail. ✅ ADOPTED —
+shipped 2026-07.** This is the borrow worth taking seriously, and it lands
 squarely on the Prax pairing's **safety/governance thesis**. Today an agent
 authenticates to TeamWork with a shared `X-API-Key`; a leaked key means silent
 impersonation, and the audit trail is server-attested rather than
@@ -139,5 +139,9 @@ TeamWork has, and it's a serious, well-architected project from Block. It wins o
 **watching the agent work, operational simplicity, and being shipped today**. The
 two bets barely overlap in practice. Take exactly one idea across the line:
 **cryptographically-signed, per-agent identity for a non-repudiable audit trail**
-— tracked in [`../BACKLOG.md`](../BACKLOG.md), cross-linked to Prax's governance /
-per-caller-identity work. Leave the Nostr substrate where it is.
+— **now shipped** (2026-07): per-agent credentials with server-derived identity,
+identity-scoped capabilities, Ed25519 signed envelopes, an append-only
+hash-chained event log, and approval gates. See
+[`../security/agent-identity.md`](../security/agent-identity.md). The Nostr
+substrate stayed where it is, exactly as this comparison recommended — the
+property travelled, the plumbing did not.

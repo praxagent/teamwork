@@ -58,8 +58,14 @@ those ideas live with the agent (e.g. Prax's own backlog).
   and do **not** add Postgres/Redis/S3. Borrow the *signed-identity property*, not
   the substrate — the single-container / SQLite / zero-infra footprint is a
   feature, not a gap.
-- **Status**: not started — adopt-candidate from the Buzz comparison; a larger,
-  partly agent-side lift, tracked here so it isn't lost.
+- **Status**: ✅ **shipped** (2026-07). Per-agent credentials with server-derived
+  identity, identity-scoped capabilities, Ed25519 signed envelopes, an
+  append-only hash-chained event log, and approval gates all landed. Full model:
+  [`security/agent-identity.md`](security/agent-identity.md).
+  **Still open**: key custody in a separate trust domain — today the orchestrator
+  holds every agent's private key, so a compromised orchestrator can sign as any
+  of them. Signing buys attribution and tamper-evidence, not resistance to a
+  compromised signer.
 
 ---
 
@@ -75,4 +81,5 @@ those ideas live with the agent (e.g. Prax's own backlog).
   artifacts**. A channel-auto-provision hook + artifact rendering, not a git
   engine.
 - **Status**: not started — small adopt-candidate from the Buzz comparison,
-  mostly agent-side.
+  mostly agent-side. The TeamWork half is nearly free (`ensure-channels` already
+  exists); the git orchestration belongs to the agent.

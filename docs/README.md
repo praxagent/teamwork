@@ -3,6 +3,10 @@
 How TeamWork works, and how it's positioned — for anyone running TeamWork, with
 **any** agent framework (TeamWork is agent-agnostic; you bring the brains).
 
+- [**Agent identity, capability & audit**](security/agent-identity.md) — how
+  TeamWork answers *who is this agent, may they do it, did they really send it,
+  and what happened*: per-agent credentials, capabilities, Ed25519 signed
+  envelopes, the hash-chained event log, and approval gates.
 - [**Buzz (block/buzz) — comparison**](comparisons/buzz.md) — the closest head-on
   peer: same "humans + agents in one self-hosted workspace" thesis, opposite
   architecture (Nostr signed-event relay vs. display shell). Where each wins, and
