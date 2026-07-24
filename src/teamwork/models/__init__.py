@@ -9,6 +9,7 @@ from teamwork.models.task import Task
 from teamwork.models.activity import ActivityLog
 from teamwork.models.memory import Memory
 from teamwork.models.event import Event
+from teamwork.models.approval import ApprovalRequest
 
 __all__ = [
     "Base",
@@ -23,4 +24,5 @@ __all__ = [
     "ActivityLog",
     "Memory",
     "Event",
+    "ApprovalRequest",
 ]

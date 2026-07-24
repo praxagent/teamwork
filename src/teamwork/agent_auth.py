@@ -83,6 +83,16 @@ class AgentClient:
     legacy: bool = False             # the shared workspace-wide key
     public_key: str | None = None    # Ed25519 (base64/hex) — enables signing
     require_signature: bool = False  # reject this client's unsigned requests
+    # Capabilities this client holds but may not exercise unilaterally: each use
+    # needs a fresh, human-granted approval. "May do X, with permission" is a
+    # distinct state from both "may do X" and "may not do X".
+    gated: frozenset[str] = field(default_factory=frozenset)
+
+    def needs_approval(self, capability: str) -> bool:
+        if ALL_CAPABILITIES in self.gated or capability in self.gated:
+            return True
+        noun = capability.split(".", 1)[0]
+        return f"{noun}.{ALL_CAPABILITIES}" in self.gated
 
     def matches(self, presented: str | None) -> bool:
         """Constant-time credential check (never leaks a prefix via timing)."""
@@ -156,6 +166,8 @@ def load_clients(path: str | None = None, legacy_key: str | None = None) -> list
                     # from it is more likely a downgrade attack than intent.
                     require_signature=bool(entry.get(
                         "require_signature", bool(entry.get("public_key")))),
+                    gated=frozenset(_parse_allow(entry["gated"]))
+                    if entry.get("gated") else frozenset(),
                 ))
     if legacy_key:
         # Unbound on purpose: the shared key predates per-agent identity and can

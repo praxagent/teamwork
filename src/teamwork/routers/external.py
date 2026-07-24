@@ -205,6 +205,47 @@ def require_capability(client: AgentClient, capability: str) -> None:
             detail=f"This credential is not granted '{capability}'.")
 
 
+async def require_approval(
+    db: AsyncSession, client: AgentClient, capability: str, *,
+    http_request: Request, project_id: str | None = None,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    """Gate an action behind a human decision, if this client is gated for it.
+
+    On the first attempt this raises 403 with a pending approval id. Once a human
+    approves, the agent retries the *same* action with ``X-Approval-Id`` and the
+    approval is spent. Approvals are bound to the exact action and single-use, so
+    one granted for "post a message" cannot be redirected at "purge a channel".
+    """
+    if not client.needs_approval(capability):
+        return
+
+    from teamwork.services.approvals import consume, request_approval
+
+    presented = http_request.headers.get("X-Approval-Id")
+    if presented:
+        ok, why = await consume(db, approval_id=presented, capability=capability,
+                                project_id=project_id, payload=payload,
+                                client_name=client.name)
+        if ok:
+            return
+        raise HTTPException(status_code=403,
+                            detail={"error": "approval_invalid", "reason": why})
+
+    req = await request_approval(db, capability=capability, client_name=client.name,
+                                 agent_id=client.agent_id, project_id=project_id,
+                                 payload=payload)
+    await db.commit()
+    logger.info("client %r requested approval %s for %s", client.name, req.id, capability)
+    raise HTTPException(status_code=403, detail={
+        "error": "approval_required",
+        "approval_id": req.id,
+        "capability": capability,
+        "detail": "This action needs approval. Retry with header "
+                  "X-Approval-Id once it is granted.",
+    })
+
+
 def require_agent(client: AgentClient, asserted_agent_id: str | None) -> str | None:
     """Reconcile a body/path-asserted ``agent_id`` with the caller's identity.
 
@@ -537,6 +578,8 @@ async def clear_channel_messages(
 ) -> dict[str, int]:
     """Delete all messages from a channel (used to re-sync history)."""
     require_capability(api_key, CAP_MESSAGE_DELETE)
+    await require_approval(db, api_key, CAP_MESSAGE_DELETE, http_request=http_request,
+                           project_id=project_id, payload={"channel_id": channel_id})
     await _get_external_project(project_id, db)
     from sqlalchemy import delete
     result = await db.execute(
@@ -567,6 +610,7 @@ async def get_channel_message_count(
 async def bulk_import_messages(
     project_id: str,
     request: BulkMessageImport,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
@@ -577,6 +621,8 @@ async def bulk_import_messages(
     Supports ``created_at`` override to preserve original timestamps.
     """
     require_capability(api_key, CAP_MESSAGE_BULK)
+    await require_approval(db, api_key, CAP_MESSAGE_BULK, http_request=http_request,
+                           project_id=project_id, payload={"count": len(request.messages)})
     await _get_external_project(project_id, db)
 
     # Validate all channel_ids belong to this project
@@ -886,3 +932,62 @@ async def verify_event_chain(
     from teamwork.services.event_log import verify_chain
 
     return await verify_chain(db, limit=limit)
+
+
+class ApprovalDecision(BaseModel):
+    """A human's decision on a proposed action."""
+    approve: bool
+    decided_by: str
+    note: str | None = None
+
+
+@router.get("/approvals")
+async def list_approvals(
+    project_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Actions waiting on a decision — what a human needs to look at."""
+    from teamwork.services.approvals import list_pending
+
+    pending = await list_pending(db, project_id=project_id)
+    return {"pending": [
+        {
+            "approval_id": r.id,
+            "capability": r.capability,
+            "requested_by": r.requested_by_client,
+            "agent_id": r.requested_by_agent_id,
+            "project_id": r.project_id,
+            "payload": r.payload_preview,
+            "reason": r.reason,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+        }
+        for r in pending
+    ]}
+
+
+@router.post("/approvals/{approval_id}/decide")
+async def decide_approval(
+    approval_id: str,
+    request: ApprovalDecision,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Approve or reject a proposed action.
+
+    The decision only *unlocks* the action — the agent still has to retry it,
+    presenting this approval. Nothing is executed on the agent's behalf here, so
+    there is no queue of half-run intentions to reconcile.
+    """
+    from teamwork.services.approvals import decide
+
+    try:
+        req = await decide(db, approval_id=approval_id, approve=request.approve,
+                           decided_by=request.decided_by, note=request.note)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="No such approval request.") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    await db.commit()
+    return {"approval_id": req.id, "status": req.status, "decided_by": req.decided_by}
