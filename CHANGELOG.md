@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.17.0](https://github.com/praxagent/teamwork/compare/v0.16.0...v0.17.0) (2026-07-24)
+
+
+### Features
+
+* append-only hash-chained event log + agent-first CLI ([#37](https://github.com/praxagent/teamwork/issues/37)) ([3500d7c](https://github.com/praxagent/teamwork/commit/3500d7ceea1bce1672586113b7a330d9d0d3973c))
+* approval gates + agent identity docs ([#38](https://github.com/praxagent/teamwork/issues/38)) ([33a3c71](https://github.com/praxagent/teamwork/commit/33a3c71c861225d3eefb1b29ca0b918c40d74176))
+* **security:** identity-scoped capabilities + Ed25519 signed envelopes ([#35](https://github.com/praxagent/teamwork/issues/35)) ([6ee6749](https://github.com/praxagent/teamwork/commit/6ee6749228502c50fcdf658906c4a1b4bd1e087a))
+* **security:** per-agent credentials — identity comes from the token, not the body ([#33](https://github.com/praxagent/teamwork/issues/33)) ([c448f7a](https://github.com/praxagent/teamwork/commit/c448f7a9f2fced1eb5628873ba8eafcc78800d8b))
+
+
+### Documentation
+
+* add Buzz (block/buzz) comparison + borrow-candidates ([#31](https://github.com/praxagent/teamwork/issues/31)) ([a271336](https://github.com/praxagent/teamwork/commit/a2713369c7f8e0f1a76a5118e491e2606227c39b))
+
 ## [0.16.0](https://github.com/praxagent/teamwork/compare/v0.15.0...v0.16.0) (2026-07-03)
 
 
