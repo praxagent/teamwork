@@ -41,6 +41,31 @@ logger = logging.getLogger(__name__)
 # single-key credential, and any registry entry that omits `allow`).
 ALL_CAPABILITIES = "*"
 
+# The capability vocabulary: what a credential may *do*, independent of which
+# agent it is. Scoping by identity means a research agent holding a valid
+# credential still cannot reorganise the board or rewrite another channel's
+# history — the same way you would not give a teammate every permission just
+# because they are on the team.
+#
+# Grouped `noun.verb`; a registry entry may also grant a whole noun with
+# `"message.*"`. Read capabilities are separated from writes because the
+# interesting privilege boundary is *mutation*.
+CAP_PROJECT_READ = "project.read"
+CAP_PROJECT_WRITE = "project.write"        # create/update a project, ensure channels
+CAP_AGENT_WRITE = "agent.write"            # register an agent, set its status
+CAP_MESSAGE_POST = "message.post"
+CAP_MESSAGE_DELETE = "message.delete"      # purge a channel's history — destructive
+CAP_MESSAGE_BULK = "message.bulk"          # backfill history with forged timestamps
+CAP_PRESENCE = "presence"                  # typing indicators, live output
+CAP_TASK_WRITE = "task.write"              # create/update board items
+CAP_ACTIVITY_WRITE = "activity.write"
+
+KNOWN_CAPABILITIES = frozenset({
+    CAP_PROJECT_READ, CAP_PROJECT_WRITE, CAP_AGENT_WRITE, CAP_MESSAGE_POST,
+    CAP_MESSAGE_DELETE, CAP_MESSAGE_BULK, CAP_PRESENCE, CAP_TASK_WRITE,
+    CAP_ACTIVITY_WRITE,
+})
+
 
 def _sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
@@ -64,7 +89,15 @@ class AgentClient:
         return hmac.compare_digest(self.token_sha256, _sha256(presented))
 
     def can(self, capability: str) -> bool:
-        return ALL_CAPABILITIES in self.allow or capability in self.allow
+        """May this credential perform *capability*?
+
+        Accepts an exact grant, a noun wildcard (``message.*`` covers
+        ``message.post``), or the global wildcard.
+        """
+        if ALL_CAPABILITIES in self.allow or capability in self.allow:
+            return True
+        noun = capability.split(".", 1)[0]
+        return f"{noun}.{ALL_CAPABILITIES}" in self.allow
 
     def may_act_as(self, asserted_agent_id: str | None) -> bool:
         """May this credential act as *asserted_agent_id*?
