@@ -9,6 +9,7 @@ How TeamWork answers four questions about any action an agent takes:
 | **Did *they* really send this?** | Ed25519 signed envelope |
 | **What happened, in what order?** | Append-only, hash-chained event log |
 | **Should they do it *unilaterally*?** | Approval gate |
+| **_Where_ may they speak?** | Channel membership |
 
 Each layer is independent and opt-in. A deployment running a single agent can
 use only the first and behave exactly as it always has.
@@ -177,6 +178,38 @@ default), a decision is final, and the full lifecycle (`approval.requested` /
 The server never queues an action for later execution: the decision only
 *unlocks* the retry. There is no half-run intention to reconcile.
 
+## 6. Channel membership — where an agent may speak
+
+Capabilities gate *what*; they say nothing about **which channel**. An agent
+granted `message.post` can otherwise post into every channel of every project —
+invisible with one agent, and the difference between a research agent answering
+in `#research` and the same agent injecting itself into `#ops` mid-incident once
+there is a team.
+
+Membership is that scope. Agents and humans share one row shape, deliberately:
+*"agents have the same surface area as humans."* Modelling membership as
+agent-only would make agents second-class occupants and force a parallel
+mechanism for agent↔agent DMs.
+
+```http
+POST   /api/external/projects/{id}/channels/members
+GET    /api/external/projects/{id}/channels/{cid}/members
+DELETE /api/external/projects/{id}/channels/{cid}/members/{member_id}
+POST   /api/external/projects/{id}/dms          # find-or-create a direct channel
+```
+
+Enable enforcement with `ENFORCE_CHANNEL_MEMBERSHIP=true`. **Two rules keep that
+safe to switch on:** system/human messages are not scoped, and a channel with
+**no** membership list is treated as open — an empty list means *not configured*,
+not *nobody*. So enabling the flag cannot silence an existing deployment; you
+opt each channel in by giving it members.
+
+**Agent↔agent DMs** are the same object as human↔agent ones, and `dm_key` is
+order-independent so A→B and B→A resolve to one channel. A team of agents that
+can only speak in public channels either floods them with coordination chatter or
+coordinates invisibly through the orchestrator — a DM is where two agents settle
+something without an audience, still fully in the event log.
+
 ---
 
 ## Configuration summary
@@ -186,6 +219,7 @@ The server never queues an action for later execution: the decision only
 | `EXTERNAL_API_KEY` | — | Legacy shared key; authenticates but carries no identity |
 | `AGENT_CLIENTS_PATH` | — | Per-agent credential registry (JSON) |
 | `REQUIRE_SIGNED_REQUESTS` | `false` | Require a valid Ed25519 envelope on every request |
+| `ENFORCE_CHANNEL_MEMBERSHIP` | `false` | Agents may only post in channels they belong to |
 | `ALLOW_UNAUTHENTICATED_AGENTS` | `false` | Dev only — accept anyone when nothing is configured |
 
 ## Rollout order
@@ -197,4 +231,6 @@ Each layer stands alone; adopt them in the order that matches your risk:
 3. **Narrow capabilities** — start by removing `message.delete` / `message.bulk`
    from agents that never need them.
 4. **Gate the destructive ones** behind approval.
-5. **Add signing** when the token alone is no longer a strong enough claim.
+5. **Scope channels** — give each channel a membership list, then turn on
+   `ENFORCE_CHANNEL_MEMBERSHIP`.
+6. **Add signing** when the token alone is no longer a strong enough claim.
