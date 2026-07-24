@@ -25,6 +25,7 @@ from teamwork.agent_auth import (
     resolve_client,
 )
 from teamwork.models import Project, Agent, Channel, Message, Task, get_db, AsyncSessionLocal
+from teamwork.services.event_log import append_event
 from teamwork.routers.agents import get_live_output_store, _LiveOutputEntry
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
@@ -453,6 +454,7 @@ async def update_agent_status(
 async def send_external_message(
     project_id: str,
     request: ExternalMessage,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
@@ -491,6 +493,19 @@ async def send_external_message(
     db.add(message)
     await db.flush()
     await db.refresh(message)
+    # Record it in the ordered audit log before committing, so the message and
+    # its log entry land in the same transaction — one cannot exist without the
+    # other. The content is not copied in: the log says what happened and who
+    # did it, and the message table remains the place the text lives.
+    await append_event(
+        db, event_type="message.posted", actor_type="agent" if acting_agent_id else "system",
+        actor_id=acting_agent_id, actor_name=agent_name or api_key.name,
+        project_id=project_id, subject_id=message.id,
+        payload={"channel_id": request.channel_id, "message_type": request.message_type,
+                 "content_length": len(request.content or "")},
+        signature=http_request.headers.get("X-Agent-Signature"),
+        signed_by=api_key.name if api_key.public_key else None,
+    )
     await db.commit()
 
     msg_event = WebSocketEvent(
@@ -813,3 +828,61 @@ async def create_activity_log(
     db.add(log)
     await db.commit()
     return {"log_id": log.id}
+
+
+@router.get("/projects/{project_id}/events")
+async def list_events(
+    project_id: str,
+    since_seq: int | None = None,
+    event_type: str | None = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Read the ordered audit log for a project.
+
+    The single place that answers "what happened here, in what order, and who
+    did it" across every agent — the per-table views each answer only their own
+    slice.
+    """
+    from teamwork.services.event_log import head_seq, read_events
+
+    events = await read_events(db, project_id=project_id, event_type=event_type,
+                               since_seq=since_seq, limit=limit)
+    return {
+        "head_seq": await head_seq(db),
+        "events": [
+            {
+                "seq": e.seq,
+                "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
+                "event_type": e.event_type,
+                "actor_type": e.actor_type,
+                "actor_id": e.actor_id,
+                "actor_name": e.actor_name,
+                "subject_id": e.subject_id,
+                "payload": e.payload,
+                "signed": bool(e.signature),
+                "signed_by": e.signed_by,
+                "entry_hash": e.entry_hash,
+            }
+            for e in events
+        ],
+    }
+
+
+@router.get("/events/verify")
+async def verify_event_chain(
+    limit: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Verify the log's hash chain end to end.
+
+    ``ok: false`` means the log was altered after the fact — an entry edited,
+    deleted or reordered. It proves internal consistency, not external
+    notarisation: anyone with database write access could recompute the whole
+    chain, which would need an externally anchored head hash to detect.
+    """
+    from teamwork.services.event_log import verify_chain
+
+    return await verify_chain(db, limit=limit)

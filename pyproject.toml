@@ -24,6 +24,7 @@ dependencies = [
 
 [project.scripts]
 teamwork = "teamwork.cli:main"
+teamwork-agent = "teamwork.agent_cli:main"
 
 [project.optional-dependencies]
 dev = [

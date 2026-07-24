@@ -8,6 +8,7 @@ from teamwork.models.message import Message
 from teamwork.models.task import Task
 from teamwork.models.activity import ActivityLog
 from teamwork.models.memory import Memory
+from teamwork.models.event import Event
 
 __all__ = [
     "Base",
@@ -21,4 +22,5 @@ __all__ = [
     "Task",
     "ActivityLog",
     "Memory",
+    "Event",
 ]
