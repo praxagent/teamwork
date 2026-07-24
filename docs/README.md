@@ -3,6 +3,10 @@
 How TeamWork works, and how it's positioned — for anyone running TeamWork, with
 **any** agent framework (TeamWork is agent-agnostic; you bring the brains).
 
+- [**Buzz (block/buzz) — comparison**](comparisons/buzz.md) — the closest head-on
+  peer: same "humans + agents in one self-hosted workspace" thesis, opposite
+  architecture (Nostr signed-event relay vs. display shell). Where each wins, and
+  the one idea worth borrowing (signed per-agent identity).
 - [**Microsoft Loop — comparison**](comparisons/microsoft-loop.md) — how TeamWork
   differs from Microsoft Loop (human co-creation vs. human↔agent collaboration),
   and the one idea worth borrowing.
