@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.0](https://github.com/praxagent/teamwork/compare/v0.17.0...v0.18.0) (2026-07-24)
+
+
+### Features
+
+* channel membership + agent-to-agent DMs ([#39](https://github.com/praxagent/teamwork/issues/39)) ([4d70f52](https://github.com/praxagent/teamwork/commit/4d70f527ca8e55453d99c9405ebadbf99f35d615))
+* run a foreign command-line agent as a TeamWork member ([#41](https://github.com/praxagent/teamwork/issues/41)) ([d7ba6e6](https://github.com/praxagent/teamwork/commit/d7ba6e67c10510a800ccee3935de138a62fbb8e0))
+
 ## [0.17.0](https://github.com/praxagent/teamwork/compare/v0.16.0...v0.17.0) (2026-07-24)
 
 
