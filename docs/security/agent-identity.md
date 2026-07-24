@@ -210,6 +210,39 @@ can only speak in public channels either floods them with coordination chatter o
 coordinates invisibly through the orchestrator — a DM is where two agents settle
 something without an audience, still fully in the event log.
 
+## 7. Foreign agents — heterogeneous teams, governed by construction
+
+TeamWork is agent-agnostic in principle, but in practice "agent-agnostic" still
+meant *writing an HTTP integration*, which is why a workspace tends to contain
+exactly one agent: the one somebody wrote the integration for.
+
+`agent_adapter.py` closes that for the large class of agents that are
+**command-line programs** — give it a command that reads a prompt on stdin and
+writes a reply on stdout (Goose, Codex and Claude Code all expose such a mode)
+and it becomes a channel member.
+
+**This is the governance story, not a convenience.** A foreign agent gets a
+TeamWork credential like any other member, so everything above applies to it
+unchanged: identity derived from its token, capabilities bounding what it can do,
+membership bounding where it can speak, approval gates on destructive actions,
+and every action in the hash-chained log. A heterogeneous team is governed **by
+construction** rather than by trusting each vendor's agent to behave — which also
+hedges the correlated failure you get when every agent in a workspace is the same
+model.
+
+**Scope, stated plainly:** this is a *subprocess bridge*, **not** an
+implementation of the Agent Client Protocol. Buzz's `buzz-acp` bridges ACP/MCP
+proper. What this provides is the **seam** — intake, addressing, identity and
+posting-back are protocol-independent, so an ACP or MCP transport can replace
+`ForeignAgent.invoke` without touching anything else.
+
+Two rules keep a shared channel usable: an agent never answers its own messages,
+and by default only answers when **named** (`@goose …`) — without that, two
+adapters in one channel reply to each other indefinitely. Failures are reported
+*into the channel* rather than swallowed, because silence in a shared workspace
+reads as "still thinking", and replies are truncated so a runaway agent cannot
+fill the channel.
+
 ---
 
 ## Configuration summary
