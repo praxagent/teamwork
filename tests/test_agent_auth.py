@@ -142,3 +142,70 @@ def test_project_scope():
     c = _client(project_id="p1")
     assert c.scoped_to("p1") and not c.scoped_to("p2")
     assert _client().scoped_to("anything")   # unscoped credential
+
+
+# ── Identity-scoped capability (Buzz #2) ─────────────────────────────────────
+#
+# Identity answers *who*; capabilities answer *what they may do*. Scoping by
+# identity is the point: a research agent holding a valid credential still has
+# no business purging a channel's history or reorganising the board.
+
+def test_noun_wildcard_grants_the_group_not_the_world():
+    from teamwork.agent_auth import CAP_MESSAGE_DELETE, CAP_MESSAGE_POST, CAP_TASK_WRITE
+    c = _client(allow=frozenset({"message.*"}))
+    assert c.can(CAP_MESSAGE_POST) and c.can(CAP_MESSAGE_DELETE)
+    assert not c.can(CAP_TASK_WRITE)
+
+
+def test_a_narrow_agent_cannot_perform_destructive_actions():
+    from teamwork.agent_auth import (
+        CAP_MESSAGE_BULK, CAP_MESSAGE_DELETE, CAP_MESSAGE_POST, CAP_TASK_WRITE,
+    )
+    research = _client(agent_id="agent-research", allow=frozenset({CAP_MESSAGE_POST}))
+    assert research.can(CAP_MESSAGE_POST)
+    for destructive in (CAP_MESSAGE_DELETE, CAP_MESSAGE_BULK, CAP_TASK_WRITE):
+        assert not research.can(destructive), destructive
+
+
+def test_require_capability_raises_403_with_the_missing_capability_named():
+    from teamwork.agent_auth import CAP_MESSAGE_DELETE, CAP_MESSAGE_POST
+    from teamwork.routers.external import require_capability
+    c = _client(allow=frozenset({CAP_MESSAGE_POST}))
+    require_capability(c, CAP_MESSAGE_POST)          # granted → no raise
+    with pytest.raises(HTTPException) as exc:
+        require_capability(c, CAP_MESSAGE_DELETE)
+    assert exc.value.status_code == 403
+    assert CAP_MESSAGE_DELETE in exc.value.detail
+
+
+def test_legacy_and_undeclared_credentials_stay_wildcard():
+    # This change must not silently lock out existing deployments: a credential
+    # that declares no allowlist keeps full access.
+    from teamwork.agent_auth import CAP_MESSAGE_DELETE
+    assert _client().can(CAP_MESSAGE_DELETE)
+    legacy = AgentClient(name="legacy", token_sha256=_sha256("k"), legacy=True)
+    assert legacy.can(CAP_MESSAGE_DELETE)
+
+
+def test_registry_declares_capabilities_from_a_list_or_csv():
+    clients = load_clients_from([
+        {"name": "narrow", "token": "t1", "agent_id": "a1", "allow": ["message.post"]},
+        {"name": "csv", "token": "t2", "agent_id": "a2", "allow": "message.post,task.write"},
+    ])
+    narrow, csv = clients
+    assert narrow.can("message.post") and not narrow.can("task.write")
+    assert csv.can("message.post") and csv.can("task.write")
+
+
+def test_every_enforced_capability_is_in_the_known_vocabulary():
+    # Guards against a typo'd constant silently granting nothing (or everything).
+    import pathlib
+    import re
+
+    import teamwork.agent_auth as aa
+    from teamwork.agent_auth import KNOWN_CAPABILITIES
+    src = pathlib.Path("src/teamwork/routers/external.py").read_text()
+    used = set(re.findall(r"require_capability\(api_key, (CAP_\w+)\)", src))
+    assert used, "no capability checks found — did enforcement get removed?"
+    for name in used:
+        assert getattr(aa, name) in KNOWN_CAPABILITIES, name
