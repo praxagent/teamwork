@@ -514,6 +514,20 @@ async def send_external_message(
     # the credential rather than trusting the body.
     acting_agent_id = require_agent(api_key, request.agent_id)
 
+    # Capabilities say *what* an agent may do; membership says *where*. An agent
+    # holding message.post should still not be able to speak in a channel it was
+    # never put in.
+    from teamwork.config import settings as _settings
+    from teamwork.services.membership import may_post
+
+    ok, why = await may_post(
+        db, channel_id=request.channel_id, agent_id=acting_agent_id,
+        enforce=getattr(_settings, "enforce_channel_membership", False))
+    if not ok:
+        logger.warning("client %r refused posting to channel %s: %s",
+                       api_key.name, request.channel_id, why)
+        raise HTTPException(status_code=403, detail=why)
+
     agent_name = None
     if acting_agent_id:
         agent_result = await db.execute(
@@ -991,3 +1005,100 @@ async def decide_approval(
         raise HTTPException(status_code=409, detail=str(exc)) from None
     await db.commit()
     return {"approval_id": req.id, "status": req.status, "decided_by": req.decided_by}
+
+
+class MembershipChange(BaseModel):
+    """Add or remove a channel occupant."""
+    channel_id: str
+    member_id: str
+    member_type: str = "agent"
+    member_name: str | None = None
+    role: str = "member"
+
+
+class DmRequest(BaseModel):
+    """Open (or find) the direct channel between two participants."""
+    agent_a: str
+    agent_b: str
+    name_a: str | None = None
+    name_b: str | None = None
+
+
+@router.get("/projects/{project_id}/channels/{channel_id}/members")
+async def get_channel_members(
+    project_id: str,
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Who is in this channel — agents and humans, same shape."""
+    from teamwork.services.membership import list_members
+
+    return {"members": [
+        {"member_type": m.member_type, "member_id": m.member_id,
+         "member_name": m.member_name, "role": m.role,
+         "joined_at": m.joined_at.isoformat() if m.joined_at else None}
+        for m in await list_members(db, channel_id=channel_id)
+    ]}
+
+
+@router.post("/projects/{project_id}/channels/members", status_code=201)
+async def add_channel_member(
+    project_id: str,
+    request: MembershipChange,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Put an agent (or human) in a channel."""
+    require_capability(api_key, CAP_PROJECT_WRITE)
+    from teamwork.services.membership import add_member
+
+    member = await add_member(
+        db, channel_id=request.channel_id, member_id=request.member_id,
+        member_type=request.member_type, member_name=request.member_name,
+        role=request.role, project_id=project_id)
+    await db.commit()
+    return {"member_id": member.member_id, "channel_id": member.channel_id,
+            "role": member.role}
+
+
+@router.delete("/projects/{project_id}/channels/{channel_id}/members/{member_id}")
+async def remove_channel_member(
+    project_id: str,
+    channel_id: str,
+    member_id: str,
+    member_type: str = "agent",
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Remove an occupant. The membership event stays in the log."""
+    require_capability(api_key, CAP_PROJECT_WRITE)
+    from teamwork.services.membership import remove_member
+
+    removed = await remove_member(db, channel_id=channel_id, member_id=member_id,
+                                  member_type=member_type, project_id=project_id)
+    await db.commit()
+    return {"removed": removed}
+
+
+@router.post("/projects/{project_id}/dms", status_code=201)
+async def open_dm(
+    project_id: str,
+    request: DmRequest,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Find or create the direct channel between two participants.
+
+    Agent-to-agent DMs are the same object as human-to-agent ones: a team of
+    agents that can only speak in public channels either floods them with
+    coordination chatter or coordinates invisibly through the orchestrator.
+    """
+    require_capability(api_key, CAP_PROJECT_WRITE)
+    from teamwork.services.membership import ensure_dm
+
+    channel = await ensure_dm(db, project_id=project_id, agent_a=request.agent_a,
+                              agent_b=request.agent_b, name_a=request.name_a,
+                              name_b=request.name_b)
+    await db.commit()
+    return {"channel_id": channel.id, "participants": channel.dm_participants}

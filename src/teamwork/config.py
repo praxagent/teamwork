@@ -121,6 +121,12 @@ class Settings(BaseSettings):
     # migration path. See agent_signing.py.
     require_signed_requests: bool = False
 
+    # Restrict agents to posting only in channels they are a member of. Off by
+    # default, and even when on it only bites on channels that declare a
+    # membership list — so enabling it cannot mute an existing deployment that
+    # never configured one. See services/membership.py.
+    enforce_channel_membership: bool = False
+
     # Dev escape hatch. With no credential configured the external API refuses
     # requests (503) rather than accepting anyone as anyone — set this only for
     # local development, never for a reachable deployment.

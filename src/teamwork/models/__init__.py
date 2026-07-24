@@ -10,6 +10,7 @@ from teamwork.models.activity import ActivityLog
 from teamwork.models.memory import Memory
 from teamwork.models.event import Event
 from teamwork.models.approval import ApprovalRequest
+from teamwork.models.channel_member import ChannelMember
 
 __all__ = [
     "Base",
@@ -25,4 +26,5 @@ __all__ = [
     "Memory",
     "Event",
     "ApprovalRequest",
+    "ChannelMember",
 ]
