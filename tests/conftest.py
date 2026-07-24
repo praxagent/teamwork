@@ -18,6 +18,7 @@ os.environ.setdefault("ALLOW_UNAUTHENTICATED_AGENTS", "true")
 # priority over the dotenv file) so the suite behaves the same everywhere.
 os.environ["EXTERNAL_API_KEY"] = ""
 os.environ["AGENT_CLIENTS_PATH"] = ""
+os.environ["REQUIRE_SIGNED_REQUESTS"] = "false"
 
 from collections.abc import AsyncGenerator
 

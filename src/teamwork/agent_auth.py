@@ -81,6 +81,8 @@ class AgentClient:
     project_id: str | None = None    # scope; None = any project
     allow: frozenset[str] = field(default_factory=lambda: frozenset({ALL_CAPABILITIES}))
     legacy: bool = False             # the shared workspace-wide key
+    public_key: str | None = None    # Ed25519 (base64/hex) — enables signing
+    require_signature: bool = False  # reject this client's unsigned requests
 
     def matches(self, presented: str | None) -> bool:
         """Constant-time credential check (never leaks a prefix via timing)."""
@@ -148,6 +150,12 @@ def load_clients(path: str | None = None, legacy_key: str | None = None) -> list
                     agent_id=entry.get("agent_id") or None,
                     project_id=entry.get("project_id") or None,
                     allow=_parse_allow(entry.get("allow")),
+                    public_key=entry.get("public_key") or None,
+                    # A client that published a key defaults to requiring
+                    # signatures: having registered one, an unsigned request
+                    # from it is more likely a downgrade attack than intent.
+                    require_signature=bool(entry.get(
+                        "require_signature", bool(entry.get("public_key")))),
                 ))
     if legacy_key:
         # Unbound on purpose: the shared key predates per-agent identity and can

@@ -5,11 +5,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from teamwork.agent_signing import SignatureError, verify_envelope
 from teamwork.agent_auth import (
     CAP_ACTIVITY_WRITE,
     CAP_AGENT_WRITE,
@@ -143,9 +144,50 @@ def _resolve_client(x_api_key: str | None) -> AgentClient:
     return client
 
 
-def _verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> AgentClient:
-    """FastAPI dependency: the authenticated caller's identity."""
-    return _resolve_client(x_api_key)
+async def _verify_api_key(
+    request: Request,
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
+) -> AgentClient:
+    """FastAPI dependency: the authenticated caller's identity.
+
+    When the caller has registered a public key (or the deployment requires
+    signing globally), the request must also carry a valid Ed25519 envelope —
+    the token proves possession of a shared string, the signature proves this
+    *specific* request came from the key holder.
+    """
+    from teamwork.config import settings
+
+    client = _resolve_client(x_api_key)
+    signature = request.headers.get("X-Agent-Signature")
+    globally_required = getattr(settings, "require_signed_requests", False)
+
+    if not (client.require_signature or globally_required or signature):
+        return client                      # unsigned path — unchanged behaviour
+
+    if not client.public_key:
+        if signature:
+            logger.warning("client %r sent a signature but has no registered "
+                           "public key — ignoring it", client.name)
+            return client
+        raise HTTPException(
+            status_code=403,
+            detail="Signed requests are required but this credential has no "
+                   "registered public key.")
+    try:
+        verify_envelope(
+            client.public_key,
+            method=request.method,
+            path=request.url.path,
+            timestamp=request.headers.get("X-Agent-Timestamp", ""),
+            nonce=request.headers.get("X-Agent-Nonce", ""),
+            body=await request.body(),
+            signature=signature or "",
+        )
+    except SignatureError as exc:
+        # Log the specific reason; tell the caller only that it failed.
+        logger.warning("signature rejected for client %r: %s", client.name, exc)
+        raise HTTPException(status_code=401, detail="Invalid request signature.") from exc
+    return client
 
 
 def require_capability(client: AgentClient, capability: str) -> None:
