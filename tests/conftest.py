@@ -6,6 +6,12 @@ import os
 # import time, so the env var must be visible when Settings() runs.
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
+# The external agent API fails closed when no credential is configured. These
+# functional tests exercise behaviour, not the auth boundary — that boundary has
+# its own dedicated coverage in `test_agent_auth.py`, which asserts the 503 and
+# the per-agent identity rules. So run them in the explicit dev mode.
+os.environ.setdefault("ALLOW_UNAUTHENTICATED_AGENTS", "true")
+
 from collections.abc import AsyncGenerator
 
 import pytest

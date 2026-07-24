@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from teamwork.agent_auth import AgentClient, load_clients, resolve_client
 from teamwork.models import Project, Agent, Channel, Message, Task, get_db, AsyncSessionLocal
 from teamwork.routers.agents import get_live_output_store, _LiveOutputEntry
 from teamwork.websocket import manager, WebSocketEvent, EventType
@@ -102,22 +103,59 @@ class ExternalTyping(BaseModel):
     is_typing: bool = True
 
 
-def _verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> str | None:
-    """Verify the external agent API key."""
+def _resolve_client(x_api_key: str | None) -> AgentClient:
+    """Resolve the presented credential to the identity it belongs to.
+
+    Identity comes from the *token*, never from the request body. Unauthenticated
+    access is refused unless a deployment explicitly opts into dev mode — the old
+    "no key configured = accept anything" default meant an internet-reachable
+    TeamWork accepted any caller as any agent.
+    """
     from teamwork.config import settings
-    expected = getattr(settings, 'external_api_key', None)
-    if not expected:
-        # No key configured = accept anything (dev mode)
-        return x_api_key
-    if x_api_key != expected:
+
+    clients = load_clients(getattr(settings, "agent_clients_path", "") or None,
+                           getattr(settings, "external_api_key", "") or None)
+    if not clients:
+        if getattr(settings, "allow_unauthenticated_agents", False):
+            logger.warning("external API called with NO credentials configured — "
+                           "ALLOW_UNAUTHENTICATED_AGENTS is on; do not use in production")
+            return AgentClient(name="anonymous-dev", token_sha256="", legacy=True)
+        raise HTTPException(
+            status_code=503,
+            detail="External agent API is not configured: set EXTERNAL_API_KEY or "
+                   "TEAMWORK_AGENT_CLIENTS_PATH (or ALLOW_UNAUTHENTICATED_AGENTS=true "
+                   "for local dev).")
+    client = resolve_client(x_api_key, clients)
+    if client is None:
         raise HTTPException(status_code=401, detail="Invalid API key")
-    return x_api_key
+    return client
+
+
+def _verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> AgentClient:
+    """FastAPI dependency: the authenticated caller's identity."""
+    return _resolve_client(x_api_key)
+
+
+def require_agent(client: AgentClient, asserted_agent_id: str | None) -> str | None:
+    """Reconcile a body/path-asserted ``agent_id`` with the caller's identity.
+
+    Returns the agent id the caller may actually act as. A credential bound to an
+    agent cannot speak for a different one; an unbound credential (the legacy
+    shared key) keeps the old permissive behaviour.
+    """
+    if not client.may_act_as(asserted_agent_id):
+        logger.warning("client %r tried to act as agent %r (bound to %r) — refused",
+                       client.name, asserted_agent_id, client.agent_id)
+        raise HTTPException(
+            status_code=403,
+            detail="This credential may not act as that agent.")
+    return asserted_agent_id or client.agent_id
 
 
 @router.get("/projects")
 async def list_external_projects(
     db: AsyncSession = Depends(get_db),
-    api_key: str | None = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> list[dict[str, Any]]:
     """List all external-mode projects."""
     result = await db.execute(select(Project).where(Project.status == "active"))
@@ -149,7 +187,7 @@ async def list_external_projects(
 async def create_external_project(
     request: ExternalProjectCreate,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Create a new project in external orchestrator mode.
 
@@ -212,7 +250,7 @@ async def update_external_project(
     project_id: str,
     request: ExternalProjectUpdate,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Update an external project's settings."""
     project = await _get_external_project(project_id, db)
@@ -236,7 +274,7 @@ async def ensure_channels(
     project_id: str,
     request: EnsureChannelsRequest,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Ensure the listed channels exist for this project.
 
@@ -276,7 +314,7 @@ async def create_external_agent(
     project_id: str,
     request: ExternalAgentCreate,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Register an agent in the UI. The external orchestrator controls what the agent does."""
     project = await _get_external_project(project_id, db)
@@ -313,7 +351,7 @@ async def update_agent_status(
     agent_id: str,
     request: ExternalAgentStatus,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Update an agent's status (idle/working/offline)."""
     await _get_external_project(project_id, db)
@@ -343,7 +381,7 @@ async def send_external_message(
     project_id: str,
     request: ExternalMessage,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Send a message to a channel as an agent or system."""
     await _get_external_project(project_id, db)
@@ -355,10 +393,14 @@ async def send_external_message(
     if not ch_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Channel not found in this project")
 
+    # Whose name goes on this message is an identity claim — resolve it against
+    # the credential rather than trusting the body.
+    acting_agent_id = require_agent(api_key, request.agent_id)
+
     agent_name = None
-    if request.agent_id:
+    if acting_agent_id:
         agent_result = await db.execute(
-            select(Agent).where(Agent.id == request.agent_id, Agent.project_id == project_id)
+            select(Agent).where(Agent.id == acting_agent_id, Agent.project_id == project_id)
         )
         agent = agent_result.scalar_one_or_none()
         if not agent:
@@ -367,7 +409,7 @@ async def send_external_message(
 
     message = Message(
         channel_id=request.channel_id,
-        agent_id=request.agent_id,
+        agent_id=acting_agent_id,
         content=request.content,
         message_type=request.message_type,
         extra_data=request.extra_data,
@@ -402,7 +444,7 @@ async def clear_channel_messages(
     project_id: str,
     channel_id: str,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, int]:
     """Delete all messages from a channel (used to re-sync history)."""
     await _get_external_project(project_id, db)
@@ -419,7 +461,7 @@ async def get_channel_message_count(
     project_id: str,
     channel_id: str,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, int]:
     """Return the number of messages in a channel (used by sync to avoid duplicates)."""
     await _get_external_project(project_id, db)
@@ -436,7 +478,7 @@ async def bulk_import_messages(
     project_id: str,
     request: BulkMessageImport,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Bulk import historical messages into channels.
 
@@ -481,9 +523,10 @@ async def send_typing_indicator(
     project_id: str,
     request: ExternalTyping,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Send a typing indicator for an agent."""
+    require_agent(api_key, request.agent_id)
     agent_result = await db.execute(
         select(Agent).where(Agent.id == request.agent_id, Agent.project_id == project_id)
     )
@@ -512,13 +555,14 @@ async def push_live_output(
     agent_id: str,
     request: ExternalLiveOutput,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Push live execution output for an agent.
 
     Called by the external orchestrator (Prax) during agent execution to
     stream tool call logs and output to the TeamWork frontend.
     """
+    require_agent(api_key, agent_id)
     await _get_external_project(project_id, db)
 
     result = await db.execute(
@@ -561,7 +605,7 @@ async def create_external_task(
     project_id: str,
     request: ExternalTaskCreate,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Create a task on the board."""
     await _get_external_project(project_id, db)
@@ -602,7 +646,7 @@ async def update_external_task(
     task_id: str,
     request: ExternalTaskUpdate,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(_verify_api_key),
+    api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Update a task on the board."""
     await _get_external_project(project_id, db)

@@ -105,8 +105,20 @@ class Settings(BaseSettings):
     # Prax backend URL (for plugin management proxy)
     prax_url: str = ""
 
-    # External agent API key (empty = no auth in dev)
+    # External agent API key — the legacy *shared* credential. It authenticates a
+    # caller but carries no agent identity, so any holder can act as any agent.
+    # Prefer agent_clients_path below, which binds one token to one agent.
     external_api_key: str = ""
+
+    # Per-agent credential registry (JSON): [{name, token_sha256|token, agent_id,
+    # project_id, allow}, ...]. The token determines the caller's identity, so a
+    # body-asserted agent_id can never be taken on trust. See agent_auth.py.
+    agent_clients_path: str = ""
+
+    # Dev escape hatch. With no credential configured the external API refuses
+    # requests (503) rather than accepting anyone as anyone — set this only for
+    # local development, never for a reachable deployment.
+    allow_unauthenticated_agents: bool = False
 
     # CORS
     cors_origins: list[str] = [
