@@ -200,7 +200,43 @@ Open it while the server is running — you can explore every endpoint, see requ
 
 ### Authentication
 
-Set `EXTERNAL_API_KEY` in `.env`. Pass it as `X-API-Key` header on every request. If no key is set, auth is disabled (dev mode only).
+**A credential is required.** The external API refuses requests (503) when none is
+configured — it does not fall back to accepting anyone.
+
+Generate one (any high-entropy string; this is a shared secret, not a provider key):
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Put **the same value on both sides** — TeamWork checks it, your agent sends it:
+
+| Where | Variable |
+|---|---|
+| TeamWork's `.env` | `EXTERNAL_API_KEY=<value>` |
+| Your agent's config (Prax: its `.env`) | `TEAMWORK_API_KEY=<value>` |
+
+Pass it as the `X-API-Key` header on every request. If the two drift apart you get
+`401 Invalid API key`; if neither is set you get `503`.
+
+For local development only, `ALLOW_UNAUTHENTICATED_AGENTS=true` restores the old
+accept-anything behaviour. Never set it on a reachable deployment.
+
+**Per-agent credentials (recommended for multiple agents).** A single shared key
+authenticates a caller but carries **no agent identity** — any holder can act as,
+and be audit-logged as, *any* agent. Point `AGENT_CLIENTS_PATH` at a JSON registry
+to bind one token to one agent, with its own capability set:
+
+```json
+[{"name": "research", "token_sha256": "…", "agent_id": "…",
+  "allow": ["message.post", "presence"]},
+ {"name": "ops", "token_sha256": "…", "agent_id": "…",
+  "allow": ["message.*", "task.write"]}]
+```
+
+Identity is then derived from the token, so a request that *claims* a different
+`agent_id` is rejected rather than believed. Optionally add a `public_key` per
+entry to require **Ed25519-signed requests** (see `src/teamwork/agent_signing.py`).
 
 ### API Overview
 
@@ -837,7 +873,10 @@ Create a `.env` file (copy from `.env.example`):
 |----------|---------|-------------|
 | `DATABASE_URL` | `sqlite+aiosqlite:///data/vteam.db` | Database connection string |
 | `WORKSPACE_PATH` | `./workspace` | Directory for generated code/files |
-| `EXTERNAL_API_KEY` | — | API key for external agent access (empty = no auth in dev) |
+| `EXTERNAL_API_KEY` | — | **Required.** Shared key for external agent access; must equal the agent's `TEAMWORK_API_KEY`. Generate: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. Unset ⇒ the external API returns 503 |
+| `AGENT_CLIENTS_PATH` | — | JSON registry binding one token to one agent + capability set (preferred over the shared key when running several agents) |
+| `REQUIRE_SIGNED_REQUESTS` | `false` | Require a valid Ed25519 envelope on every external request |
+| `ALLOW_UNAUTHENTICATED_AGENTS` | `false` | Dev only — restores accept-anything when no credential is configured |
 | `CORS_ORIGINS` | `localhost:5173,3000` | Allowed CORS origins |
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8000` | Server port |

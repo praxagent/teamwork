@@ -12,6 +12,14 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 # the per-agent identity rules. So run them in the explicit dev mode.
 os.environ.setdefault("ALLOW_UNAUTHENTICATED_AGENTS", "true")
 
+# Hermetic auth: pydantic-settings also reads the developer's real .env, so a
+# machine that has EXTERNAL_API_KEY set fails these tests with 401 while a
+# machine without it passes. Pin the credential env explicitly (env vars take
+# priority over the dotenv file) so the suite behaves the same everywhere.
+os.environ["EXTERNAL_API_KEY"] = ""
+os.environ["AGENT_CLIENTS_PATH"] = ""
+os.environ["REQUIRE_SIGNED_REQUESTS"] = "false"
+
 from collections.abc import AsyncGenerator
 
 import pytest

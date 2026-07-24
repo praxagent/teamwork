@@ -5,12 +5,25 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from teamwork.agent_auth import AgentClient, load_clients, resolve_client
+from teamwork.agent_signing import SignatureError, verify_envelope
+from teamwork.agent_auth import (
+    CAP_ACTIVITY_WRITE,
+    CAP_AGENT_WRITE,
+    CAP_MESSAGE_BULK,
+    CAP_MESSAGE_DELETE,
+    CAP_MESSAGE_POST,
+    CAP_PRESENCE,
+    CAP_PROJECT_WRITE,
+    CAP_TASK_WRITE,
+    AgentClient,
+    load_clients,
+    resolve_client,
+)
 from teamwork.models import Project, Agent, Channel, Message, Task, get_db, AsyncSessionLocal
 from teamwork.routers.agents import get_live_output_store, _LiveOutputEntry
 from teamwork.websocket import manager, WebSocketEvent, EventType
@@ -131,9 +144,64 @@ def _resolve_client(x_api_key: str | None) -> AgentClient:
     return client
 
 
-def _verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> AgentClient:
-    """FastAPI dependency: the authenticated caller's identity."""
-    return _resolve_client(x_api_key)
+async def _verify_api_key(
+    request: Request,
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
+) -> AgentClient:
+    """FastAPI dependency: the authenticated caller's identity.
+
+    When the caller has registered a public key (or the deployment requires
+    signing globally), the request must also carry a valid Ed25519 envelope —
+    the token proves possession of a shared string, the signature proves this
+    *specific* request came from the key holder.
+    """
+    from teamwork.config import settings
+
+    client = _resolve_client(x_api_key)
+    signature = request.headers.get("X-Agent-Signature")
+    globally_required = getattr(settings, "require_signed_requests", False)
+
+    if not (client.require_signature or globally_required or signature):
+        return client                      # unsigned path — unchanged behaviour
+
+    if not client.public_key:
+        if signature:
+            logger.warning("client %r sent a signature but has no registered "
+                           "public key — ignoring it", client.name)
+            return client
+        raise HTTPException(
+            status_code=403,
+            detail="Signed requests are required but this credential has no "
+                   "registered public key.")
+    try:
+        verify_envelope(
+            client.public_key,
+            method=request.method,
+            path=request.url.path,
+            timestamp=request.headers.get("X-Agent-Timestamp", ""),
+            nonce=request.headers.get("X-Agent-Nonce", ""),
+            body=await request.body(),
+            signature=signature or "",
+        )
+    except SignatureError as exc:
+        # Log the specific reason; tell the caller only that it failed.
+        logger.warning("signature rejected for client %r: %s", client.name, exc)
+        raise HTTPException(status_code=401, detail="Invalid request signature.") from exc
+    return client
+
+
+def require_capability(client: AgentClient, capability: str) -> None:
+    """Refuse an action this credential was not granted.
+
+    Identity answers *who*; the capability set answers *what they may do*. A
+    research agent with a perfectly valid credential still has no business
+    purging a channel's history.
+    """
+    if not client.can(capability):
+        logger.warning("client %r lacks capability %r — refused", client.name, capability)
+        raise HTTPException(
+            status_code=403,
+            detail=f"This credential is not granted '{capability}'.")
 
 
 def require_agent(client: AgentClient, asserted_agent_id: str | None) -> str | None:
@@ -194,6 +262,7 @@ async def create_external_project(
     No agents are created — the external agent manages its own workers.
     A #general channel is created for user<->agent communication.
     """
+    require_capability(api_key, CAP_PROJECT_WRITE)
     project_id = str(uuid.uuid4())
     project = Project(
         id=project_id,
@@ -253,6 +322,7 @@ async def update_external_project(
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Update an external project's settings."""
+    require_capability(api_key, CAP_PROJECT_WRITE)
     project = await _get_external_project(project_id, db)
     if request.workspace_dir is not None:
         project.workspace_dir = request.workspace_dir
@@ -282,6 +352,7 @@ async def ensure_channels(
     Used by Prax on startup to ensure #discord, #sms, etc. exist even
     for projects created before those channels were added.
     """
+    require_capability(api_key, CAP_PROJECT_WRITE)
     project = await _get_external_project(project_id, db)
     # Get existing channels
     ch_result = await db.execute(
@@ -317,6 +388,7 @@ async def create_external_agent(
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Register an agent in the UI. The external orchestrator controls what the agent does."""
+    require_capability(api_key, CAP_AGENT_WRITE)
     project = await _get_external_project(project_id, db)
 
     agent = Agent(
@@ -354,6 +426,7 @@ async def update_agent_status(
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Update an agent's status (idle/working/offline)."""
+    require_capability(api_key, CAP_AGENT_WRITE)
     await _get_external_project(project_id, db)
 
     result = await db.execute(
@@ -384,6 +457,7 @@ async def send_external_message(
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Send a message to a channel as an agent or system."""
+    require_capability(api_key, CAP_MESSAGE_POST)
     await _get_external_project(project_id, db)
 
     # Verify channel belongs to project
@@ -447,6 +521,7 @@ async def clear_channel_messages(
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, int]:
     """Delete all messages from a channel (used to re-sync history)."""
+    require_capability(api_key, CAP_MESSAGE_DELETE)
     await _get_external_project(project_id, db)
     from sqlalchemy import delete
     result = await db.execute(
@@ -486,6 +561,7 @@ async def bulk_import_messages(
     Does NOT broadcast via WebSocket (these are historical messages).
     Supports ``created_at`` override to preserve original timestamps.
     """
+    require_capability(api_key, CAP_MESSAGE_BULK)
     await _get_external_project(project_id, db)
 
     # Validate all channel_ids belong to this project
@@ -526,6 +602,7 @@ async def send_typing_indicator(
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Send a typing indicator for an agent."""
+    require_capability(api_key, CAP_PRESENCE)
     require_agent(api_key, request.agent_id)
     agent_result = await db.execute(
         select(Agent).where(Agent.id == request.agent_id, Agent.project_id == project_id)
@@ -562,6 +639,7 @@ async def push_live_output(
     Called by the external orchestrator (Prax) during agent execution to
     stream tool call logs and output to the TeamWork frontend.
     """
+    require_capability(api_key, CAP_PRESENCE)
     require_agent(api_key, agent_id)
     await _get_external_project(project_id, db)
 
@@ -608,6 +686,7 @@ async def create_external_task(
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
     """Create a task on the board."""
+    require_capability(api_key, CAP_TASK_WRITE)
     await _get_external_project(project_id, db)
 
     task = Task(
@@ -649,6 +728,7 @@ async def update_external_task(
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
     """Update a task on the board."""
+    require_capability(api_key, CAP_TASK_WRITE)
     await _get_external_project(project_id, db)
 
     result = await db.execute(
@@ -720,6 +800,7 @@ async def create_activity_log(
     x_api_key: str | None = Header(None),
 ):
     """Create an activity log entry for an agent."""
+    require_capability(api_key, CAP_ACTIVITY_WRITE)
     await _get_external_project(project_id, db)
 
     from teamwork.models import ActivityLog

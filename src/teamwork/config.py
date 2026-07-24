@@ -115,6 +115,12 @@ class Settings(BaseSettings):
     # body-asserted agent_id can never be taken on trust. See agent_auth.py.
     agent_clients_path: str = ""
 
+    # Require every external-agent request to carry a valid Ed25519 envelope,
+    # even from credentials that did not register a public key. Off by default:
+    # per-client `public_key` opts an agent in individually, which is the
+    # migration path. See agent_signing.py.
+    require_signed_requests: bool = False
+
     # Dev escape hatch. With no credential configured the external API refuses
     # requests (503) rather than accepting anyone as anyone — set this only for
     # local development, never for a reachable deployment.
