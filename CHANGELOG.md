@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.20.0](https://github.com/praxagent/teamwork/compare/v0.19.0...v0.20.0) (2026-07-25)
+
+
+### Features
+
+* **mcp:** give the user a paste-ready skill for the agent they just connected ([#52](https://github.com/praxagent/teamwork/issues/52)) ([e4baded](https://github.com/praxagent/teamwork/commit/e4baded65b8b2b0200c218c9c77228b13349cb9c))
+* **mcp:** let other agents work in TeamWork, scoped to one space ([#49](https://github.com/praxagent/teamwork/issues/49)) ([2a4c135](https://github.com/praxagent/teamwork/commit/2a4c135cf824ef15e25043320aea1ed5a8314fd4))
+* **model:** put the model choice in Settings, per space, and on the message ([#51](https://github.com/praxagent/teamwork/issues/51)) ([a45141d](https://github.com/praxagent/teamwork/commit/a45141da82eba75f667b5ce2e901e22323c4a17d))
+* **model:** tell the agent which space a message came from, and make the picker usable ([#50](https://github.com/praxagent/teamwork/issues/50)) ([65f5c0e](https://github.com/praxagent/teamwork/commit/65f5c0e3914eed11479af5615a204f25fa110d9a))
+* **ui:** let the picker ask providers what they can serve ([#47](https://github.com/praxagent/teamwork/issues/47)) ([f2132d7](https://github.com/praxagent/teamwork/commit/f2132d7a7a74d43dfd3042809e91eec3eabebf34))
+
 ## [0.19.0](https://github.com/praxagent/teamwork/compare/v0.18.0...v0.19.0) (2026-07-25)
 
 
