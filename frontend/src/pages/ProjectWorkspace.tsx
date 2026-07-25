@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, Home, Library, Brain, Timer, MoreHorizontal, Cpu, Check, Monitor } from 'lucide-react';
+import { Code, ListTodo, Settings, ChevronLeft, Workflow, TerminalSquare, BarChart3, Moon, Sun, Globe, Activity, MessageSquare, Search, Home, Library, Brain, Timer, MoreHorizontal, Cpu, Monitor } from 'lucide-react';
 import {
   ChannelSidebar,
   MessageList,
@@ -15,6 +15,7 @@ import { SpacePage } from '@/components/panels/SpacePage';
 import { DesktopPanel } from '@/components/panels/DesktopPanel';
 import { CommandPalette } from '@/components/common';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import { ModelPicker } from '@/components/common/ModelPicker';
 import {
   useProject,
   useAgents,
@@ -680,47 +681,16 @@ export function ProjectWorkspace() {
                     {modelPickerOpen && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setModelPickerOpen(false)} />
-                        <div className={clsx(
-                          'absolute right-0 top-full mt-1 z-50 rounded-lg shadow-lg border min-w-[200px] py-1',
-                          darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'
-                        )}>
-                          <div className={clsx('px-3 py-1.5 text-xs font-semibold', darkMode ? 'text-gray-500' : 'text-gray-400')}>
-                            Model
-                          </div>
-                          <button
-                            onClick={() => { setModelMutation.mutate('auto'); setModelPickerOpen(false); }}
-                            className={clsx(
-                              'w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors',
-                              !modelData.override
-                                ? darkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-900'
-                                : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'
-                            )}
-                          >
-                            {!modelData.override && <Check className="w-3.5 h-3.5 text-green-400" />}
-                            <span className={!modelData.override ? '' : 'ml-5'}>Auto</span>
-                            <span className={clsx('ml-auto text-xs', darkMode ? 'text-gray-500' : 'text-gray-400')}>default</span>
-                          </button>
-                          {(modelData.available ?? []).map((m) => {
-                            const isActive = modelData.override === m.model;
-                            return (
-                              <button
-                                key={m.model}
-                                onClick={() => { setModelMutation.mutate(m.model); setModelPickerOpen(false); }}
-                                className={clsx(
-                                  'w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors',
-                                  isActive
-                                    ? darkMode ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-900'
-                                    : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-700 hover:bg-gray-50'
-                                )}
-                              >
-                                {isActive && <Check className="w-3.5 h-3.5 text-green-400" />}
-                                <span className={isActive ? '' : 'ml-5'}>{m.model}</span>
-                                <span className={clsx('ml-auto text-xs uppercase', darkMode ? 'text-gray-500' : 'text-gray-400')}>
-                                  {m.tier}
-                                </span>
-                              </button>
-                            );
-                          })}
+                        <div className="absolute right-0 top-full mt-1 z-50">
+                          <ModelPicker
+                            info={modelData}
+                            darkMode={darkMode}
+                            onSelect={(value) => {
+                              // `null` clears the override — the API spells that "auto".
+                              setModelMutation.mutate(value ?? 'auto');
+                              setModelPickerOpen(false);
+                            }}
+                          />
                         </div>
                       </>
                     )}

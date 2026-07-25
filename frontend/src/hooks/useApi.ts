@@ -1087,11 +1087,41 @@ export function useRemoveAgentProfileImage() {
 // Model Picker
 // ---------------------------------------------------------------------------
 
+export interface ProviderStatus {
+  id: string;
+  label: string;
+  /** Prax has what it needs to attempt a call. */
+  configured: boolean;
+  /** Prax holds a credential it can vouch for. False under a secrets-proxy,
+   *  where the real key lives outside Prax — see `reason`. */
+  verified: boolean;
+  reason: string | null;
+  models: string[];
+}
+
+export interface TierAssignment {
+  model: string;
+  enabled: boolean;
+  provider: string;
+}
+
+/** How the model is chosen. Three distinct states, not one list:
+ *  auto  — Prax routes per task
+ *  tier  — a capability level is pinned; its model may still change
+ *  model — one exact model is pinned */
+export type ModelMode = 'auto' | 'tier' | 'model';
+
 export interface ModelInfo {
   current_model: string;
   current_tier: string;
   override: string | null;
   available: Array<{ tier: string; model: string }>;
+  // Added by the provider catalog. Optional so the UI still renders against an
+  // older Prax that does not send them.
+  providers?: ProviderStatus[];
+  tiers?: Record<string, TierAssignment>;
+  mode?: ModelMode;
+  egress_proxied?: boolean;
 }
 
 export function useCurrentModel() {
