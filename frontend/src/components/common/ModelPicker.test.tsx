@@ -69,6 +69,7 @@ describe('ModelPicker', () => {
   it('pins an exact model when one is chosen', () => {
     const onSelect = vi.fn();
     render(<ModelPicker info={info()} onSelect={onSelect} />);
+    fireEvent.click(screen.getByText(/OpenAI/));   // providers start collapsed
     // The name appears twice by design — once as "what Low currently is", once
     // as a pinnable model. Target the provider-list entry by exact accessible name.
     fireEvent.click(screen.getByRole('button', { name: 'gpt-5.4-nano' }));
@@ -78,8 +79,52 @@ describe('ModelPicker', () => {
   it('shows an unconfigured provider WITH the reason instead of hiding it', () => {
     // A provider that silently vanishes is a support ticket.
     render(<ModelPicker info={info()} onSelect={vi.fn()} />);
-    expect(screen.getByText('Anthropic')).toBeInTheDocument();
+    expect(screen.getByText(/Anthropic/)).toBeInTheDocument();
     expect(screen.getByText('no ANTHROPIC_KEY configured')).toBeInTheDocument();
+  });
+
+  // ── Navigability: a real catalogue is hundreds of entries ──────────────────
+
+  it('collapses providers by default so other providers stay reachable', () => {
+    // The bug this fixes: 131 OpenAI models rendered flat pushed Anthropic and
+    // OpenRouter off-screen, so switching provider looked impossible.
+    render(<ModelPicker info={info()} onSelect={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'gpt-5.4-nano' })).not.toBeInTheDocument();
+    expect(screen.getByText(/OpenAI/)).toBeInTheDocument();
+  });
+
+  it('shows a count so a collapsed section is still informative', () => {
+    render(<ModelPicker info={info()} onSelect={vi.fn()} />);
+    expect(screen.getByText('(3)')).toBeInTheDocument();
+  });
+
+  it('expands a provider when its header is clicked', () => {
+    render(<ModelPicker info={info()} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByText(/OpenAI/));
+    expect(screen.getByRole('button', { name: 'gpt-5.4-nano' })).toBeInTheDocument();
+  });
+
+  it('search finds a model without expanding anything by hand', () => {
+    render(<ModelPicker info={info()} onSelect={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Search models'), { target: { value: 'nano' } });
+    expect(screen.getByRole('button', { name: 'gpt-5.4-nano' })).toBeInTheDocument();
+    // Non-matching entries in the same provider are filtered out.
+    expect(screen.queryByRole('button', { name: 'gpt-5.5' })).not.toBeInTheDocument();
+  });
+
+  it('search reports an empty provider rather than looking broken', () => {
+    render(<ModelPicker info={info()} onSelect={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Search models'), { target: { value: 'zzzz' } });
+    expect(screen.getAllByText('No match here.').length).toBeGreaterThan(0);
+  });
+
+  it('Auto and the tiers never scroll away behind the catalogue', () => {
+    // They are the choices most people want; burying them under 300 model names
+    // would be the same mistake in a different place.
+    render(<ModelPicker info={info()} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByText(/OpenAI/));
+    expect(screen.getByText('Auto')).toBeInTheDocument();
+    expect(screen.getByText('High')).toBeInTheDocument();
   });
 
   it('does not claim a proxied credential is confirmed', () => {
@@ -124,6 +169,7 @@ describe('ModelPicker', () => {
         onSelect={vi.fn()}
       />,
     );
-    expect(screen.getByText(/No models assigned/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/OpenRouter/));
+    expect(screen.getByText(/No models reported/)).toBeInTheDocument();
   });
 });

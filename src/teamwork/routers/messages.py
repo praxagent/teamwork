@@ -37,6 +37,10 @@ class MessageCreate(BaseModel):
     extra_data: dict | None = None
     thread_id: str | None = None
     active_view: str | None = None  # Which UI tab the user is on (chat, browser, terminal, etc.)
+    # Which Library space the user is chatting from, when they are in one. The
+    # agent needs this to answer as that space asks — a space can pin its own
+    # model — and `active_view` alone cannot say WHICH space.
+    space_slug: str | None = None
 
 
 class MessageResponse(BaseModel):
@@ -115,6 +119,7 @@ async def _forward_to_external_webhook(
     message_id: str,
     active_view: str | None = None,
     extra_data: dict | None = None,
+    space_slug: str | None = None,
 ):
     """Forward a user message to the external orchestrator's webhook."""
     try:
@@ -127,6 +132,8 @@ async def _forward_to_external_webhook(
         }
         if active_view:
             payload["active_view"] = active_view
+        if space_slug:
+            payload["space_slug"] = space_slug
         if extra_data:
             payload["extra_data"] = extra_data
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -686,6 +693,7 @@ async def create_message(
                     db_message.id,
                     message.active_view,
                     message.extra_data,
+                    message.space_slug,
                 )
 
         # Handle CRUD-only slash commands

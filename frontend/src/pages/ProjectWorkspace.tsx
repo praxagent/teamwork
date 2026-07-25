@@ -307,6 +307,9 @@ export function ProjectWorkspace() {
       channel_id: currentChannelId,
       content,
       active_view: activeView,
+      // Which space the user is chatting from, when they're in one. A space can
+      // pin its own model, and active_view only says 'space' — not which.
+      ...(focusedSpaceSlug ? { space_slug: focusedSpaceSlug } : {}),
       ...(attachments?.length ? { extra_data: { attachments } } : {}),
     });
   };

@@ -418,6 +418,7 @@ export function useSendMessage() {
       message_type?: string;
       thread_id?: string;
       active_view?: string;
+      space_slug?: string;
       extra_data?: Record<string, unknown>;
     }) =>
       fetchJson<Message>('/messages', {
