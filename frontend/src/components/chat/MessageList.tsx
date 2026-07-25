@@ -381,6 +381,30 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, 
               </div>
             )}
           </div>
+          {/* Which model answered. The trace has always known; showing it here
+              is what makes a per-space model pin verifiable from the outside
+              rather than something you take on faith. Several models can carry
+              one turn (tier escalation, spokes), so the extras are in the
+              tooltip rather than dropped. */}
+          {message.extra_data?.model ? (
+            <span
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono whitespace-nowrap ${
+                darkMode ? 'bg-slate-700 text-gray-300' : 'bg-gray-100 text-gray-600'
+              }`}
+              title={
+                Array.isArray(message.extra_data.models) &&
+                (message.extra_data.models as string[]).length > 1
+                  ? `Models used this turn: ${(message.extra_data.models as string[]).join(', ')}`
+                  : `Answered by ${String(message.extra_data.model)}`
+              }
+            >
+              {String(message.extra_data.model)}
+              {Array.isArray(message.extra_data.models) &&
+              (message.extra_data.models as string[]).length > 1
+                ? ` +${(message.extra_data.models as string[]).length - 1}`
+                : ''}
+            </span>
+          ) : null}
           {/* Trace button — shown only for agent messages with trace metadata */}
           {message.extra_data?.trace_id ? (
             <button

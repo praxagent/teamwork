@@ -390,6 +390,24 @@ async def set_note_status(project: str, notebook: str, slug: str, data: dict = B
 
 # --- Tasks ---
 
+@router.get("/spaces/{space}/model")
+async def get_space_model(space: str):
+    """What this space runs on, and what it falls back to."""
+    result = await _proxy("GET", f"/spaces/{space}/model")
+    if result is None:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
+
+
+@router.put("/spaces/{space}/model")
+async def set_space_model(space: str, data: dict = Body(...)):
+    """Pin a model to this space, or send an empty one to inherit again."""
+    result = await _proxy("PUT", f"/spaces/{space}/model", json=data)
+    if result is None:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
+
+
 @router.get("/spaces/{project}/tasks")
 async def list_tasks(project: str, column: str | None = None):
     """List tasks for a project."""

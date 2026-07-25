@@ -146,7 +146,6 @@ export function useUpdateProjectConfig() {
       auto_execute_tasks?: boolean;
       runtime_mode?: string;
       workspace_type?: string;
-      model_mode?: string;  // auto, sonnet, haiku, hybrid
     }) => {
       const { projectId, ...config } = data;
       return fetchJson<Project>(`/projects/${projectId}/config`, {
@@ -1147,6 +1146,40 @@ export function useSetModel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['current-model'] });
       queryClient.invalidateQueries({ queryKey: ['context-stats'] });
+    },
+  });
+}
+
+export interface SpaceModelInfo {
+  space: string;
+  /** The model this space is pinned to, or null when it inherits. */
+  pinned: string | null;
+  inherited: boolean;
+  /** What it would use if nothing were pinned. */
+  fallback: string | null;
+}
+
+export function useSpaceModel(space: string | null) {
+  return useQuery({
+    queryKey: ['space-model', space],
+    queryFn: () => fetchJson<SpaceModelInfo>(`/library/spaces/${space}/model`),
+    enabled: !!space,
+  });
+}
+
+export function useSetSpaceModel(space: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    // An empty string clears the pin. The API treats absent and empty the same
+    // way on purpose: "use the default" is one intent, however the UI spells it.
+    mutationFn: (model: string | null) =>
+      fetchJson<SpaceModelInfo>(`/library/spaces/${space}/model`, {
+        method: 'PUT',
+        body: JSON.stringify({ model: model ?? '' }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['space-model', space] });
     },
   });
 }
