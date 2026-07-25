@@ -48,6 +48,7 @@ from teamwork.routers import (
     uploads_router,
     workspace_router,
 )
+from teamwork.mcp_server import mcp_is_available
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
 
@@ -138,6 +139,18 @@ app.include_router(prax_router, prefix="/api")
 # and /notes/<slug>/ are valid public-looking URLs.  Must be registered
 # before the SPA catch-all at the bottom of this file or it'd be shadowed.
 app.include_router(content_router)
+
+# The MCP surface is mounted only when a deployment has enabled it AND granted
+# at least one credential MCP access.  Registering it unconditionally and
+# refusing inside the handler would still advertise that the endpoint exists;
+# not mounting it means an un-enabled deployment 404s like any other server
+# that does not speak MCP.  Registered before the SPA catch-all, as all routes
+# must be.
+if mcp_is_available():
+    from teamwork.routers.mcp import router as mcp_router
+
+    app.include_router(mcp_router)
+    logger.info("MCP endpoint mounted at POST /mcp")
 
 
 @app.get("/api/desktop/teamwork.html")

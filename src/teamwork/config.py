@@ -127,6 +127,14 @@ class Settings(BaseSettings):
     # never configured one. See services/membership.py.
     enforce_channel_membership: bool = False
 
+    # The MCP surface for other agents (Claude Code, Codex, ...). OFF by default
+    # and fail-closed: it also refuses to mount unless at least one credential in
+    # AGENT_CLIENTS_PATH grants MCP, so switching this on without granting
+    # anything changes nothing. Access is per-space — a key names the spaces it
+    # may touch and reaches no others. Bind loopback and publish over the tailnet
+    # (`tailscale serve`); it must not face the internet.
+    mcp_enabled: bool = False
+
     # Dev escape hatch. With no credential configured the external API refuses
     # requests (503) rather than accepting anyone as anyone — set this only for
     # local development, never for a reachable deployment.
