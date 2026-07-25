@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException
 
 from teamwork.config import settings
 
@@ -49,7 +49,7 @@ async def create_schedule(data: dict = Body(...)):
     """Create a new cron schedule."""
     result = await _proxy("POST", "/schedules", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -58,7 +58,7 @@ async def update_schedule(schedule_id: str, data: dict = Body(...)):
     """Update a schedule."""
     result = await _proxy("PATCH", f"/schedules/{schedule_id}", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -67,7 +67,7 @@ async def delete_schedule(schedule_id: str):
     """Delete a schedule."""
     result = await _proxy("DELETE", f"/schedules/{schedule_id}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -76,7 +76,7 @@ async def create_reminder(data: dict = Body(...)):
     """Create a one-time reminder."""
     result = await _proxy("POST", "/reminders", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -85,7 +85,7 @@ async def update_reminder(reminder_id: str, data: dict = Body(...)):
     """Update a reminder."""
     result = await _proxy("PATCH", f"/reminders/{reminder_id}", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -94,7 +94,7 @@ async def delete_reminder(reminder_id: str):
     """Delete a reminder."""
     result = await _proxy("DELETE", f"/reminders/{reminder_id}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -110,5 +110,5 @@ async def set_timezone(data: dict = Body(...)):
     """Set the user's default timezone."""
     result = await _proxy("PUT", "/timezone", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
