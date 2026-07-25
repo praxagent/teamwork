@@ -485,13 +485,18 @@ function shouldShowHeader(
 }
 
 function AttachmentGrid({ attachments, darkMode }: { attachments: Attachment[]; darkMode: boolean }) {
-  const images = attachments.filter(a => a.content_type.startsWith('image/'));
-  const audio = attachments.filter(a => a.content_type.startsWith('audio/'));
-  const video = attachments.filter(a => a.content_type.startsWith('video/'));
+  // `attachments` comes from message.extra_data, which agents write directly —
+  // it is an unchecked cast, not a validated shape. A single attachment missing
+  // content_type used to throw here, and since this renders in the main chat
+  // view that blanked the whole app until the message was purged.
+  const kind = (a: Attachment) => a?.content_type ?? '';
+  const images = attachments.filter(a => kind(a).startsWith('image/'));
+  const audio = attachments.filter(a => kind(a).startsWith('audio/'));
+  const video = attachments.filter(a => kind(a).startsWith('video/'));
   const files = attachments.filter(a =>
-    !a.content_type.startsWith('image/') &&
-    !a.content_type.startsWith('audio/') &&
-    !a.content_type.startsWith('video/')
+    !kind(a).startsWith('image/') &&
+    !kind(a).startsWith('audio/') &&
+    !kind(a).startsWith('video/')
   );
 
   const sizeLabel = (size: number) =>

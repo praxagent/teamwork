@@ -14,6 +14,7 @@ import { BrowserPanel, BrowserChatSidebar, LibraryPanel, HomeDashboard, AgentPla
 import { SpacePage } from '@/components/panels/SpacePage';
 import { DesktopPanel } from '@/components/panels/DesktopPanel';
 import { CommandPalette } from '@/components/common';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import {
   useProject,
   useAgents,
@@ -505,29 +506,39 @@ export function ProjectWorkspace() {
 
         {/* Desktop Panel — full Linux desktop via noVNC */}
         {activeView === 'desktop' && (
-          <DesktopPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+          <ErrorBoundary name="Desktop">
+            <DesktopPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+          </ErrorBoundary>
         )}
 
         {/* Browser Panel — persistent mount so the tab-cast WebSocket
             stays connected while the user is over in the Desktop tab
             clicking the prax-cast extension icon. */}
         {browserMounted && projectId && (
-          <BrowserPanel projectId={projectId} isVisible={activeView === 'browser'} onClose={() => switchTo('chat')} />
+          <ErrorBoundary name="Browser">
+            <BrowserPanel projectId={projectId} isVisible={activeView === 'browser'} onClose={() => switchTo('chat')} />
+          </ErrorBoundary>
         )}
 
         {/* Terminal Panel — persistent mount to preserve session */}
         {terminalMounted && projectId && (
-          <TerminalPanel projectId={projectId} isVisible={showTerminalPanel} onClose={() => switchTo('chat')} />
+          <ErrorBoundary name="Terminal">
+            <TerminalPanel projectId={projectId} isVisible={showTerminalPanel} onClose={() => switchTo('chat')} />
+          </ErrorBoundary>
         )}
 
         {/* Observability Panel */}
         {activeView === 'observability' && projectId && (
-          <ObservabilityPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+          <ErrorBoundary name="Observability">
+            <ObservabilityPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+          </ErrorBoundary>
         )}
 
         {/* Memory Panel */}
         {activeView === 'memory' && projectId && (
-          <MemoryPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+          <ErrorBoundary name="Memory">
+            <MemoryPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+          </ErrorBoundary>
         )}
 
         {/* Spaces landing — grid of spaces (was "Home dashboard") */}
@@ -563,22 +574,30 @@ export function ProjectWorkspace() {
 
         {/* Scheduler */}
         {activeView === 'scheduler' && projectId && (
-          <SchedulerPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+          <ErrorBoundary name="Scheduler">
+            <SchedulerPanel projectId={projectId} isVisible={true} onClose={() => switchTo('chat')} />
+          </ErrorBoundary>
         )}
 
         {/* Graph Panel — persistent mount */}
         {claudePanelMounted && projectId && (
-          <GraphPanel projectId={projectId} isVisible={showClaudePanel} onClose={() => switchTo('chat')} focusTraceId={focusTraceId} />
+          <ErrorBoundary name="Execution graph">
+            <GraphPanel projectId={projectId} isVisible={showClaudePanel} onClose={() => switchTo('chat')} focusTraceId={focusTraceId} />
+          </ErrorBoundary>
         )}
 
         {/* Task Board */}
         {activeView === 'tasks' && projectId && (
-          <TaskBoard projectId={projectId} agents={agents} isCoachingProject={isCoachingProject} onWatchLive={() => switchTo('observability')} />
+          <ErrorBoundary name="Task board">
+            <TaskBoard projectId={projectId} agents={agents} isCoachingProject={isCoachingProject} onWatchLive={() => switchTo('observability')} />
+          </ErrorBoundary>
         )}
 
         {/* File Browser */}
         {activeView === 'files' && projectId && (
-          <FileBrowser projectId={projectId} onOpenClaudePanel={() => switchTo('execution_graphs')} />
+          <ErrorBoundary name="File browser">
+            <FileBrowser projectId={projectId} onOpenClaudePanel={() => switchTo('execution_graphs')} />
+          </ErrorBoundary>
         )}
 
         {/* Settings */}
@@ -640,8 +659,10 @@ export function ProjectWorkspace() {
                       ? `${agents.filter(a => a.team === currentChannel.team).length + 1} members`
                       : `${agents.length + 1} members`}
                 </span>
-                {/* Model picker badge */}
-                {modelData && (
+                {/* Model picker badge. Requires current_model, not just the
+                    object: this endpoint is proxied from the agent backend, and
+                    when that is unreachable the payload arrives without it. */}
+                {modelData?.current_model && (
                   <div className="relative ml-auto">
                     <button
                       onClick={() => setModelPickerOpen(v => !v)}
@@ -654,7 +675,7 @@ export function ProjectWorkspace() {
                       title={`Model: ${modelData.current_model}${modelData.override ? ' (override)' : ''}`}
                     >
                       <Cpu className="w-3 h-3" />
-                      <span className="hidden sm:inline max-w-[120px] truncate">{modelData.current_model.split('/').pop()}</span>
+                      <span className="hidden sm:inline max-w-[120px] truncate">{modelData.current_model?.split("/").pop() ?? modelData.current_model}</span>
                     </button>
                     {modelPickerOpen && (
                       <>
@@ -679,7 +700,7 @@ export function ProjectWorkspace() {
                             <span className={!modelData.override ? '' : 'ml-5'}>Auto</span>
                             <span className={clsx('ml-auto text-xs', darkMode ? 'text-gray-500' : 'text-gray-400')}>default</span>
                           </button>
-                          {modelData.available.map((m) => {
+                          {(modelData.available ?? []).map((m) => {
                             const isActive = modelData.override === m.model;
                             return (
                               <button

@@ -916,7 +916,7 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
             <div className={clsx('px-4 py-3 border-b flex items-center gap-2 flex-wrap', border)}>
               <Archive className={clsx('w-4 h-4', t2)} />
               <h2 className={clsx('text-lg font-semibold flex-1 truncate', t1)}>
-                {archiveDetail.data?.meta.title ?? 'Archive entry'}
+                {archiveDetail.data?.meta?.title ?? 'Archive entry'}
               </h2>
               <button
                 onClick={() => {
@@ -955,7 +955,7 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
                   ))}
                 </div>
                 <div className="flex-1 p-4">
-                  {archiveDetail.data?.meta.source_filename && (
+                  {archiveDetail.data?.meta?.source_filename && (
                     <div className={clsx('text-xs mb-2', t3)}>
                       Original: {archiveDetail.data.meta.source_filename}
                       {archiveDetail.data.meta.binary_path && (
@@ -963,9 +963,9 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
                       )}
                     </div>
                   )}
-                  {archiveDetail.data?.meta.tags && archiveDetail.data.meta.tags.length > 0 && (
+                  {archiveDetail.data?.meta?.tags && archiveDetail.data.meta?.tags.length > 0 && (
                     <div className={clsx('text-xs mb-2 flex gap-1', t3)}>
-                      {archiveDetail.data.meta.tags.map((tag) => (
+                      {archiveDetail.data.meta?.tags.map((tag) => (
                         <span key={tag} className={clsx('px-1.5 py-0.5 rounded', dark ? 'bg-slate-700' : 'bg-gray-200')}>
                           {tag}
                         </span>
@@ -1043,7 +1043,7 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
             <div className={clsx('px-4 py-3 border-b flex items-center gap-2 flex-wrap', border)}>
               <Inbox className={clsx('w-4 h-4', t2)} />
               <h2 className={clsx('text-lg font-semibold flex-1 truncate', t1)}>
-                {rawDetail.data?.meta.title ?? 'Inbox item'}
+                {rawDetail.data?.meta?.title ?? 'Inbox item'}
               </h2>
               <button onClick={() => setPromoteTarget({ project: projects[0]?.slug ?? '', notebook: '' })} className={btnPrimary}>
                 Promote to notebook
@@ -1101,7 +1101,7 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
               </div>
             )}
             <div className="flex-1 overflow-y-auto p-4">
-              {rawDetail.data?.meta.source_url && (
+              {rawDetail.data?.meta?.source_url && (
                 <div className={clsx('text-xs mb-2', t3)}>
                   Source: <a href={rawDetail.data.meta.source_url} target="_blank" rel="noreferrer" className="underline">{rawDetail.data.meta.source_url}</a>
                 </div>
@@ -1119,10 +1119,10 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
             <div className={clsx('px-4 py-3 border-b flex items-center gap-2 flex-wrap', border)}>
               <Archive className={clsx('w-4 h-4', t2)} />
               <h2 className={clsx('text-lg font-semibold flex-1 truncate', t1)}>
-                {outputDetail.data?.meta.title ?? 'Output'}
+                {outputDetail.data?.meta?.title ?? 'Output'}
               </h2>
               <span className={clsx('text-xs px-1.5 py-0.5 rounded', dark ? 'bg-slate-700 text-slate-300' : 'bg-gray-100 text-slate-600')}>
-                {outputDetail.data?.meta.kind ?? '?'}
+                {outputDetail.data?.meta?.kind ?? '?'}
               </span>
               <button
                 onClick={() => {

@@ -28,7 +28,12 @@ export function TypingIndicatorInline({ channelId }: { channelId?: string }) {
     return null;
   }
 
-  const names = typingAgents.map((a) => a.agent_name.split(' ')[0]); // First names only
+  // agent_name arrives from an `agent:typing` WebSocket frame as an unchecked
+  // cast. A frame without it used to throw here — and MessageInput is mounted in
+  // every chat view, so that took the whole app down over a transient message.
+  const names = typingAgents
+    .map((a) => (a?.agent_name ?? '').split(' ')[0])
+    .filter(Boolean); // First names only
 
   let typingText: string;
   if (names.length === 1) {
