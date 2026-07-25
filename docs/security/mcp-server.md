@@ -114,6 +114,35 @@ claude mcp add --transport http teamwork \
 Then ask it to `list_spaces` — a scoped key answering with exactly one space is
 the confirmation that scoping is live.
 
+## Give the agent the skill too
+
+Connecting a harness gives it the *ability* to write to a space. It gives it no
+idea what to write — and an agent left to guess does one of two unhelpful
+things: nothing at all, or it dumps its own step-by-step scratch list onto the
+board and buries your view of the work under fifty rows of "run the tests".
+
+So each space's settings has a **Get agent skill** button. It generates a
+ready-to-paste skill file, already naming that space, and the button next to it
+copies the connect command.
+
+What the skill actually teaches is the judgement a harness cannot infer from a
+tool schema — **what belongs on your board and what does not**:
+
+- A card is work *you* would recognise and care about the state of, days to
+  weeks wide. Add one when the agent discovers real work; move it when the state
+  genuinely changes; comment when the shape of the work changes.
+- The agent's plan for the next ten minutes is **working memory**, and working
+  memory does not go on someone else's wall. It keeps using its own todo
+  mechanism for that.
+- Notes are for what a card cannot hold: a decision *and the option rejected*,
+  how something actually works, a summary written for someone who was not there.
+- Honesty: if tests fail the card is not done. One optimistic card costs you
+  trust in every other card.
+
+**The skill never contains your token.** It gets pasted into repos and chat
+threads, so it carries `<your-key>` and says so — you substitute the real one
+where it stays private.
+
 ## What this does not do
 
 - **No channel-level scoping.** Space scoping covers Library objects; channels

@@ -52,6 +52,7 @@ import {
 } from '@/hooks/useApi';
 import type { LibrarySpace, LibraryNotebook, LibraryNote, FlashcardCard, SpaceFile } from '@/hooks/useApi';
 import { ModelSection } from '@/components/common/ModelSection';
+import { McpSection } from '@/components/common/McpSection';
 import { MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
 import { getSpaceTheme, THEME_PRESETS, accentColor, progressColor } from '@/utils/spaceTheme';
@@ -1509,6 +1510,9 @@ function SpaceSettings({
         disabled={setSpaceModel.isPending}
         onSelect={(value) => setSpaceModel.mutate(value)}
       />
+
+      {/* Coding agents (MCP) */}
+      <McpSection space={spaceSlug} spaceName={space.name} darkMode={dark} />
 
       {/* Cover image */}
       <div>

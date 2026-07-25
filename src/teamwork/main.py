@@ -140,6 +140,13 @@ app.include_router(prax_router, prefix="/api")
 # before the SPA catch-all at the bottom of this file or it'd be shadowed.
 app.include_router(content_router)
 
+# The UI-facing MCP endpoints (status + the paste-ready skill) mount ALWAYS,
+# unlike the transport below. A status endpoint that vanished with the feature
+# would make "off" and "broken" indistinguishable from the UI's side.
+from teamwork.routers.mcp_admin import router as mcp_admin_router  # noqa: E402
+
+app.include_router(mcp_admin_router, prefix="/api")
+
 # The MCP surface is mounted only when a deployment has enabled it AND granted
 # at least one credential MCP access.  Registering it unconditionally and
 # refusing inside the handler would still advertise that the endpoint exists;
