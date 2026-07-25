@@ -113,7 +113,14 @@ class Settings(BaseSettings):
     # Per-agent credential registry (JSON): [{name, token_sha256|token, agent_id,
     # project_id, allow}, ...]. The token determines the caller's identity, so a
     # body-asserted agent_id can never be taken on trust. See agent_auth.py.
-    agent_clients_path: str = ""
+    #
+    # Defaults to a real path rather than "" so enabling MCP for a space can just
+    # write here. An unset registry meant every grant began with the user hand-
+    # authoring JSON and hand-picking a slug — a manual step that defeats the
+    # point of having a UI at all. The file is created on first grant; until then
+    # nothing exists and nothing is granted, which is the same fail-closed state
+    # an empty path gave us.
+    agent_clients_path: str = "~/.teamwork/agent-clients.json"
 
     # Require every external-agent request to carry a valid Ed25519 envelope,
     # even from credentials that did not register a public key. Off by default:

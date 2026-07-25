@@ -12,9 +12,9 @@ put it in the registry — so the skill carries a placeholder and says so.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
-from teamwork import mcp_skill
+from teamwork import agent_registry, mcp_skill
 from teamwork.agent_auth import load_clients
 from teamwork.config import settings
 from teamwork.mcp_server import mcp_is_available
@@ -62,6 +62,8 @@ async def mcp_status(request: Request, space: str | None = None) -> dict:
     return {
         "available": mcp_is_available(),
         "enabled": enabled,
+        "granted": space in agent_registry.granted_spaces() if space else False,
+        "registry_path": str(agent_registry.registry_path()),
         "granted_keys": len(granted),
         "keys_for_space": keys,
         "server_url": _server_url(request),
@@ -73,6 +75,44 @@ async def mcp_status(request: Request, space: str | None = None) -> dict:
             else 'MCP is enabled but no credential is granted "mcp": true'
         ),
     }
+
+
+@router.post("/spaces/{space}/enable")
+async def enable_for_space(space: str, request: Request) -> dict:
+    """Mint a key scoped to this space and record it.
+
+    This exists so nobody has to hand-author a credential file. Re-enabling an
+    already-enabled space **rotates** the key — the registry stores only a hash,
+    so there is no plaintext to hand back, and pretending otherwise would be the
+    dishonest answer to "I lost my token".
+    """
+    try:
+        result = agent_registry.grant_space(space)
+    except agent_registry.RegistryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    url = _server_url(request)
+    return {
+        **result,
+        "server_url": url,
+        # Shown once, with the token in it, because this is the one moment the
+        # user has the token. The SKILL still ships a placeholder — it gets
+        # pasted into repos, and this does not.
+        "connect": mcp_skill.connection_snippet(
+            server_url=url, token_hint=result["token"]),
+        "warning": ("This token is shown once. It is stored only as a hash, so "
+                    "it cannot be recovered — re-enable to issue a new one."),
+        "needs_restart": not bool(getattr(settings, "mcp_enabled", False)),
+    }
+
+
+@router.delete("/spaces/{space}/enable")
+async def disable_for_space(space: str) -> dict:
+    """Revoke this space's key. Any other client in the file is left alone."""
+    try:
+        return agent_registry.revoke_space(space)
+    except agent_registry.RegistryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/skill")

@@ -118,3 +118,98 @@ async def test_status_lists_only_the_keys_that_reach_this_space(monkeypatch, tmp
 
     assert [k["name"] for k in body["keys_for_space"]] == ["for-a"]
     assert body["granted_keys"] == 2, "the count is of MCP keys, not of matches"
+
+
+# ── Enabling a space from the UI ─────────────────────────────────────────────
+
+@pytest.fixture
+def registry(monkeypatch, tmp_path):
+    path = tmp_path / "agent-clients.json"
+    monkeypatch.setattr("teamwork.config.settings.agent_clients_path",
+                        str(path), raising=False)
+    return path
+
+
+@pytest.mark.asyncio
+async def test_enabling_a_space_returns_a_working_connect_command(registry):
+    """The one moment the user has the token is the moment they need it."""
+    from teamwork.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport,
+                           base_url="https://tw.example.ts.net") as c:
+        body = (await c.post("/api/mcp/spaces/project-a/enable")).json()
+
+    assert body["token"] in body["connect"]
+    assert "tw.example.ts.net/mcp" in body["connect"]
+    assert "shown once" in body["warning"]
+
+
+@pytest.mark.asyncio
+async def test_the_skill_still_ships_a_placeholder_after_enabling(registry):
+    """The connect command carries the token; the skill must not.
+
+    The skill gets committed and pasted into chat threads. The connect command
+    is read once and typed into a config.
+    """
+    from teamwork.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        enabled = (await c.post("/api/mcp/spaces/project-a/enable")).json()
+        skill = (await c.get("/api/mcp/skill",
+                             params={"space": "project-a"})).json()
+
+    assert enabled["token"] not in skill["skill"]
+    assert "<your-key>" in skill["skill"]
+
+
+@pytest.mark.asyncio
+async def test_status_shows_a_space_as_granted_after_enabling(registry, monkeypatch):
+    from teamwork.config import settings
+    from teamwork.main import app
+
+    monkeypatch.setattr(settings, "mcp_enabled", True, raising=False)
+    monkeypatch.setattr(settings, "external_api_key", "", raising=False)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        before = (await c.get("/api/mcp/status",
+                              params={"space": "project-a"})).json()
+        assert before["granted"] is False
+
+        await c.post("/api/mcp/spaces/project-a/enable")
+        after = (await c.get("/api/mcp/status",
+                             params={"space": "project-a"})).json()
+
+    assert after["granted"] is True
+    assert after["available"] is True, "a grant should take effect without a restart"
+
+
+@pytest.mark.asyncio
+async def test_disabling_removes_the_grant(registry):
+    from teamwork.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        await c.post("/api/mcp/spaces/project-a/enable")
+        body = (await c.delete("/api/mcp/spaces/project-a/enable")).json()
+        status = (await c.get("/api/mcp/status",
+                              params={"space": "project-a"})).json()
+
+    assert body["revoked"] is True
+    assert status["granted"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_broken_registry_is_a_400_not_a_500(registry):
+    """The user can fix a bad file; they cannot fix a stack trace."""
+    from teamwork.main import app
+
+    registry.write_text("{ not json")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/api/mcp/spaces/project-a/enable")
+
+    assert r.status_code == 400
+    assert "not readable JSON" in r.json()["detail"]

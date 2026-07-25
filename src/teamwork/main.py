@@ -48,7 +48,6 @@ from teamwork.routers import (
     uploads_router,
     workspace_router,
 )
-from teamwork.mcp_server import mcp_is_available
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
 
@@ -147,13 +146,18 @@ from teamwork.routers.mcp_admin import router as mcp_admin_router  # noqa: E402
 
 app.include_router(mcp_admin_router, prefix="/api")
 
-# The MCP surface is mounted only when a deployment has enabled it AND granted
-# at least one credential MCP access.  Registering it unconditionally and
-# refusing inside the handler would still advertise that the endpoint exists;
-# not mounting it means an un-enabled deployment 404s like any other server
-# that does not speak MCP.  Registered before the SPA catch-all, as all routes
-# must be.
-if mcp_is_available():
+# The MCP transport mounts on the deployment flag alone, so a deployment that
+# has not enabled MCP 404s like any server that does not speak it.
+#
+# It deliberately does NOT also require a grant to exist at mount time. That
+# double gate was strictly safer on paper and wrong in practice: grants are
+# issued from the UI while the server is running, so it made every grant require
+# a restart to take effect — reintroducing exactly the manual step the UI exists
+# to remove. Access is unchanged: every request still resolves to a credential
+# and `require_mcp_client` refuses anything without an MCP grant, so an
+# enabled-but-ungranted deployment answers the route and grants nothing.
+# Registered before the SPA catch-all, as all routes must be.
+if getattr(settings, "mcp_enabled", False):
     from teamwork.routers.mcp import router as mcp_router
 
     app.include_router(mcp_router)
