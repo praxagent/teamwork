@@ -1189,6 +1189,9 @@ export interface McpStatus {
   enabled: boolean;
   granted_keys: number;
   keys_for_space: { name: string; spaces: string[]; scoped: boolean; capabilities: string[] }[];
+  /** Whether THIS space holds a grant — drives Enable vs Rotate/Revoke. */
+  granted: boolean;
+  registry_path: string;
   server_url: string;
   /** Why it is unavailable — distinguishes "flag off" from "no key granted". */
   reason: string | null;
@@ -1199,6 +1202,36 @@ export function useMcpStatus(space?: string | null) {
     queryKey: ['mcp-status', space ?? null],
     queryFn: () =>
       fetchJson<McpStatus>(`/mcp/status${space ? `?space=${encodeURIComponent(space)}` : ''}`),
+  });
+}
+
+export interface McpGrant {
+  space: string;
+  client: string;
+  /** Shown once. The registry stores only a hash, so it cannot be recovered. */
+  token: string;
+  rotated: boolean;
+  connect: string;
+  warning: string;
+  needs_restart: boolean;
+}
+
+export function useEnableMcp(space: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => fetchJson<McpGrant>(`/mcp/spaces/${encodeURIComponent(space)}/enable`, {
+      method: 'POST',
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mcp-status'] }),
+  });
+}
+
+export function useDisableMcp(space: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => fetchJson<{ revoked: boolean }>(
+      `/mcp/spaces/${encodeURIComponent(space)}/enable`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mcp-status'] }),
   });
 }
 

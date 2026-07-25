@@ -1,22 +1,28 @@
 /**
- * The "connect a coding agent to this space" panel.
+ * "Let a coding agent work in this space" — one button, no JSON.
  *
- * Two things a user needs and one they do not. They need the connect command,
- * and they need the skill — the instructions that stop a connected agent from
- * either ignoring the board or burying it under its own scratch todos. They do
- * not need us to hand them a token: the skill gets pasted into repos and chat
- * windows, so it carries a placeholder and says so, loudly enough that nobody
- * pastes `<your-key>` into a config and wonders why it 401s.
+ * Enabling mints a key scoped to this space and writes the credential registry
+ * for you. The alternative, which this replaces, was: pick a slug, invent a
+ * token, hand-author JSON, chmod it, wire an env var. A workspace that makes you
+ * hand-edit a credential file to use its own feature has not shipped it.
  *
- * When MCP is off, this says which of the two gates is closed. "Enabled but
- * nothing granted" is a real state — you flip the flag and expect it to work —
- * and calling it simply "off" sends you to fix the wrong thing.
+ * The token appears exactly once, at the moment it is minted, inside the connect
+ * command — that is the one moment the user needs it, and the registry stores
+ * only a hash so there is no second chance to offer. The *skill* still carries a
+ * placeholder, because the skill gets committed and pasted into chat threads
+ * while the connect command is read once and typed into a config.
  */
-import { Check, Copy, Plug } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Plug, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
 
-import { useMcpSkill, useMcpStatus } from '@/hooks/useApi';
+import {
+  useDisableMcp,
+  useEnableMcp,
+  useMcpSkill,
+  useMcpStatus,
+  type McpGrant,
+} from '@/hooks/useApi';
 
 interface Props {
   space: string;
@@ -49,9 +55,14 @@ function CopyButton({ text, label, darkMode }: { text: string; label: string; da
 
 export function McpSection({ space, spaceName, darkMode = false }: Props) {
   const [showSkill, setShowSkill] = useState(false);
+  // Held in component state, never re-fetched: this is the only copy that will
+  // ever exist. It disappears on navigate, which the warning says out loud.
+  const [grant, setGrant] = useState<McpGrant | null>(null);
+
   const { data: status } = useMcpStatus(space);
-  // Only fetched once asked for: it is a page of text nobody needs by default.
   const { data: skill } = useMcpSkill(space, spaceName, showSkill);
+  const enable = useEnableMcp(space);
+  const disable = useDisableMcp(space);
 
   const t2 = darkMode ? 'text-slate-400' : 'text-slate-500';
   const t3 = darkMode ? 'text-slate-500' : 'text-slate-400';
@@ -59,26 +70,30 @@ export function McpSection({ space, spaceName, darkMode = false }: Props) {
     'mt-2 p-3 rounded text-xs font-mono whitespace-pre-wrap break-all',
     darkMode ? 'bg-slate-900 text-slate-300' : 'bg-gray-50 text-slate-700',
   );
+  const btn = clsx(
+    'px-2.5 py-1.5 rounded text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50',
+    darkMode
+      ? 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+      : 'bg-gray-200 hover:bg-gray-300 text-slate-800',
+  );
 
   if (!status) return null;
 
-  if (!status.available) {
+  // The deployment flag is the one thing a button cannot do for you — it needs a
+  // restart. Say exactly that rather than a generic "unavailable".
+  if (!status.enabled) {
     return (
       <div>
         <label className={clsx('text-xs font-semibold block mb-1.5', t3)}>
           CODING AGENTS (MCP)
         </label>
         <p className={clsx('text-xs', t2)}>
-          {status.reason ?? 'Not available.'}
-          {!status.enabled
-            ? ' Set MCP_ENABLED=true in TeamWork’s .env and restart.'
-            : ' Add "mcp": true to a credential in your agent-clients registry.'}
+          Set <code>MCP_ENABLED=true</code> in TeamWork’s <code>.env</code> and
+          restart to let Claude Code, Codex or another harness work in this space.
         </p>
       </div>
     );
   }
-
-  const scoped = status.keys_for_space.filter((k) => k.scoped);
 
   return (
     <div>
@@ -86,62 +101,98 @@ export function McpSection({ space, spaceName, darkMode = false }: Props) {
         CODING AGENTS (MCP)
       </label>
       <p className={clsx('text-xs mb-3', t2)}>
-        Let Claude Code, Codex or another harness read and write this space —
-        board items, notes and comments. It cannot join the chat.
+        Let Claude Code, Codex or another harness read and write{' '}
+        <strong>this space only</strong> — board items, notes and comments. It
+        cannot join the chat or reach your other spaces.
       </p>
 
-      {status.keys_for_space.length === 0 ? (
-        <p className={clsx('text-xs', t2)}>
-          No key reaches this space yet. Add one to your registry with{' '}
-          <code>"spaces": ["{space}"]</code>.
-        </p>
-      ) : (
-        <>
-          <p className={clsx('text-xs mb-2', t2)}>
-            {scoped.length > 0
-              ? `${scoped.length} key${scoped.length > 1 ? 's' : ''} scoped to this space`
-              : 'Reachable by a workspace-wide key — scope one to this space to narrow it'}
-          </p>
+      <div className="flex gap-2 flex-wrap items-center">
+        <button
+          type="button"
+          disabled={enable.isPending}
+          onClick={() => enable.mutate(undefined, { onSuccess: setGrant })}
+          className={btn}
+        >
+          <Plug className="w-3 h-3" />
+          {enable.isPending
+            ? 'Enabling…'
+            : status.granted
+              ? 'Issue a new key'
+              : 'Enable for this space'}
+        </button>
 
-          <div className={pre}>
-            {status.server_url}
-          </div>
-          <div className="flex gap-2 mt-2 flex-wrap">
-            <CopyButton text={status.server_url} label="Copy URL" darkMode={darkMode} />
+        {status.granted && (
+          <>
             <button
               type="button"
               onClick={() => setShowSkill((v) => !v)}
-              className={clsx(
-                'px-2.5 py-1.5 rounded text-xs flex items-center gap-1.5 transition-colors',
-                darkMode
-                  ? 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                  : 'bg-gray-200 hover:bg-gray-300 text-slate-800',
-              )}
+              className={btn}
             >
-              <Plug className="w-3 h-3" />
               {showSkill ? 'Hide skill' : 'Get agent skill'}
             </button>
-          </div>
+            <button
+              type="button"
+              disabled={disable.isPending}
+              onClick={() => {
+                disable.mutate();
+                setGrant(null);
+              }}
+              className={clsx(btn, 'text-red-500')}
+            >
+              <Trash2 className="w-3 h-3" />
+              Revoke
+            </button>
+          </>
+        )}
+      </div>
 
-          {showSkill && skill && (
-            <div className="mt-3">
-              <p className={clsx('text-xs mb-2', t2)}>
-                Save as <code>{skill.filename}</code> in your agent’s skills
-                directory. It tells the agent what belongs on this board — and
-                what is its own scratch work and should stay off it.
-              </p>
-              <div className="flex gap-2 flex-wrap">
-                <CopyButton text={skill.skill} label="Copy skill" darkMode={darkMode} />
-                <CopyButton text={skill.connect} label="Copy connect command" darkMode={darkMode} />
-              </div>
-              <p className={clsx('text-xs mt-2', t3)}>
-                Replace <code>&lt;your-key&gt;</code> with the token from your
-                registry — the skill never contains it, so it is safe to commit.
-              </p>
-              <pre className={clsx(pre, 'max-h-64 overflow-y-auto')}>{skill.skill}</pre>
-            </div>
-          )}
-        </>
+      {enable.isError && (
+        <p className="text-xs mt-2 text-red-500">
+          {(enable.error as Error)?.message ?? 'Could not enable MCP.'}
+        </p>
+      )}
+
+      {status.granted && !grant && (
+        <p className={clsx('text-xs mt-2', t2)}>
+          Enabled. The key was shown once when it was issued — if you no longer
+          have it, issue a new one (the old key stops working).
+        </p>
+      )}
+
+      {grant && (
+        <div className={clsx(
+          'mt-3 p-3 rounded border',
+          darkMode ? 'border-amber-700/50 bg-amber-950/20' : 'border-amber-300 bg-amber-50',
+        )}>
+          <p className={clsx('text-xs font-medium flex items-center gap-1.5 mb-2',
+            darkMode ? 'text-amber-300' : 'text-amber-800')}>
+            <AlertTriangle className="w-3.5 h-3.5" />
+            {grant.rotated ? 'New key issued — the previous one no longer works' : 'Key issued'}
+          </p>
+          <p className={clsx('text-xs mb-2', t2)}>{grant.warning}</p>
+          <div className={pre}>{grant.connect}</div>
+          <div className="flex gap-2 mt-2 flex-wrap">
+            <CopyButton text={grant.connect} label="Copy connect command" darkMode={darkMode} />
+            <CopyButton text={grant.token} label="Copy token" darkMode={darkMode} />
+          </div>
+        </div>
+      )}
+
+      {showSkill && skill && (
+        <div className="mt-3">
+          <p className={clsx('text-xs mb-2', t2)}>
+            Save as <code>{skill.filename}</code> in your agent’s skills
+            directory. It tells the agent what belongs on this board — and what
+            is its own scratch work and should stay off it.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <CopyButton text={skill.skill} label="Copy skill" darkMode={darkMode} />
+          </div>
+          <p className={clsx('text-xs mt-2', t3)}>
+            The skill contains no key, so it is safe to commit.
+          </p>
+          <pre className={clsx(pre, 'max-h-64 overflow-y-auto')}>{skill.skill}</pre>
+        </div>
       )}
     </div>
   );

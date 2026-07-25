@@ -10,35 +10,39 @@ your tailnet rather than the public internet.
 
 ## Turning it on
 
-Three things must all be true. Any one of them missing and the endpoint does not
-exist — a deployment that has not enabled MCP returns 404 for `/mcp`, like any
-server that does not speak it.
+One line in TeamWork's `.env`, then restart:
 
 ```bash
-# 1. the deployment flag
 MCP_ENABLED=true
-
-# 2. a credential registry containing at least one key granted MCP
-TEAMWORK_AGENT_CLIENTS_PATH=/home/you/.teamwork/agent-clients.json
 ```
 
-```json
-[
-  {
-    "name": "codex-on-project-a",
-    "token": "generate-a-long-random-string",
-    "mcp": true,
-    "spaces": ["project-a"],
-    "allow": ["task.write", "activity.write"]
-  }
-]
-```
+That is the whole deployment step. It mounts the endpoint and grants **nothing** —
+an enabled deployment with no grants answers `/mcp` and refuses every call.
 
-**3.** That key's `mcp: true`. Enabling the flag while granting nothing changes
-nothing — there is a test for exactly that, because "enabled" alone should never
-open a door.
+Everything else happens in the UI. Open a space → **Settings** → *Coding agents
+(MCP)* → **Enable for this space**. That mints a key scoped to that space, writes
+the credential registry for you, and shows the connect command with the token in
+it, once.
 
-Restart TeamWork; the log line `MCP endpoint mounted at POST /mcp` confirms it.
+**Grants take effect immediately** — no restart. The flag decides whether the
+route exists; the registry decides who may use it, and that is read per request.
+
+### The credential registry
+
+Lives at `~/.teamwork/agent-clients.json` by default
+(`TEAMWORK_AGENT_CLIENTS_PATH` to move it). You should never need to open it, but
+if you do:
+
+- It stores **only a SHA-256 of each token**. A backup of this file grants
+  nothing, and "show me my token again" cannot be honoured — which is why
+  re-enabling **rotates** rather than reveals.
+- It is written atomically at mode `0600`. Hand-authored entries are preserved;
+  enabling a space adds one client and touches nothing else.
+- An unparseable file is **refused, not overwritten** — it may hold working
+  grants, and clobbering them silently would be worse than failing.
+
+You can still hand-author entries for anything the UI does not cover (a
+workspace-wide key, custom capabilities, Ed25519 signing).
 
 ## Why MCP needs its own grant
 
@@ -103,12 +107,13 @@ boundary.
 tailscale serve --bg 8000     # if it isn't already served
 ```
 
-Claude Code:
+**Enable for this space** hands you the exact command, with your token already
+in it — copy, paste, done:
 
 ```bash
 claude mcp add --transport http teamwork \
   https://teamwork.your-tailnet.ts.net/mcp \
-  --header "X-API-Key: the-token-from-the-registry"
+  --header "X-API-Key: <issued for you>"
 ```
 
 Then ask it to `list_spaces` — a scoped key answering with exactly one space is
