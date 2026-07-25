@@ -1184,6 +1184,45 @@ export function useSetSpaceModel(space: string | null) {
   });
 }
 
+export interface McpStatus {
+  available: boolean;
+  enabled: boolean;
+  granted_keys: number;
+  keys_for_space: { name: string; spaces: string[]; scoped: boolean; capabilities: string[] }[];
+  server_url: string;
+  /** Why it is unavailable — distinguishes "flag off" from "no key granted". */
+  reason: string | null;
+}
+
+export function useMcpStatus(space?: string | null) {
+  return useQuery({
+    queryKey: ['mcp-status', space ?? null],
+    queryFn: () =>
+      fetchJson<McpStatus>(`/mcp/status${space ? `?space=${encodeURIComponent(space)}` : ''}`),
+  });
+}
+
+export interface McpSkill {
+  space: string;
+  filename: string;
+  skill: string;
+  connect: string;
+  /** Always false — the skill gets pasted around, so it never carries a key. */
+  token_included: boolean;
+}
+
+export function useMcpSkill(space: string | null, spaceName?: string, enabled = false) {
+  return useQuery({
+    queryKey: ['mcp-skill', space],
+    queryFn: () =>
+      fetchJson<McpSkill>(
+        `/mcp/skill?space=${encodeURIComponent(space!)}` +
+          (spaceName ? `&space_name=${encodeURIComponent(spaceName)}` : ''),
+      ),
+    enabled: !!space && enabled,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Context Inspector
 // ---------------------------------------------------------------------------
