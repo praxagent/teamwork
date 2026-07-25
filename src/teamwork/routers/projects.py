@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from teamwork.models import Project, Task, Agent, get_db
+from teamwork.models import Channel, Project, Task, Agent, get_db
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -99,6 +99,45 @@ async def create_project(
         created_at=db_project.created_at.isoformat(),
         updated_at=db_project.updated_at.isoformat(),
     )
+
+
+@router.post("/blank", status_code=201)
+async def create_blank_workspace(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Create a ready-to-use workspace in one call — the wizard bypass.
+
+    ``POST /projects`` alone is not enough: it creates the row and no channels,
+    so the user lands somewhere with nothing to type into. The external-agent
+    endpoint does build channels, but it requires an API key the browser does
+    not have and should not be given.
+
+    Marked ``project_type: external`` so an agent's own startup reconnects to it
+    rather than creating a second workspace alongside — that mismatch is easy to
+    cause by hand and confusing to find afterwards.
+    """
+    project = Project(
+        name="Workspace",
+        description="Direct chat with your agent",
+        config={"project_type": "external"},
+        status="active",
+    )
+    db.add(project)
+    await db.flush()
+
+    # One general channel is the minimum that makes the workspace usable.
+    channel = Channel(project_id=project.id, name="general", type="public",
+                      description="General discussion")
+    db.add(channel)
+    await db.flush()
+    await db.commit()
+
+    return {
+        "id": project.id,
+        "project_id": project.id,
+        "name": project.name,
+        "channels": {"general": channel.id},
+    }
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)

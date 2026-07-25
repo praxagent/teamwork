@@ -1,10 +1,26 @@
-import { Code, GraduationCap, Users, Sparkles } from 'lucide-react';
+import { Code, GraduationCap, Users, Sparkles, MessageSquare } from 'lucide-react';
 
 interface TeamTypeStepProps {
   onSelect: (type: 'software' | 'coaching') => void;
+  /** Skip the wizard entirely: one project, one agent, straight into chat. */
+  onBlank?: () => void;
 }
 
-export function TeamTypeStep({ onSelect }: TeamTypeStepProps) {
+/**
+ * Startup / Personal Coaching are DISABLED, not deleted.
+ *
+ * Their backend went away in v0.2.0 ("pure display shell"): the wizard still
+ * calls /api/onboarding/start, /auto-answer, finalize and shuffle-member, and
+ * none of those routes exist any more — clicking either card 404s on step one.
+ *
+ * They stay on screen, greyed, because they encode the only worked-through
+ * answer to "what should a team of agents look like", and that becomes live
+ * again once **Prax** can compose and drive a team over /api/external. TeamWork
+ * has no LLM and should not grow one; it should render a team the agent builds.
+ */
+const TEAM_TYPES_ENABLED = false;
+
+export function TeamTypeStep({ onSelect, onBlank }: TeamTypeStepProps) {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="text-center mb-8">
@@ -15,9 +31,26 @@ export function TeamTypeStep({ onSelect }: TeamTypeStepProps) {
           Choose Your Team Type
         </h1>
         <p className="text-gray-600">
-          Select the type of AI team you want to create for your project.
+          Start with a blank workspace, or pick a pre-built team.
         </p>
       </div>
+
+      {onBlank && (
+        <div className="mb-6">
+          <TeamTypeCard
+            icon={<MessageSquare className="w-8 h-8" />}
+            title="Just Prax"
+            description="A blank workspace — start talking to your agent straight away"
+            features={[
+              "One project, one agent",
+              "No setup questions",
+              "Straight into #general",
+            ]}
+            accentColor="green"
+            onClick={onBlank}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <TeamTypeCard
@@ -31,6 +64,7 @@ export function TeamTypeStep({ onSelect }: TeamTypeStepProps) {
             "Kanban board & task tracking",
           ]}
           accentColor="blue"
+          disabled={!TEAM_TYPES_ENABLED}
           onClick={() => onSelect('software')}
         />
         <TeamTypeCard
@@ -44,12 +78,17 @@ export function TeamTypeStep({ onSelect }: TeamTypeStepProps) {
             "Proactive check-ins",
           ]}
           accentColor="purple"
+          disabled={!TEAM_TYPES_ENABLED}
           onClick={() => onSelect('coaching')}
         />
       </div>
 
       <div className="mt-8 text-center text-sm text-gray-500">
-        <p>Both team types include personalized AI personalities and real-time chat.</p>
+        <p>
+          {TEAM_TYPES_ENABLED
+            ? 'Both team types include personalized AI personalities and real-time chat.'
+            : 'Pre-built teams are temporarily unavailable — they are being rebuilt so the agent composes and drives the team.'}
+        </p>
       </div>
     </div>
   );
@@ -60,34 +99,42 @@ interface TeamTypeCardProps {
   title: string;
   description: string;
   features: string[];
-  accentColor: 'blue' | 'purple';
+  accentColor: 'blue' | 'purple' | 'green';
   onClick: () => void;
+  disabled?: boolean;
 }
 
-function TeamTypeCard({ icon, title, description, features, accentColor, onClick }: TeamTypeCardProps) {
-  const colorClasses = accentColor === 'blue'
-    ? {
-        bg: 'bg-blue-50',
-        border: 'border-blue-200 hover:border-blue-400',
-        iconBg: 'bg-blue-100',
-        iconColor: 'text-blue-600',
-        checkColor: 'text-blue-500',
-      }
-    : {
-        bg: 'bg-purple-50',
-        border: 'border-purple-200 hover:border-purple-400',
-        iconBg: 'bg-purple-100',
-        iconColor: 'text-purple-600',
-        checkColor: 'text-purple-500',
-      };
+function TeamTypeCard({ icon, title, description, features, accentColor, onClick, disabled = false }: TeamTypeCardProps) {
+  const palettes = {
+    blue: { border: 'border-blue-200 hover:border-blue-400', iconBg: 'bg-blue-100',
+            iconColor: 'text-blue-600', checkColor: 'text-blue-500' },
+    purple: { border: 'border-purple-200 hover:border-purple-400', iconBg: 'bg-purple-100',
+              iconColor: 'text-purple-600', checkColor: 'text-purple-500' },
+    green: { border: 'border-emerald-200 hover:border-emerald-400', iconBg: 'bg-emerald-100',
+             iconColor: 'text-emerald-600', checkColor: 'text-emerald-500' },
+  } as const;
+  const colorClasses = palettes[accentColor];
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`p-6 text-left border-2 rounded-xl ${colorClasses.border} hover:shadow-lg transition-all duration-200 group`}
+      disabled={disabled}
+      aria-disabled={disabled}
+      title={disabled ? 'Temporarily unavailable — being rebuilt' : undefined}
+      className={`relative p-6 text-left border-2 rounded-xl transition-all duration-200 group ${
+        disabled
+          ? 'border-gray-200 opacity-60 cursor-not-allowed'
+          : `${colorClasses.border} hover:shadow-lg`
+      }`}
     >
-      <div className={`inline-flex items-center justify-center w-14 h-14 ${colorClasses.iconBg} rounded-xl mb-4 ${colorClasses.iconColor} group-hover:scale-110 transition-transform`}>
+      {disabled && (
+        <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide
+                         rounded-full bg-gray-200 text-gray-600">
+          Coming soon
+        </span>
+      )}
+      <div className={`inline-flex items-center justify-center w-14 h-14 ${colorClasses.iconBg} rounded-xl mb-4 ${colorClasses.iconColor} ${disabled ? '' : 'group-hover:scale-110'} transition-transform`}>
         {icon}
       </div>
       <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
