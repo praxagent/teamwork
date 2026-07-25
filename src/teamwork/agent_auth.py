@@ -79,6 +79,20 @@ class AgentClient:
     token_sha256: str
     agent_id: str | None = None      # the Agent row this credential speaks as
     project_id: str | None = None    # scope; None = any project
+    #: Library spaces this credential may touch. Empty = every space.
+    #:
+    #: The point of a per-space key: hand one to a coding agent for the project
+    #: it is working on, and it cannot read or write anything in your other
+    #: spaces. A workspace-wide key would make "give Codex access to this
+    #: project" mean "give Codex everything", which is not a trade most people
+    #: would make knowingly.
+    spaces: frozenset[str] = field(default_factory=frozenset)
+    #: Whether this credential may use the MCP surface at all.
+    #:
+    #: Separate from the capability set on purpose: granting an agent
+    #: "task.write" over the REST API is a different decision from letting an
+    #: arbitrary MCP client connect as it. Off unless the registry says so.
+    mcp: bool = False
     allow: frozenset[str] = field(default_factory=lambda: frozenset({ALL_CAPABILITIES}))
     legacy: bool = False             # the shared workspace-wide key
     public_key: str | None = None    # Ed25519 (base64/hex) — enables signing
@@ -125,6 +139,20 @@ class AgentClient:
     def scoped_to(self, project_id: str | None) -> bool:
         return self.project_id is None or project_id is None or self.project_id == project_id
 
+    def may_touch_space(self, space_slug: str | None) -> bool:
+        """May this credential act on *space_slug*?
+
+        An unscoped credential reaches every space (the existing behaviour). A
+        scoped one reaches exactly the spaces it names — and is refused when the
+        caller does not say which space it means, because "unspecified" must not
+        silently widen a deliberately narrow key.
+        """
+        if not self.spaces:
+            return True
+        if not space_slug:
+            return False
+        return space_slug in self.spaces
+
 
 def _parse_allow(raw) -> frozenset[str]:
     if raw is None:
@@ -168,6 +196,14 @@ def load_clients(path: str | None = None, legacy_key: str | None = None) -> list
                         "require_signature", bool(entry.get("public_key")))),
                     gated=frozenset(_parse_allow(entry["gated"]))
                     if entry.get("gated") else frozenset(),
+                    mcp=bool(entry.get("mcp", False)),
+                    spaces=frozenset(
+                        s.strip() for s in (
+                            entry["spaces"].split(",")
+                            if isinstance(entry.get("spaces"), str)
+                            else entry.get("spaces") or []
+                        ) if s and s.strip()
+                    ),
                 ))
     if legacy_key:
         # Unbound on purpose: the shared key predates per-agent identity and can
