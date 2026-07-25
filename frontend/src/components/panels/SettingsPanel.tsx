@@ -23,9 +23,12 @@ import {
   useResetProject,
   useUserTimezone,
   useSetUserTimezone,
+  useCurrentModel,
+  useSetModel,
 } from '@/hooks/useApi';
 import { PluginsSection } from './PluginsSection';
 import { TimezonePicker } from '@/components/common/TimezonePicker';
+import { ModelSection } from '@/components/common/ModelSection';
 import { useUIStore } from '@/stores';
 import type { Project } from '@/types';
 
@@ -51,9 +54,6 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
   const [runtimeMode, setRuntimeMode] = useState<string>(
     (config.runtime_mode as string) || 'docker'
   );
-  const [modelMode, setModelMode] = useState<string>(
-    (config.model_mode as string) || 'auto'
-  );
 
   // Reset confirmation
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -67,6 +67,11 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
   // Mutations
   const updateProject = useUpdateProject();
   const updateConfig = useUpdateProjectConfig();
+  // Settings is a page you open deliberately, so discovery (a round-trip per
+  // provider) is worth paying for here — unlike the chat badge, which renders
+  // on every view and must not.
+  const { data: modelData } = useCurrentModel(true);
+  const setModel = useSetModel();
   const pauseProject = usePauseProject();
   const resumeProject = useResumeProject();
   const resetProject = useResetProject();
@@ -80,7 +85,6 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
     const cfg = (project.config || {}) as Record<string, unknown>;
     setAutoExecute((cfg.auto_execute_tasks as boolean) ?? true);
     setRuntimeMode((cfg.runtime_mode as string) || 'docker');
-    setModelMode((cfg.model_mode as string) || 'auto');
   }, [project]);
 
   const showStatus = useCallback(
@@ -130,11 +134,6 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
   const handleRuntimeChange = (mode: string) => {
     setRuntimeMode(mode);
     handleConfigChange({ runtime_mode: mode });
-  };
-
-  const handleModelModeChange = (mode: string) => {
-    setModelMode(mode);
-    handleConfigChange({ model_mode: mode });
   };
 
   const handlePause = async () => {
@@ -601,38 +600,20 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
             )}
           </div>
 
-          {/* Model mode */}
-          <div>
-            <p className={`text-sm font-medium mb-2 ${heading}`}>
-              Model Mode
-            </p>
-            <p className={`text-xs mb-3 ${subtext}`}>
-              Choose which AI model agents use for task execution.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { value: 'auto', label: 'Auto' },
-                { value: 'sonnet', label: 'Sonnet' },
-                { value: 'haiku', label: 'Haiku' },
-                { value: 'hybrid', label: 'Hybrid' },
-              ].map(({ value, label }) => (
-                <button
-                  key={value}
-                  onClick={() => handleModelModeChange(value)}
-                  disabled={updateConfig.isPending}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    modelMode === value
-                      ? 'bg-purple-600 text-white'
-                      : darkMode
-                      ? 'bg-slate-700 text-gray-300 hover:bg-slate-600'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* The model this deployment uses. Replaces a "Model Mode"
+              control (Auto/Sonnet/Haiku/Hybrid) that wrote model_mode into the
+              project config, which nothing on either backend ever read — a
+              control that looked like it did something and did not. */}
+          <ModelSection
+            title="Model"
+            description="Which model Prax uses. Auto lets the agent pick a tier per task."
+            info={modelData}
+            value={modelData?.override ?? null}
+            inheritsTo={modelData?.current_model}
+            darkMode={darkMode}
+            disabled={setModel.isPending}
+            onSelect={(value) => setModel.mutate(value ?? '')}
+          />
 
           {/* Timezone */}
           <TimezoneSection darkMode={darkMode} heading={heading} subtext={subtext} />

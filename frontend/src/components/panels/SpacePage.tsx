@@ -46,8 +46,12 @@ import {
   useUploadSpaceFile,
   useDeleteSpaceFile,
   spaceFileUrl,
+  useCurrentModel,
+  useSpaceModel,
+  useSetSpaceModel,
 } from '@/hooks/useApi';
 import type { LibrarySpace, LibraryNotebook, LibraryNote, FlashcardCard, SpaceFile } from '@/hooks/useApi';
+import { ModelSection } from '@/components/common/ModelSection';
 import { MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
 import { getSpaceTheme, THEME_PRESETS, accentColor, progressColor } from '@/utils/spaceTheme';
@@ -1470,6 +1474,13 @@ function SpaceSettings({
       : 'bg-white text-slate-900 border-gray-300 focus:border-indigo-500',
   );
 
+  // A space can answer on its own model — a research space on something big, a
+  // scratch space on something cheap. Clearing it inherits the global choice
+  // rather than freezing on today's default.
+  const { data: modelData } = useCurrentModel(true);
+  const { data: spaceModel } = useSpaceModel(spaceSlug);
+  const setSpaceModel = useSetSpaceModel(spaceSlug);
+
   return (
     <div className="space-y-8">
       {/* Name */}
@@ -1485,6 +1496,19 @@ function SpaceSettings({
           >Save</button>
         </div>
       </div>
+
+      {/* Model */}
+      <ModelSection
+        title="Model"
+        description="Which model this space's chat uses. Inherits the global choice unless you pin one."
+        info={modelData}
+        value={spaceModel?.pinned ?? null}
+        inheritsTo={spaceModel?.fallback ?? modelData?.current_model}
+        inheritLabel="Follow the global model"
+        darkMode={dark}
+        disabled={setSpaceModel.isPending}
+        onSelect={(value) => setSpaceModel.mutate(value)}
+      />
 
       {/* Cover image */}
       <div>
