@@ -60,6 +60,37 @@ export function OnboardingWizard() {
     setStep('description');
   };
 
+  const [blankError, setBlankError] = useState<string | null>(null);
+  const [creatingBlank, setCreatingBlank] = useState(false);
+
+  /**
+   * Skip the wizard: create one project with one agent and go straight to chat.
+   *
+   * Uses the same external-project endpoint an agent would — an external-mode
+   * project is exactly what Prax reconnects to on startup, so nothing here is a
+   * special case the rest of the system has to know about.
+   */
+  const handleBlankWorkspace = async () => {
+    setBlankError(null);
+    setCreatingBlank(true);
+    try {
+      const res = await fetch('/api/projects/blank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) throw new Error(`Could not create the workspace (HTTP ${res.status})`);
+      const project = await res.json();
+      const id = project.project_id ?? project.id;
+      if (!id) throw new Error('The server did not return a project id');
+      navigate(`/project/${id}`);
+    } catch (err) {
+      // Surface it rather than leaving the button dead — the whole point of this
+      // path is that it does not silently fail like the team-type options did.
+      setBlankError(err instanceof Error ? err.message : 'Could not create the workspace');
+      setCreatingBlank(false);
+    }
+  };
+
   const startOnboarding = useStartOnboarding();
   const submitAnswers = useSubmitAnswers();
   const autoAnswerQuestions = useAutoAnswerQuestions();
@@ -501,7 +532,15 @@ export function OnboardingWizard() {
       {/* Step content */}
       <div className="py-12 px-4">
         {step === 'type' && (
-          <TeamTypeStep onSelect={handleTeamTypeSelect} />
+          <>
+            <TeamTypeStep onSelect={handleTeamTypeSelect} onBlank={handleBlankWorkspace} />
+            {creatingBlank && (
+              <p className="mt-4 text-center text-sm text-gray-500">Creating your workspace…</p>
+            )}
+            {blankError && (
+              <p className="mt-4 text-center text-sm text-red-600" role="alert">{blankError}</p>
+            )}
+          </>
         )}
 
         {step === 'description' && (
