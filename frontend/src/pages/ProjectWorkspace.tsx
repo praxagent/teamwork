@@ -159,9 +159,11 @@ export function ProjectWorkspace() {
   const loadOlderMutation = useLoadOlderMessages();
 
   // Model picker
-  const { data: modelData } = useCurrentModel();
-  const setModelMutation = useSetModel();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  // Discovery kicks in only once the picker is opened, so the badge that
+  // renders on every chat view never pays for three provider round-trips.
+  const { data: modelData } = useCurrentModel(modelPickerOpen);
+  const setModelMutation = useSetModel();
 
   const handleLoadOlderMessages = useCallback(() => {
     if (!currentChannelId || loadOlderMutation.isPending) return;

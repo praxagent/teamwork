@@ -40,9 +40,14 @@ async def _proxy(method: str, path: str, **kwargs: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 @router.get("/model")
-async def get_model():
-    """Get the current orchestrator model and available options."""
-    result = await _proxy("GET", "/model")
+async def get_model(discover: bool = False):
+    """Get the current orchestrator model and available options.
+
+    ``discover=true`` asks each configured provider what it can serve. Opt-in
+    because the badge polls this endpoint and only needs the current selection —
+    the picker requests discovery when the user opens the dropdown.
+    """
+    result = await _proxy("GET", f"/model?discover={'1' if discover else '0'}")
     if result is None:
         raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result

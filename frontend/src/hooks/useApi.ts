@@ -1124,11 +1124,13 @@ export interface ModelInfo {
   egress_proxied?: boolean;
 }
 
-export function useCurrentModel() {
+export function useCurrentModel(discover = false) {
   return useQuery({
-    queryKey: ['current-model'],
-    queryFn: () => fetchJson<ModelInfo>('/prax/model'),
-    staleTime: 10000,
+    queryKey: ['current-model', discover],
+    queryFn: () => fetchJson<ModelInfo>(`/prax/model${discover ? '?discover=true' : ''}`),
+    // Discovery costs a round-trip to each provider, so hold it far longer than
+    // the badge's own refresh. Model catalogues change on the order of weeks.
+    staleTime: discover ? 5 * 60_000 : 10_000,
   });
 }
 
