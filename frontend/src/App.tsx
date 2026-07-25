@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Home, ProjectWorkspace, Projects } from '@/pages';
 import { OnboardingWizard } from '@/components/onboarding';
 import { ToastContainer } from '@/components/common';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { useUIStore } from '@/stores';
 
 function App() {
@@ -62,12 +63,16 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/projects" element={<Projects />} />
-        <Route path="/new" element={<OnboardingWizard />} />
-        <Route path="/project/:projectId" element={<ProjectWorkspace />} />
-      </Routes>
+      {/* Last line of defence. Panels have their own boundaries; this one keeps
+          an unexpected error in shared chrome from blanking the page entirely. */}
+      <ErrorBoundary name="TeamWork">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/new" element={<OnboardingWizard />} />
+          <Route path="/project/:projectId" element={<ProjectWorkspace />} />
+        </Routes>
+      </ErrorBoundary>
       <ToastContainer />
     </BrowserRouter>
   );
