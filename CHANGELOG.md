@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.0](https://github.com/praxagent/teamwork/compare/v0.18.0...v0.19.0) (2026-07-25)
+
+
+### Features
+
+* blank-workspace option; disable the team-type wizard until it works ([#45](https://github.com/praxagent/teamwork/issues/45)) ([a210c23](https://github.com/praxagent/teamwork/commit/a210c232ca9defc3874a029def7165ac9fac4456))
+* **ui:** model picker with providers, tier pinning and auto ([#46](https://github.com/praxagent/teamwork/issues/46)) ([9b66c3d](https://github.com/praxagent/teamwork/commit/9b66c3d93218374dcb02407969dbc9dbb4b3e98c))
+
+
+### Bug Fixes
+
+* **api:** an unreachable Prax backend is an HTTP failure, not a 200 ([#44](https://github.com/praxagent/teamwork/issues/44)) ([7b5ef94](https://github.com/praxagent/teamwork/commit/7b5ef943c6bc6a7cfe13076deeb4b5f6b9e5e47f))
+* **ui:** stop one bad API field from blanking the whole app ([#42](https://github.com/praxagent/teamwork/issues/42)) ([deb3447](https://github.com/praxagent/teamwork/commit/deb344788379145590ed7f85c7b2fa19cb399099))
+
 ## [0.18.0](https://github.com/praxagent/teamwork/compare/v0.17.0...v0.18.0) (2026-07-24)
 
 
