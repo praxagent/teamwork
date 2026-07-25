@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException
 
 from teamwork.config import settings
 
@@ -44,7 +44,7 @@ async def get_model():
     """Get the current orchestrator model and available options."""
     result = await _proxy("GET", "/model")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -53,7 +53,7 @@ async def set_model(data: dict = Body(...)):
     """Set a runtime model override for the orchestrator."""
     result = await _proxy("PUT", "/model", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -80,7 +80,7 @@ async def context_stats():
     """Get context window stats from Prax."""
     result = await _proxy("GET", "/context/stats")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -89,5 +89,5 @@ async def context_compact():
     """Trigger manual context compaction."""
     result = await _proxy("POST", "/context/compact")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result

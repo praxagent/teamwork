@@ -13,7 +13,7 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Body, File, UploadFile
+from fastapi import APIRouter, Body, File, UploadFile, HTTPException
 
 from teamwork.config import settings
 
@@ -64,7 +64,7 @@ async def create_project(data: dict = Body(...)):
     """Create a new project."""
     result = await _proxy("POST", "/spaces", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -73,7 +73,7 @@ async def delete_project(project: str):
     """Delete an empty project."""
     result = await _proxy("DELETE", f"/spaces/{project}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -86,7 +86,7 @@ async def create_notebook(project: str, data: dict = Body(...)):
     """Create a new notebook inside a project."""
     result = await _proxy("POST", f"/spaces/{project}/notebooks", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -95,7 +95,7 @@ async def delete_notebook(project: str, notebook: str):
     """Delete an empty notebook."""
     result = await _proxy("DELETE", f"/spaces/{project}/notebooks/{notebook}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -108,7 +108,7 @@ async def create_note(data: dict = Body(...)):
     """Create a note. Defaults to author=human because the UI is the caller."""
     result = await _proxy("POST", "/notes", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -117,7 +117,7 @@ async def get_note(project: str, notebook: str, slug: str):
     """Return a note with metadata and full content."""
     result = await _proxy("GET", f"/notes/{project}/{notebook}/{slug}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -126,7 +126,7 @@ async def update_note(project: str, notebook: str, slug: str, data: dict = Body(
     """Update a note's content, title, or tags."""
     result = await _proxy("PATCH", f"/notes/{project}/{notebook}/{slug}", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -135,7 +135,7 @@ async def delete_note(project: str, notebook: str, slug: str):
     """Delete a note."""
     result = await _proxy("DELETE", f"/notes/{project}/{notebook}/{slug}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -144,7 +144,7 @@ async def move_note(project: str, notebook: str, slug: str, data: dict = Body(..
     """Move a note to a different notebook (and optionally project)."""
     result = await _proxy("PATCH", f"/notes/{project}/{notebook}/{slug}/move", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -153,7 +153,7 @@ async def set_note_editable(project: str, notebook: str, slug: str, data: dict =
     """Toggle the prax_may_edit flag on a note."""
     result = await _proxy("PATCH", f"/notes/{project}/{notebook}/{slug}/editable", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -175,7 +175,7 @@ async def put_schema(data: dict = Body(...)):
     """Overwrite LIBRARY.md."""
     result = await _proxy("PUT", "/schema", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -221,7 +221,7 @@ async def refine_note(project: str, notebook: str, slug: str, data: dict = Body(
     """Generate a refined version (does not apply — preview only)."""
     result = await _proxy("POST", f"/notes/{project}/{notebook}/{slug}/refine", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -230,7 +230,7 @@ async def apply_refine(project: str, notebook: str, slug: str, data: dict = Body
     """Apply an approved refine result with override_permission."""
     result = await _proxy("POST", f"/notes/{project}/{notebook}/{slug}/apply-refine", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -239,7 +239,7 @@ async def refine_via_agent(project: str, notebook: str, slug: str, data: dict = 
     """Run a refinement through the full chat agent (with tool access)."""
     result = await _proxy("POST", f"/notes/{project}/{notebook}/{slug}/refine-via-agent", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -259,7 +259,7 @@ async def capture_raw(data: dict = Body(...)):
     """Capture a new raw item."""
     result = await _proxy("POST", "/raw", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -268,7 +268,7 @@ async def get_raw(slug: str):
     """Fetch a single raw capture."""
     result = await _proxy("GET", f"/raw/{slug}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -277,7 +277,7 @@ async def delete_raw(slug: str):
     """Delete a raw capture without promoting."""
     result = await _proxy("DELETE", f"/raw/{slug}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -286,7 +286,7 @@ async def promote_raw(slug: str, data: dict = Body(...)):
     """Promote a raw capture into a notebook."""
     result = await _proxy("POST", f"/raw/{slug}/promote", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -306,7 +306,7 @@ async def get_output(slug: str):
     """Fetch a generated output."""
     result = await _proxy("GET", f"/outputs/{slug}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -315,7 +315,7 @@ async def delete_output(slug: str):
     """Delete a generated output."""
     result = await _proxy("DELETE", f"/outputs/{slug}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -326,7 +326,7 @@ async def run_health_check():
     """Run the library audit."""
     result = await _proxy("POST", "/health-check")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -335,7 +335,7 @@ async def schedule_health_check(data: dict = Body(...)):
     """Schedule the library audit on a recurring cron."""
     result = await _proxy("POST", "/health-check/schedule", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -348,7 +348,7 @@ async def get_project(project: str):
     """Return project metadata + progress."""
     result = await _proxy("GET", f"/spaces/{project}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -357,7 +357,7 @@ async def update_project(project: str, data: dict = Body(...)):
     """Update project metadata."""
     result = await _proxy("PATCH", f"/spaces/{project}", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -366,7 +366,7 @@ async def update_notebook(project: str, notebook: str, data: dict = Body(...)):
     """Update notebook metadata (sequenced, current_slug, rename)."""
     result = await _proxy("PATCH", f"/spaces/{project}/notebooks/{notebook}", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -375,7 +375,7 @@ async def reorder_notebook(project: str, notebook: str, data: dict = Body(...)):
     """Batch-reorder notes in a sequenced notebook."""
     result = await _proxy("POST", f"/spaces/{project}/notebooks/{notebook}/reorder", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -384,7 +384,7 @@ async def set_note_status(project: str, notebook: str, slug: str, data: dict = B
     """Mark a note as todo or done."""
     result = await _proxy("PATCH", f"/notes/{project}/{notebook}/{slug}/status", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -407,7 +407,7 @@ async def create_task(project: str, data: dict = Body(...)):
     """Create a new task."""
     result = await _proxy("POST", f"/spaces/{project}/tasks", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -416,7 +416,7 @@ async def get_task(project: str, task_id: str):
     """Fetch full task details."""
     result = await _proxy("GET", f"/spaces/{project}/tasks/{task_id}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -425,7 +425,7 @@ async def update_task(project: str, task_id: str, data: dict = Body(...)):
     """Update a task."""
     result = await _proxy("PATCH", f"/spaces/{project}/tasks/{task_id}", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -434,7 +434,7 @@ async def delete_task(project: str, task_id: str):
     """Delete a task."""
     result = await _proxy("DELETE", f"/spaces/{project}/tasks/{task_id}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -443,7 +443,7 @@ async def move_task(project: str, task_id: str, data: dict = Body(...)):
     """Move a task to a different column."""
     result = await _proxy("PATCH", f"/spaces/{project}/tasks/{task_id}/move", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -452,7 +452,7 @@ async def comment_task(project: str, task_id: str, data: dict = Body(...)):
     """Add a comment to a task."""
     result = await _proxy("POST", f"/spaces/{project}/tasks/{task_id}/comment", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -472,7 +472,7 @@ async def add_column(project: str, data: dict = Body(...)):
     """Add a column."""
     result = await _proxy("POST", f"/spaces/{project}/tasks/columns", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -481,7 +481,7 @@ async def rename_column(project: str, column_id: str, data: dict = Body(...)):
     """Rename a column."""
     result = await _proxy("PATCH", f"/spaces/{project}/tasks/columns/{column_id}", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -490,7 +490,7 @@ async def remove_column(project: str, column_id: str):
     """Remove a column."""
     result = await _proxy("DELETE", f"/spaces/{project}/tasks/columns/{column_id}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -499,7 +499,7 @@ async def reorder_columns(project: str, data: dict = Body(...)):
     """Reorder columns."""
     result = await _proxy("POST", f"/spaces/{project}/tasks/columns/reorder", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -512,7 +512,7 @@ async def get_space_cover(space: str):
     """Serve a space's cover image."""
     prax_url = settings.prax_url
     if not prax_url:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     import httpx
     from fastapi.responses import Response
     try:
@@ -529,7 +529,7 @@ async def get_space_cover(space: str):
             )
     except Exception as exc:
         _logger.debug("Failed to proxy space cover: %s", exc)
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
 
 
 @router.post("/spaces/{space}/cover")
@@ -541,7 +541,7 @@ async def upload_space_cover(space: str):
     # For multipart, we need to forward the raw body
     result = await _proxy("POST", f"/spaces/{space}/cover")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -550,7 +550,7 @@ async def delete_space_cover(space: str):
     """Remove a space's cover image."""
     result = await _proxy("DELETE", f"/spaces/{space}/cover")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -559,7 +559,7 @@ async def generate_space_cover(space: str, data: dict = Body(default={})):
     """Ask Prax to generate a cover image."""
     result = await _proxy("POST", f"/spaces/{space}/cover/generate", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -601,7 +601,7 @@ async def get_space_file(space: str, filename: str):
 
     prax_url = settings.prax_url
     if not prax_url:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
@@ -617,14 +617,16 @@ async def get_space_file(space: str, filename: str):
             )
     except Exception as exc:
         _logger.debug("Failed to proxy space file download: %s", exc)
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
 
 
 @router.delete("/spaces/{space}/files/{filename}")
 async def delete_space_file(space: str, filename: str):
     """Delete a file from a space."""
     result = await _proxy("DELETE", f"/spaces/{space}/files/{filename}")
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 
 # --- Wiki ---
@@ -637,22 +639,30 @@ async def list_wiki(space: str):
 @router.post("/spaces/{space}/wiki")
 async def create_wiki_entry(space: str, data: dict = Body(...)):
     result = await _proxy("POST", f"/spaces/{space}/wiki", json=data)
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.get("/spaces/{space}/wiki/{slug}")
 async def get_wiki_entry(space: str, slug: str):
     result = await _proxy("GET", f"/spaces/{space}/wiki/{slug}")
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.patch("/spaces/{space}/wiki/{slug}")
 async def update_wiki_entry(space: str, slug: str, data: dict = Body(...)):
     result = await _proxy("PATCH", f"/spaces/{space}/wiki/{slug}", json=data)
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.delete("/spaces/{space}/wiki/{slug}")
 async def delete_wiki_entry(space: str, slug: str):
     result = await _proxy("DELETE", f"/spaces/{space}/wiki/{slug}")
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 # --- Flashcards ---
 
@@ -664,32 +674,44 @@ async def list_flashcard_decks(space: str):
 @router.post("/spaces/{space}/flashcards")
 async def create_flashcard_deck(space: str, data: dict = Body(...)):
     result = await _proxy("POST", f"/spaces/{space}/flashcards", json=data)
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.get("/spaces/{space}/flashcards/{deck_slug}")
 async def get_flashcard_deck(space: str, deck_slug: str):
     result = await _proxy("GET", f"/spaces/{space}/flashcards/{deck_slug}")
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.delete("/spaces/{space}/flashcards/{deck_slug}")
 async def delete_flashcard_deck(space: str, deck_slug: str):
     result = await _proxy("DELETE", f"/spaces/{space}/flashcards/{deck_slug}")
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.post("/spaces/{space}/flashcards/{deck_slug}/cards")
 async def add_flashcard(space: str, deck_slug: str, data: dict = Body(...)):
     result = await _proxy("POST", f"/spaces/{space}/flashcards/{deck_slug}/cards", json=data)
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.patch("/spaces/{space}/flashcards/{deck_slug}/cards/{card_id}")
 async def update_flashcard(space: str, deck_slug: str, card_id: str, data: dict = Body(...)):
     result = await _proxy("PATCH", f"/spaces/{space}/flashcards/{deck_slug}/cards/{card_id}", json=data)
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.delete("/spaces/{space}/flashcards/{deck_slug}/cards/{card_id}")
 async def delete_flashcard_card(space: str, deck_slug: str, card_id: str):
     result = await _proxy("DELETE", f"/spaces/{space}/flashcards/{deck_slug}/cards/{card_id}")
-    return result or {"error": "Prax backend unavailable"}
+    if not result:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
 
 @router.get("/spaces/{space}/chat/history")
 async def space_chat_history(space: str):
@@ -705,7 +727,7 @@ async def space_chat(space: str, data: dict = Body(...)):
     """Space-scoped chat — separate conversation context per space."""
     prax_url = settings.prax_url
     if not prax_url:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
@@ -716,7 +738,7 @@ async def space_chat(space: str, data: dict = Body(...)):
             return resp.json()
     except Exception as exc:
         _logger.debug("Space chat proxy failed: %s", exc)
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
 
 
 # ---------------------------------------------------------------------------
@@ -737,7 +759,7 @@ async def capture_archive(data: dict = Body(...)):
     """Archive a document."""
     result = await _proxy("POST", "/archive", json=data)
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -746,7 +768,7 @@ async def get_archive(slug: str):
     """Fetch an archived document."""
     result = await _proxy("GET", f"/archive/{slug}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -755,7 +777,7 @@ async def delete_archive(slug: str):
     """Delete an archive entry."""
     result = await _proxy("DELETE", f"/archive/{slug}")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
@@ -768,7 +790,7 @@ async def rebuild_index():
     """Force-rebuild the INDEX.md."""
     result = await _proxy("POST", "/index/rebuild")
     if result is None:
-        return {"error": "Prax backend unavailable"}
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
 
 
