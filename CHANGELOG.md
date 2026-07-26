@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.21.0](https://github.com/praxagent/teamwork/compare/v0.20.0...v0.21.0) (2026-07-26)
+
+
+### Features
+
+* **mcp:** enable a space from the UI instead of hand-editing a credential file ([#53](https://github.com/praxagent/teamwork/issues/53)) ([4691a14](https://github.com/praxagent/teamwork/commit/4691a14bde3c4f36d923cc1f8d61fede1f642e33))
+
+
+### Bug Fixes
+
+* **mcp:** credit the agent on the board, let it tidy up, and survive a restart ([#57](https://github.com/praxagent/teamwork/issues/57)) ([7714399](https://github.com/praxagent/teamwork/commit/771439970290c5592fd682fccd848f6d8babf690))
+* **mcp:** load the credential registry from the path it was written to ([#55](https://github.com/praxagent/teamwork/issues/55)) ([5e721bf](https://github.com/praxagent/teamwork/commit/5e721bf9846753c04b1e109120a168c7853ae5d0))
+* **mcp:** show an agent's writes without reloading the page ([#56](https://github.com/praxagent/teamwork/issues/56)) ([8f8046b](https://github.com/praxagent/teamwork/commit/8f8046bab22d29ec23a70016c5573a0ac38edcb8))
+
 ## [0.20.0](https://github.com/praxagent/teamwork/compare/v0.19.0...v0.20.0) (2026-07-25)
 
 
