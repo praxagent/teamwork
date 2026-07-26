@@ -68,6 +68,13 @@ TOOL_CAPABILITIES: dict[str, str] = {
     "post_comment": CAP_MESSAGE_POST,
 }
 
+# Tools that change something. A caller watching the UI should see the result
+# without reloading, so these announce themselves; reads say nothing.
+MUTATING_TOOLS = frozenset({
+    "create_task", "update_task", "comment_on_task",
+    "create_notebook", "create_note", "update_note",
+})
+
 # Tools that take no ``space`` argument, and so cannot be checked against a
 # space-scoped key the ordinary way. Each needs its own answer in `authorize`;
 # adding a tool here without one is how a scope check gets silently skipped.
@@ -447,13 +454,17 @@ async def _dispatch_library(tool: str, arguments: dict[str, Any],
 
 
 async def call_tool(client: AgentClient, tool: str, arguments: dict[str, Any],
-                    *, post_comment: Any = None) -> Any:
+                    *, post_comment: Any = None, on_change: Any = None) -> Any:
     """Authorise and run one tool call.
 
-    ``post_comment`` is injected by the route because posting to a channel
-    needs the request-scoped database session and signature header that only
-    the HTTP layer has. Everything else goes to the Library over HTTP and needs
-    neither, which is why this module stays testable without a running app.
+    ``post_comment`` and ``on_change`` are injected by the route because both
+    need things only the HTTP layer has — a request-scoped database session, and
+    the websocket manager. Everything else goes to the Library over HTTP and
+    needs neither, which is why this module stays testable without a running app.
+
+    ``on_change`` fires only after a mutation actually succeeded. Announcing the
+    attempt would put the UI a step ahead of the data: it would refetch, see the
+    old state, and quietly disagree with what the agent was told.
     """
     authorize(client, tool, arguments)
 
@@ -465,11 +476,24 @@ async def call_tool(client: AgentClient, tool: str, arguments: dict[str, Any],
         return await post_comment(project_id=project_id, channel_id=channel_id,
                                   content=content)
 
-    return await _dispatch_library(tool, arguments, client)
+    result = await _dispatch_library(tool, arguments, client)
+
+    if on_change is not None and tool in MUTATING_TOOLS:
+        try:
+            await on_change(space=arguments.get("space"), tool=tool)
+        except Exception:  # noqa: BLE001
+            # The write already happened. Failing the call now would tell the
+            # agent its change was rejected when it was not — a reload still
+            # shows the truth, so a missed notification is the smaller harm.
+            logger.warning("could not announce an MCP change to the UI",
+                           exc_info=True)
+
+    return result
 
 
 async def handle_request(client: AgentClient, payload: dict[str, Any],
-                         *, post_comment: Any = None) -> dict[str, Any] | None:
+                         *, post_comment: Any = None,
+                         on_change: Any = None) -> dict[str, Any] | None:
     """Handle one JSON-RPC request. Returns ``None`` for a notification."""
     request_id = payload.get("id")
     method = payload.get("method") or ""
@@ -490,7 +514,8 @@ async def handle_request(client: AgentClient, payload: dict[str, Any],
     tool = params.get("name") or ""
     arguments = params.get("arguments") or {}
     try:
-        result = await call_tool(client, tool, arguments, post_comment=post_comment)
+        result = await call_tool(client, tool, arguments,
+                                 post_comment=post_comment, on_change=on_change)
     except McpError as exc:
         # A refused or failed tool call is reported as a tool result with
         # isError, not a protocol error: the agent should read it, correct

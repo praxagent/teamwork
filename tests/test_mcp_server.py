@@ -414,3 +414,69 @@ def test_every_spaceless_tool_is_answered_in_authorize():
 
     assert SPACELESS_TOOLS == {"list_spaces", "post_comment"}, (
         "a new spaceless tool needs an explicit scope decision in authorize()")
+
+
+# ── Telling the UI something changed ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_a_write_announces_itself(prax):
+    """A card filed by an agent should appear without a reload.
+
+    The Kanban query does not poll, so a write that did not come from the UI was
+    invisible until someone refreshed — which is the one thing you will not
+    think to do while a background agent is working.
+    """
+    seen = []
+
+    async def on_change(**kw):
+        seen.append(kw)
+
+    await _call(client(allow=frozenset({CAP_TASK_WRITE})), "create_task",
+                {"space": "proj-a", "title": "Ship it"}, on_change=on_change)
+    assert seen == [{"space": "proj-a", "tool": "create_task"}]
+
+
+@pytest.mark.asyncio
+async def test_a_read_announces_nothing(prax):
+    # Nothing changed, so there is nothing for anyone to refetch.
+    seen = []
+
+    async def on_change(**kw):
+        seen.append(kw)
+
+    await _call(client(), "list_tasks", {"space": "proj-a"}, on_change=on_change)
+    assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_a_refused_call_announces_nothing(prax):
+    """The UI must not be told about a change that did not happen."""
+    seen = []
+
+    async def on_change(**kw):
+        seen.append(kw)
+
+    with pytest.raises(McpError):
+        await _call(client(spaces=frozenset({"proj-a"}),
+                           allow=frozenset({CAP_TASK_WRITE})),
+                    "create_task", {"space": "other", "title": "x"},
+                    on_change=on_change)
+    assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_a_failed_announcement_does_not_fail_the_write(prax):
+    """The write already happened.
+
+    Failing the call now would tell the agent its change was rejected when it
+    was not. A reload still shows the truth, so a missed notification is the
+    smaller harm.
+    """
+    async def on_change(**kw):
+        raise RuntimeError("websocket is down")
+
+    result = await _call(client(allow=frozenset({CAP_TASK_WRITE})), "create_task",
+                         {"space": "proj-a", "title": "Ship it"},
+                         on_change=on_change)
+    assert result == {"ok": True}
+    assert prax.calls, "the write still went through"
