@@ -21,6 +21,7 @@ from teamwork import mcp_server
 from teamwork.agent_auth import AgentClient
 from teamwork.models import get_db
 from teamwork.routers.external import _verify_api_key
+from teamwork.websocket import EventType, WebSocketEvent, manager
 
 router = APIRouter(tags=["mcp"])
 logger = logging.getLogger(__name__)
@@ -48,6 +49,24 @@ def _comment_poster(request: Request, db: AsyncSession, client: AgentClient):
     return post
 
 
+def _change_announcer():
+    """Tell every open browser that a Library space changed.
+
+    The Kanban and note queries do not poll, so a write that did not come from
+    the UI was invisible until someone reloaded — which is exactly what an agent
+    working in the background produces. Broadcast to all: a Library space is not
+    scoped to a project on the TeamWork side, and a client that does not care
+    ignores an event it has no query for.
+    """
+    async def announce(*, space: str | None, tool: str) -> None:
+        await manager.broadcast_all(WebSocketEvent(
+            type=EventType.LIBRARY_UPDATE,
+            data={"space": space, "tool": tool, "source": "mcp"},
+        ))
+
+    return announce
+
+
 @router.post("/mcp")
 async def mcp_endpoint(
     request: Request,
@@ -58,12 +77,14 @@ async def mcp_endpoint(
     """One JSON-RPC request or a batch of them."""
     if isinstance(payload, list):
         responses = [await mcp_server.handle_request(
-            client, item, post_comment=_comment_poster(request, db, client))
+            client, item, post_comment=_comment_poster(request, db, client),
+            on_change=_change_announcer())
             for item in payload]
         return [r for r in responses if r is not None]
 
     result = await mcp_server.handle_request(
-        client, payload, post_comment=_comment_poster(request, db, client))
+        client, payload, post_comment=_comment_poster(request, db, client),
+        on_change=_change_announcer())
     if result is None:
         return {}                       # notification: acknowledged, no body
     return result

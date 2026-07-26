@@ -177,6 +177,8 @@ export type WebSocketEventType =
   | 'agent:typing'
   | 'task:update'
   | 'task:new'
+  // A Library space changed from outside this browser (e.g. an MCP client).
+  | 'library:update'
   | 'project:update'
   | 'channel:new'
   | 'error'

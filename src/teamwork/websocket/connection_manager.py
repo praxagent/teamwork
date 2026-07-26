@@ -20,6 +20,10 @@ class EventType(str, Enum):
     AGENT_TYPING = "agent:typing"  # Typing indicator
     TASK_UPDATE = "task:update"
     TASK_NEW = "task:new"
+    # A Library space changed from outside this browser — an MCP client, or any
+    # writer that is not the UI itself. The Kanban and note queries have no
+    # polling, so without this the only way to see the change is a reload.
+    LIBRARY_UPDATE = "library:update"
     PROJECT_UPDATE = "project:update"
     CHANNEL_NEW = "channel:new"
     ERROR = "error"

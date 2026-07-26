@@ -209,6 +209,21 @@ export function useWebSocket() {
           }
           break;
         }
+
+        case 'library:update': {
+          // A Library space changed from outside this browser — an MCP client,
+          // or anything else that is not the UI. These queries do not poll, so
+          // without this the change is invisible until a reload, which is the
+          // one thing a background agent guarantees you will not think to do.
+          const space = event.data.space as string | undefined;
+          if (space) {
+            queryClient.invalidateQueries({ queryKey: ['library-tasks', space] });
+            queryClient.invalidateQueries({ queryKey: ['library-task-columns', space] });
+          }
+          // The tree carries notebooks and notes and is not keyed by space.
+          queryClient.invalidateQueries({ queryKey: ['library'] });
+          break;
+        }
       }
     });
 
