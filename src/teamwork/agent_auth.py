@@ -166,7 +166,13 @@ def load_clients(path: str | None = None, legacy_key: str | None = None) -> list
     """Build the client registry: file entries first, then the legacy shared key."""
     clients: list[AgentClient] = []
     if path:
-        p = Path(path)
+        # `~` is expanded HERE, in the one place every reader passes through,
+        # because the writer expands it too. When only one side did, the grant
+        # was written to /home/you/.teamwork/... while the reader looked for a
+        # directory literally named "~" — so the file existed, held a valid
+        # credential, and was never loaded. The symptom is the worst kind: the
+        # UI says the space is enabled and every request 401s.
+        p = Path(path).expanduser()
         if not p.exists():
             logger.warning("TEAMWORK_AGENT_CLIENTS_PATH set but %s does not exist", p)
         else:

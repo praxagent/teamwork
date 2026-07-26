@@ -145,3 +145,41 @@ def test_granted_spaces_reports_what_is_live(registry):
     assert reg.granted_spaces() == {"project-a", "project-b"}
     reg.revoke_space("project-a")
     assert reg.granted_spaces() == {"project-b"}
+
+
+# ── The writer and the reader must agree on where the file is ────────────────
+
+def test_a_tilde_path_is_loaded_not_just_written(monkeypatch, tmp_path):
+    """The bug that made a correctly-issued key 401 on every call.
+
+    `registry_path` expanded `~`; `load_clients` did not. So a grant was written
+    to /home/you/.teamwork/... while the reader looked for a directory literally
+    named "~", found nothing, and loaded no clients. The failure is the worst
+    shape available: the file exists, holds a valid credential, the UI says the
+    space is enabled — and every request is rejected.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("teamwork.config.settings.agent_clients_path",
+                        "~/.teamwork/agent-clients.json", raising=False)
+
+    result = reg.grant_space("project-a")
+    assert (home / ".teamwork" / "agent-clients.json").exists(), "writer expanded ~"
+
+    clients = load_clients("~/.teamwork/agent-clients.json")
+    assert resolve_client(result["token"], clients) is not None, (
+        "the reader did not expand ~, so a valid key is invisible")
+
+
+def test_the_writer_and_reader_resolve_to_the_same_file(monkeypatch, tmp_path):
+    """Stated as a property, so any future path handling keeps them in step."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("teamwork.config.settings.agent_clients_path",
+                        "~/.teamwork/agent-clients.json", raising=False)
+
+    reg.grant_space("project-a")
+    assert reg.registry_path().exists()
+    assert reg.granted_spaces() == {"project-a"}
