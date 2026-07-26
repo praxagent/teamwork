@@ -15,8 +15,17 @@ class WebSocketManager {
   private subscribedProjects: Set<string> = new Set();
   private subscribedChannels: Set<string> = new Set();
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
   private baseReconnectDelay = 1000;
+  // Backoff is capped rather than doubling forever. Uncapped, attempt 9 waited
+  // 8.5 minutes — so a tab sat dead long after a 20-second server restart had
+  // finished. Backing off protects the server; waiting minutes to notice it
+  // came back protects nobody.
+  private maxReconnectDelay = 30_000;
+  // Whether this socket has ever been connected and then dropped. Used to tell
+  // "first load" from "we were away and may have missed things".
+  private hadConnection = false;
+  /** Called after a reconnect that followed a drop, so the UI can catch up. */
+  onResync: (() => void) | null = null;
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN) {
@@ -27,13 +36,20 @@ class WebSocketManager {
 
     this.ws.onopen = () => {
       console.log('WebSocket connected');
+      const wasDropped = this.reconnectAttempts > 0 || this.hadConnection;
       if (this.reconnectAttempts > 0) {
         toast.success('Reconnected to server');
       }
       this.reconnectAttempts = 0;
+      this.hadConnection = true;
       // Re-subscribe to previous subscriptions
       this.subscribedProjects.forEach((id) => this.subscribeToProject(id));
       this.subscribedChannels.forEach((id) => this.subscribeToChannel(id));
+      // Events that happened while we were away are gone — nothing replays
+      // them. Reconnecting without refetching leaves the page confidently
+      // showing state from before the gap, which is worse than showing that
+      // the connection dropped, because it looks fine.
+      if (wasDropped) this.onResync?.();
     };
 
     this.ws.onmessage = (event) => {
@@ -59,17 +75,21 @@ class WebSocketManager {
   }
 
   private scheduleReconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnect attempts reached');
-      toast.error('Unable to reconnect. Please refresh the page.');
-      return;
-    }
-
-    const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts);
+    // Deliberately never gives up. The old code stopped after 10 tries and told
+    // the user to refresh — but a server that is down now is usually back in
+    // under a minute (a deploy), and a tab left open overnight should be alive
+    // in the morning. "Refresh the page" is the app admitting it stopped trying.
+    const delay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
+      this.maxReconnectDelay,
+    );
+    // Jitter so several open tabs do not retry in lockstep against a server
+    // that is still coming up.
+    const jittered = delay * (0.5 + Math.random() * 0.5);
     this.reconnectTimeout = window.setTimeout(() => {
       this.reconnectAttempts++;
       this.connect();
-    }, delay);
+    }, jittered);
   }
 
   disconnect() {
@@ -129,6 +149,13 @@ export function useWebSocket() {
   const setAgentTyping = useUIStore((state) => state.setAgentTyping);
 
   useEffect(() => {
+    // Anything that changed while the socket was down was never delivered —
+    // nothing replays missed events. Refetching on reconnect is what stops a
+    // recovered tab from confidently showing pre-gap state, which is the
+    // dangerous version of stale: it looks fine.
+    wsManager.onResync = () => {
+      queryClient.invalidateQueries();
+    };
     wsManager.connect();
 
     const removeHandler = wsManager.addHandler((event) => {

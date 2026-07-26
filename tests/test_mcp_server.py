@@ -269,9 +269,10 @@ async def test_create_task_posts_to_the_named_space(prax):
 @pytest.mark.asyncio
 async def test_status_change_goes_through_move_not_a_field_edit(prax):
     # The Kanban records a transition; a plain PATCH would lose it.
-    await _call(client(allow=frozenset({CAP_TASK_WRITE})), "update_task",
-                {"space": "proj-a", "task_id": "t1", "status": "done"})
-    assert prax.calls == [("PATCH", "/spaces/proj-a/tasks/t1/move", {"column": "done"})]
+    await _call(client(label="Claude Code", allow=frozenset({CAP_TASK_WRITE})),
+                "update_task", {"space": "proj-a", "task_id": "t1", "status": "done"})
+    assert prax.calls == [("PATCH", "/spaces/proj-a/tasks/t1/move",
+                           {"column": "done", "editor": "Claude Code"})]
 
 
 @pytest.mark.asyncio
@@ -284,11 +285,16 @@ async def test_update_task_with_nothing_to_change_is_refused(prax):
 @pytest.mark.asyncio
 async def test_a_comment_is_attributed_to_the_calling_key(prax):
     # Not to a generic "agent" — the board should say which one wrote it.
+    #
+    # This test used to assert `comment`/`author`, which is what the code sent
+    # and NOT what the Library API reads (`text`/`actor`). It passed the whole
+    # time the feature was broken, because it checked the implementation instead
+    # of the contract. The field names below are the API's.
     await _call(client(name="codex", allow=frozenset({CAP_TASK_WRITE})),
                 "comment_on_task",
                 {"space": "proj-a", "task_id": "t1", "comment": "picked this up"})
     _, _, body = prax.calls[0]
-    assert body == {"comment": "picked this up", "author": "codex"}
+    assert body == {"text": "picked this up", "actor": "codex"}
 
 
 @pytest.mark.asyncio
@@ -480,3 +486,94 @@ async def test_a_failed_announcement_does_not_fail_the_write(prax):
                          on_change=on_change)
     assert result == {"ok": True}
     assert prax.calls, "the write still went through"
+
+
+# ── Attribution: the board must say who actually did it ──────────────────────
+
+@pytest.mark.asyncio
+async def test_a_card_is_credited_to_the_agent_not_the_human(prax):
+    """The bug this fixes: agent-filed cards said author=human.
+
+    If you cannot tell your own cards from an agent's, the board stops being a
+    picture of the work and becomes a pile.
+    """
+    await _call(client(label="Claude Code", allow=frozenset({CAP_TASK_WRITE})),
+                "create_task", {"space": "proj-a", "title": "Ship it"})
+    _, _, body = prax.calls[0]
+    assert body["author"] == "Claude Code"
+
+
+@pytest.mark.asyncio
+async def test_a_move_records_who_moved_it(prax):
+    await _call(client(label="Claude Code", allow=frozenset({CAP_TASK_WRITE})),
+                "update_task", {"space": "proj-a", "task_id": "t1", "status": "doing"})
+    _, path, body = prax.calls[0]
+    assert path.endswith("/move")
+    assert body == {"column": "doing", "editor": "Claude Code"}
+
+
+@pytest.mark.asyncio
+async def test_a_comment_uses_the_field_names_the_api_actually_reads(prax):
+    """These were `comment`/`author`; the API reads `text`/`actor`.
+
+    The call succeeded and the comment arrived empty and unattributed — a
+    silent wrong result, which is worse than an error.
+    """
+    await _call(client(label="Claude Code", allow=frozenset({CAP_TASK_WRITE})),
+                "comment_on_task",
+                {"space": "proj-a", "task_id": "t1", "comment": "picked this up"})
+    _, _, body = prax.calls[0]
+    assert body == {"text": "picked this up", "actor": "Claude Code"}
+
+
+@pytest.mark.asyncio
+async def test_an_unlabelled_key_still_says_something(prax):
+    # Falls back to the credential name rather than to "human".
+    await _call(client(name="mcp-proj-a", allow=frozenset({CAP_TASK_WRITE})),
+                "create_task", {"space": "proj-a", "title": "x"})
+    assert prax.calls[0][2]["author"] == "mcp-proj-a"
+
+
+# ── Deleting ─────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_delete_task_removes_the_card(prax):
+    await _call(client(allow=frozenset({CAP_TASK_WRITE})), "delete_task",
+                {"space": "proj-a", "task_id": "t1"})
+    assert prax.calls == [("DELETE", "/spaces/proj-a/tasks/t1", {})]
+
+
+@pytest.mark.asyncio
+async def test_delete_needs_write_like_any_other_mutation(prax):
+    with pytest.raises(McpError, match="task.write"):
+        await _call(client(allow=frozenset()), "delete_task",
+                    {"space": "proj-a", "task_id": "t1"})
+    assert prax.calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_respects_space_scope(prax):
+    with pytest.raises(McpError):
+        await _call(client(spaces=frozenset({"proj-a"}),
+                           allow=frozenset({CAP_TASK_WRITE})),
+                    "delete_task", {"space": "other", "task_id": "t1"})
+    assert prax.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_delete_refreshes_the_board(prax):
+    seen = []
+
+    async def on_change(**kw):
+        seen.append(kw)
+
+    await _call(client(allow=frozenset({CAP_TASK_WRITE})), "delete_task",
+                {"space": "proj-a", "task_id": "t1"}, on_change=on_change)
+    assert seen == [{"space": "proj-a", "tool": "delete_task"}]
+
+
+def test_delete_warns_against_touching_someone_elses_card():
+    """A tool the agent can see is a tool it will try."""
+    desc = next(t["description"] for t in tool_definitions()
+                if t["name"] == "delete_task")
+    assert "you created yourself" in desc or "created yourself" in desc

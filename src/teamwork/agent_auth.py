@@ -93,6 +93,10 @@ class AgentClient:
     #: "task.write" over the REST API is a different decision from letting an
     #: arbitrary MCP client connect as it. Off unless the registry says so.
     mcp: bool = False
+    # What the board should SAY this agent is. The registry name is a key
+    # identifier ("mcp-project-a"); a person reading a Kanban card wants
+    # "Claude Code". Falls back to the name so there is always something.
+    label: str = ""
     allow: frozenset[str] = field(default_factory=lambda: frozenset({ALL_CAPABILITIES}))
     legacy: bool = False             # the shared workspace-wide key
     public_key: str | None = None    # Ed25519 (base64/hex) — enables signing
@@ -101,6 +105,17 @@ class AgentClient:
     # needs a fresh, human-granted approval. "May do X, with permission" is a
     # distinct state from both "may do X" and "may not do X".
     gated: frozenset[str] = field(default_factory=frozenset)
+
+    @property
+    def display_name(self) -> str:
+        """What a person reading the board should see.
+
+        Board attribution is not bookkeeping — it is the whole reason a shared
+        board is worth keeping. When every writer had to be "human" or "prax",
+        an agent's cards were credited to the person reading them, and you could
+        not tell your own work from an agent's at a glance.
+        """
+        return self.label or self.name
 
     def needs_approval(self, capability: str) -> bool:
         if ALL_CAPABILITIES in self.gated or capability in self.gated:
@@ -203,6 +218,7 @@ def load_clients(path: str | None = None, legacy_key: str | None = None) -> list
                     gated=frozenset(_parse_allow(entry["gated"]))
                     if entry.get("gated") else frozenset(),
                     mcp=bool(entry.get("mcp", False)),
+                    label=(entry.get("label") or "").strip(),
                     spaces=frozenset(
                         s.strip() for s in (
                             entry["spaces"].split(",")

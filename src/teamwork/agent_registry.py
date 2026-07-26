@@ -43,6 +43,11 @@ TOKEN_BYTES = 32
 # refused that anyway, since channels do not belong to a space.
 DEFAULT_ALLOW = ["task.write", "activity.write"]
 
+# What the board shows for work this key does. The registry name is an
+# identifier ("mcp-project-a"); a person reading a card wants to see the tool
+# that wrote it. Overridable per grant for anything that is not Claude Code.
+DEFAULT_LABEL = "Claude Code"
+
 
 class RegistryError(Exception):
     """The registry could not be read or written."""
@@ -98,7 +103,8 @@ def client_name_for_space(space: str) -> str:
 
 
 def grant_space(space: str, *, name: str | None = None,
-                allow: list[str] | None = None) -> dict[str, Any]:
+                allow: list[str] | None = None,
+                label: str | None = None) -> dict[str, Any]:
     """Mint a key scoped to one space and record it.
 
     Returns the plaintext token exactly once. Re-granting an already-granted
@@ -126,6 +132,7 @@ def grant_space(space: str, *, name: str | None = None,
         "mcp": True,
         "spaces": [space],
         "allow": list(allow or DEFAULT_ALLOW),
+        "label": (label or DEFAULT_LABEL).strip() or DEFAULT_LABEL,
     }
 
     rotated = False
@@ -146,6 +153,7 @@ def grant_space(space: str, *, name: str | None = None,
         "token": token,          # the only time this value exists outside memory
         "rotated": rotated,
         "allow": entry["allow"],
+        "label": entry["label"],
         "path": str(path),
     }
 

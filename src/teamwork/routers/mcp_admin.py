@@ -78,7 +78,8 @@ async def mcp_status(request: Request, space: str | None = None) -> dict:
 
 
 @router.post("/spaces/{space}/enable")
-async def enable_for_space(space: str, request: Request) -> dict:
+async def enable_for_space(space: str, request: Request,
+                           label: str | None = None) -> dict:
     """Mint a key scoped to this space and record it.
 
     This exists so nobody has to hand-author a credential file. Re-enabling an
@@ -87,7 +88,7 @@ async def enable_for_space(space: str, request: Request) -> dict:
     dishonest answer to "I lost my token".
     """
     try:
-        result = agent_registry.grant_space(space)
+        result = agent_registry.grant_space(space, label=label)
     except agent_registry.RegistryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

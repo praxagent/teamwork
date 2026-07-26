@@ -183,3 +183,43 @@ def test_the_writer_and_reader_resolve_to_the_same_file(monkeypatch, tmp_path):
     reg.grant_space("project-a")
     assert reg.registry_path().exists()
     assert reg.granted_spaces() == {"project-a"}
+
+
+# ── What the board shows ─────────────────────────────────────────────────────
+
+def test_a_grant_carries_a_human_readable_label(registry):
+    """The registry name identifies the key; the label is what a person reads.
+
+    A card filed by an agent used to be credited to "human", so you could not
+    tell your own work from an agent's — which is most of what a shared board is
+    for.
+    """
+    from teamwork.agent_auth import load_clients, resolve_client
+
+    result = reg.grant_space("project-a")
+    assert result["label"] == "Claude Code"
+
+    client = resolve_client(result["token"], load_clients(str(registry)))
+    assert client.display_name == "Claude Code"
+    assert client.name == "mcp-project-a", "the identifier is unchanged"
+
+
+def test_the_label_can_name_a_different_agent(registry):
+    # Codex users should not see "Claude Code" on their cards.
+    from teamwork.agent_auth import load_clients, resolve_client
+
+    result = reg.grant_space("project-a", label="Codex")
+    client = resolve_client(result["token"], load_clients(str(registry)))
+    assert client.display_name == "Codex"
+
+
+def test_display_name_falls_back_to_the_key_name(registry):
+    """A hand-authored entry without a label still shows something."""
+    import json
+
+    from teamwork.agent_auth import load_clients, resolve_client
+
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(json.dumps([{"name": "hand-rolled", "token": "t", "mcp": True}]))
+    client = resolve_client("t", load_clients(str(registry)))
+    assert client.display_name == "hand-rolled"

@@ -60,6 +60,7 @@ TOOL_CAPABILITIES: dict[str, str] = {
     "create_task": CAP_TASK_WRITE,
     "update_task": CAP_TASK_WRITE,
     "comment_on_task": CAP_TASK_WRITE,
+    "delete_task": CAP_TASK_WRITE,
     "list_notebooks": "",
     "create_notebook": CAP_ACTIVITY_WRITE,
     "create_note": CAP_ACTIVITY_WRITE,
@@ -71,7 +72,7 @@ TOOL_CAPABILITIES: dict[str, str] = {
 # Tools that change something. A caller watching the UI should see the result
 # without reloading, so these announce themselves; reads say nothing.
 MUTATING_TOOLS = frozenset({
-    "create_task", "update_task", "comment_on_task",
+    "create_task", "update_task", "comment_on_task", "delete_task",
     "create_notebook", "create_note", "update_note",
 })
 
@@ -144,6 +145,19 @@ def tool_definitions() -> list[dict[str, Any]]:
                 "properties": {"space": space, "task_id": {"type": "string"},
                                "comment": {"type": "string"}},
                 "required": ["space", "task_id", "comment"],
+            },
+        },
+        {
+            "name": "delete_task",
+            "description": (
+                "Delete a Kanban task. Use this only for a card you created "
+                "yourself, or when the human explicitly asks — deleting "
+                "someone else's card destroys work you cannot see the value of."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"space": space, "task_id": {"type": "string"}},
+                "required": ["space", "task_id"],
             },
         },
         {
@@ -389,7 +403,10 @@ async def _dispatch_library(tool: str, arguments: dict[str, Any],
         space, title = _require(arguments, "space", "title")
         body = {"title": title,
                 "description": arguments.get("description", ""),
-                "assignees": arguments.get("assignees") or []}
+                "assignees": arguments.get("assignees") or [],
+                # Say who actually filed it. Without this the board credits the
+                # person reading it, which defeats the point of the board.
+                "author": client.display_name}
         if arguments.get("status"):
             body["column"] = arguments["status"]
         return await _prax("POST", f"/spaces/{space}/tasks", json=body)
@@ -398,6 +415,8 @@ async def _dispatch_library(tool: str, arguments: dict[str, Any],
         space, task_id = _require(arguments, "space", "task_id")
         body = {k: arguments[k] for k in ("title", "description")
                 if arguments.get(k) is not None}
+        if body:
+            body["editor"] = client.display_name
         result: dict[str, Any] = {}
         if body:
             result = await _prax("PATCH", f"/spaces/{space}/tasks/{task_id}", json=body)
@@ -405,7 +424,8 @@ async def _dispatch_library(tool: str, arguments: dict[str, Any],
             # Column changes go through /move — the Kanban records a transition,
             # not just a field edit, and the activity log depends on it.
             result = await _prax("PATCH", f"/spaces/{space}/tasks/{task_id}/move",
-                                 json={"column": arguments["status"]})
+                                 json={"column": arguments["status"],
+                                       "editor": client.display_name})
         if not result:
             raise McpError("nothing to update: give at least one of title, "
                            "description or status")
@@ -414,7 +434,11 @@ async def _dispatch_library(tool: str, arguments: dict[str, Any],
     if tool == "comment_on_task":
         space, task_id, comment = _require(arguments, "space", "task_id", "comment")
         return await _prax("POST", f"/spaces/{space}/tasks/{task_id}/comment",
-                           json={"comment": comment, "author": client.name})
+                           json={"text": comment, "actor": client.display_name})
+
+    if tool == "delete_task":
+        space, task_id = _require(arguments, "space", "task_id")
+        return await _prax("DELETE", f"/spaces/{space}/tasks/{task_id}")
 
     if tool == "list_notebooks":
         (space,) = _require(arguments, "space")
@@ -438,7 +462,7 @@ async def _dispatch_library(tool: str, arguments: dict[str, Any],
             arguments, "space", "notebook", "title", "content")
         return await _prax("POST", "/notes", json={
             "project": space, "notebook": notebook, "title": title,
-            "content": content, "author": client.name})
+            "content": content, "author": client.display_name})
 
     if tool == "read_note":
         space, notebook, note = _require(arguments, "space", "notebook", "note")
