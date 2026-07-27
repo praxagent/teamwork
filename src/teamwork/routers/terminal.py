@@ -223,6 +223,11 @@ async def terminal_exec(project_id: str, body: TerminalExecRequest):
 async def terminal_websocket(
     websocket: WebSocket,
     project_id: str,
+    # `mode` is accepted for URL compatibility and deliberately ignored. It used
+    # to select between docker-exec and a local shell, which made the choice of
+    # WHERE code runs a client-supplied query parameter — anyone able to open the
+    # panel could append ?mode=local and get a shell on the host, sandbox
+    # configured or not. Execution location is never the caller's to pick.
     mode: str = Query(default="docker"),
     start_claude: bool = Query(default=False),
 ):
@@ -259,7 +264,7 @@ async def terminal_websocket(
             await _cleanup_session(session)
             _active_sessions.pop(project_id, None)
         session = await _spawn_terminal_session(
-            websocket, workspace_subdir, start_claude, mode,
+            websocket, workspace_subdir, start_claude,
         )
         if session is None:
             return  # error already reported to the WS
@@ -305,87 +310,83 @@ async def _spawn_terminal_session(
     websocket: WebSocket,
     workspace_subdir: str,
     start_claude: bool,
-    mode: str,
 ) -> TerminalSession | None:
-    """Spawn a fresh PTY session.  Returns None if we couldn't.
+    """Spawn a PTY inside the sandbox container, or spawn nothing at all.
 
-    Routes to docker-exec into the sandbox container when configured,
-    or to a local PTY otherwise (dev convenience).
+    There is deliberately NO local fallback. This function used to end with a
+    "local fallback (dev mode without docker)" branch that ran ``$SHELL`` on the
+    machine hosting TeamWork, inheriting its whole ``os.environ`` — every
+    credential the service holds — with the process reachable by anyone who
+    could open the panel. It triggered on the ordinary case of
+    ``SANDBOX_CONTAINER`` being unset, so a deployment that simply had not
+    configured a sandbox silently handed out a host shell instead of a
+    sandboxed one.
+
+    A terminal that is not in the sandbox is not a degraded terminal, it is a
+    different and much more dangerous thing. When the sandbox is unavailable the
+    honest answer is no terminal.
     """
     import shutil
 
-    if mode == "docker" and settings.sandbox_container:
-        container = settings.sandbox_container
-        if not shutil.which("docker"):
-            await websocket.send_text("\x1b[31mDocker not available.\x1b[0m\r\n")
-            return None
-        check = subprocess.run(
-            ["docker", "ps", "--filter", f"name={container}", "--format", "{{.Names}}"],
-            capture_output=True, text=True,
-        )
-        if container not in check.stdout:
-            await websocket.send_text(
-                f"\x1b[31mSandbox container '{container}' is not running.\x1b[0m\r\n"
-            )
-            return None
-
-        sandbox_ws = "/workspace"
-        if start_claude:
-            inner_cmd = (
-                f"docker exec -it -w {sandbox_ws}"
-                f" -e TERM=xterm-256color"
-                f" {container} claude --dangerously-skip-permissions"
-            )
-        else:
-            # bash-respawn.sh wraps `bash -l` in `while true; do ... done`
-            # so typing `exit` spawns a fresh bash in the same PTY rather
-            # than ending the session.  No tmux: native xterm.js scrolling
-            # works, resize is one fewer translation layer, and the panel
-            # behaves like a normal web terminal.
-            inner_cmd = (
-                f"docker exec -it -w {sandbox_ws} -e TERM=xterm-256color"
-                f" {container} /usr/local/bin/bash-respawn.sh"
-            )
-
+    container = settings.sandbox_container
+    if not container:
         await websocket.send_text(
-            f"\x1b[32mConnecting to sandbox ({container})...\x1b[0m\r\n"
+            "\x1b[31mNo sandbox is configured, so there is no terminal.\x1b[0m\r\n"
+            "\x1b[33mSet SANDBOX_CONTAINER and start the sandbox container. "
+            "TeamWork will not open a shell outside it.\x1b[0m\r\n"
+        )
+        return None
+
+    if not shutil.which("docker"):
+        await websocket.send_text("\x1b[31mDocker not available.\x1b[0m\r\n")
+        return None
+    check = subprocess.run(
+        ["docker", "ps", "--filter", f"name={container}", "--format", "{{.Names}}"],
+        capture_output=True, text=True,
+    )
+    if container not in check.stdout:
+        await websocket.send_text(
+            f"\x1b[31mSandbox container '{container}' is not running.\x1b[0m\r\n"
+        )
+        return None
+
+    sandbox_ws = "/workspace"
+    if start_claude:
+        inner_cmd = (
+            f"docker exec -it -w {sandbox_ws}"
+            f" -e TERM=xterm-256color"
+            f" {container} claude --dangerously-skip-permissions"
+        )
+    else:
+        # bash-respawn.sh wraps `bash -l` in `while true; do ... done`
+        # so typing `exit` spawns a fresh bash in the same PTY rather
+        # than ending the session.  No tmux: native xterm.js scrolling
+        # works, resize is one fewer translation layer, and the panel
+        # behaves like a normal web terminal.
+        inner_cmd = (
+            f"docker exec -it -w {sandbox_ws} -e TERM=xterm-256color"
+            f" {container} /usr/local/bin/bash-respawn.sh"
         )
 
-        import platform
-        if platform.system() == "Darwin":
-            cmd = ["script", "-q", "/dev/null", "bash", "-c", inner_cmd]
-        else:
-            cmd = ["script", "-q", "-c", inner_cmd, "/dev/null"]
+    await websocket.send_text(
+        f"\x1b[32mConnecting to sandbox ({container})...\x1b[0m\r\n"
+    )
 
-        master_fd, slave_fd = pty.openpty()
-        process = subprocess.Popen(
-            cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, close_fds=True,
-        )
-        os.close(slave_fd)
-        return TerminalSession(master_fd=master_fd, process=process)
-
-    # Local fallback (dev mode without docker).
-    workspace_path = settings.workspace_path / workspace_subdir
-    workspace_path.mkdir(parents=True, exist_ok=True)
-    shell = os.environ.get("SHELL", "/bin/bash")
-    cmd = ["claude", "--dangerously-skip-permissions"] if start_claude else [shell]
+    import platform
+    if platform.system() == "Darwin":
+        cmd = ["script", "-q", "/dev/null", "bash", "-c", inner_cmd]
+    else:
+        cmd = ["script", "-q", "-c", inner_cmd, "/dev/null"]
 
     master_fd, slave_fd = pty.openpty()
     process = subprocess.Popen(
-        cmd,
-        stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
-        cwd=str(workspace_path),
-        env={
-            **os.environ,
-            "TERM": "xterm-256color",
-            "COLORTERM": "truecolor",
-            "LANG": "en_US.UTF-8",
-            "LC_ALL": "en_US.UTF-8",
-        },
-        preexec_fn=os.setsid,
+        cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, close_fds=True,
     )
     os.close(slave_fd)
     return TerminalSession(master_fd=master_fd, process=process)
+
+    # No fallback. See the docstring: the only terminal is a sandboxed one.
+    return None
 
 
 async def _cleanup_session(session: TerminalSession) -> None:
