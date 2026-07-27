@@ -1,5 +1,14 @@
 # Environment variables
 .env
+# Any .env derivative — backups especially. A dated copy made during an incident
+# ("cp .env .env.bak-$(date +%s)") is a full set of live credentials sitting in
+# the working tree, and it only has to be caught by one `git add -A` once. Prax
+# already ignores `.env.bak*`; this repo did not, so the same habit was safe in
+# one repo and a leak in the other.
+.env.bak*
+.env.backup*
+.env.save
+.env.orig
 .env.local
 .env.*.local
 .env.development
