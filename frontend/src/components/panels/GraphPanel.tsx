@@ -21,6 +21,7 @@ import { useExecutionGraphs, useAgentLiveOutput, useAgents, useDeleteExecutionGr
 import type { ExecutionGraph, GraphNode } from '@/hooks/useApi';
 import { MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
+import { useHistoryState } from '@/hooks/useHistoryState';
 import { GraphVisualView } from './GraphVisualView';
 
 interface GraphPanelProps {
@@ -858,6 +859,12 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
   const [showToolsInGraph, setShowToolsInGraph] = useState(true);
   // Mobile: which column/tab is shown (runs | nodes | detail)
   const [mobileGraphTab, setMobileGraphTab] = useState<'runs' | 'nodes' | 'detail'>('runs');
+  // Drilling runs -> nodes -> detail is navigation, so Back should walk it back
+  // rather than exiting the panel. Opening a trace detail and pressing Back used
+  // to leave the workspace entirely, which loses the whole path you took to get
+  // there.
+  useHistoryState('twGraphTab', mobileGraphTab, (tab) =>
+    setMobileGraphTab(tab as 'runs' | 'nodes' | 'detail'));
 
   // Resizable column widths (pixels)
   const [col1Width, setCol1Width] = useState(208); // graph list

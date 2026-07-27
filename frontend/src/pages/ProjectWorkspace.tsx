@@ -15,6 +15,7 @@ import { SpacePage } from '@/components/panels/SpacePage';
 import { DesktopPanel } from '@/components/panels/DesktopPanel';
 import { CommandPalette } from '@/components/common';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import { useHistoryState } from '@/hooks/useHistoryState';
 import { ModelPicker } from '@/components/common/ModelPicker';
 import {
   useProject,
@@ -300,6 +301,12 @@ export function ProjectWorkspace() {
     : showProgressPanel ? 'progress'
     : showScheduler ? 'scheduler'
     : 'chat';
+
+  // Let Back move between panels instead of leaving the app. Without this the
+  // workspace was a single history entry, so Back from six panels deep landed
+  // on the project picker — and on a phone Back is how people navigate, so the
+  // app was losing an argument with the platform.
+  useHistoryState('twView', activeView, (view) => switchTo(view));
 
   // Pin the document while the workspace is mounted. Without this the page
   // itself is scrollable behind a shell that manages its own overflow, so a

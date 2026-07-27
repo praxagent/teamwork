@@ -53,6 +53,33 @@ button, [role="button"], a, summary, select {
   touch-action: manipulation;
 }
 
+/* Vertical scrollers accept vertical pans only.
+ *
+ * A finger never travels exactly straight. Left to itself the browser reads the
+ * slight sideways component of a scroll gesture as a horizontal pan and the view
+ * slides left and right while you are trying to move down the page — small, but
+ * constant, and it makes reading feel unsteady.
+ *
+ * `pan-y` tells the browser the horizontal component is not for it. Applied to
+ * the app shell only, where every scroller is vertical; a genuinely horizontal
+ * scroller (a wide table, a code block) opts back in with `touch-pan-x` on
+ * itself, since a rule on the element beats this one.
+ */
+html.app-shell .overflow-y-auto {
+  touch-action: pan-y;
+}
+
+/* Deliberately NOT applied to `.overflow-auto`, which scrolls both axes, and
+ * explicitly released on horizontally-scrolling content. A wide code block,
+ * table or mermaid diagram in a chat message has to keep panning sideways —
+ * constraining the whole subtree to pan-y would trade a small wobble for
+ * content you cannot reach.
+ */
+html.app-shell .overflow-x-auto,
+html.app-shell .overflow-auto {
+  touch-action: auto;
+}
+
 /* Prevent Safari from zooming in on input focus (triggers at font < 16px) */
 @media screen and (max-width: 767px) {
   input, textarea, select {
