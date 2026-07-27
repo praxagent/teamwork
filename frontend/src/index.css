@@ -53,6 +53,34 @@ button, [role="button"], a, summary, select {
   touch-action: manipulation;
 }
 
+/* Long unbreakable strings must wrap.
+ *
+ * This is the actual cause of the sideways slide in chat, and it is worth
+ * fixing here rather than by suppressing the gesture. A pasted URL —
+ * https://x.com/someone/status/2081762065392541951?s=46 — has no break
+ * opportunity, so it forces the message wider than the screen. And because CSS
+ * computes `overflow-x: visible` to `auto` whenever the other axis is not
+ * visible, the `overflow-y-auto` message list quietly becomes horizontally
+ * scrollable the moment that happens.
+ *
+ * Suppressing the pan would leave the content unreachable off-screen. Wrapping
+ * it means there is nothing to pan TO, which fixes the wobble and the truncated
+ * URL in one move.
+ *
+ * `anywhere` rather than `break-word` so the break can happen mid-token when
+ * there is genuinely no other option. Scoped to prose and message text, so
+ * tables and code blocks keep their own horizontal scrolling.
+ */
+html.app-shell .prose,
+html.app-shell .prose p,
+html.app-shell .prose li,
+html.app-shell .prose a,
+html.app-shell .message-text,
+html.app-shell .message-text * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* Vertical scrollers accept vertical pans only.
  *
  * A finger never travels exactly straight. Left to itself the browser reads the

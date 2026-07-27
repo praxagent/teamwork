@@ -331,7 +331,9 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, 
               <span className={`text-xs ${timestampColor}`}>{time}</span>
             </div>
             <div className={`message-content ${messageTextColor}`}>
-              <MarkdownContent content={message.content} />
+              <div className="message-text min-w-0">
+                <MarkdownContent content={message.content} />
+              </div>
             </div>
             {attachments.length > 0 && <AttachmentGrid attachments={attachments} darkMode={darkMode} />}
             <ReactionDisplay reactions={reactions} onToggle={handleReact} />
@@ -355,7 +357,9 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, 
           </div>
           <div className="flex-1 min-w-0">
             <div className={`message-content ${messageTextColor}`}>
-              <MarkdownContent content={message.content} />
+              <div className="message-text min-w-0">
+                <MarkdownContent content={message.content} />
+              </div>
             </div>
             {attachments.length > 0 && <AttachmentGrid attachments={attachments} darkMode={darkMode} />}
             <ReactionDisplay reactions={reactions} onToggle={handleReact} />

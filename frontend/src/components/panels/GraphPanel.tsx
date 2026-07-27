@@ -402,7 +402,17 @@ function NodeDetail({
   const children = graph.nodes.filter((n) => n.parent_id === node.span_id);
 
   return (
-    <div className="flex flex-col h-full">
+    // On a phone this is ONE scrolling column. It used to be a fixed-height
+    // flex stack, and the summary lost: an `overflow-auto` flex item has an
+    // automatic minimum size of zero, so it is the first thing crushed when
+    // space runs short, while the Delegated Spans list below it has visible
+    // overflow and refuses to shrink at all. The result was a one-line sliver
+    // of summary — not even tall enough to read a full letter — under a
+    // full-height list of span names.
+    //
+    // Sections keep their natural height and the column scrolls. The desktop
+    // pane layout is untouched at md, where there is height to divide.
+    <div className="flex flex-col h-full min-h-0 overflow-y-auto md:overflow-hidden">
       {/* Header */}
       <div className={`px-5 py-4 border-b shrink-0 ${
         darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-gray-200 bg-gray-50'
@@ -456,7 +466,7 @@ function NodeDetail({
 
       {/* Summary */}
       {node.summary && (
-        <div className={`px-5 py-3 border-b text-sm overflow-auto max-h-48 ${
+        <div className={`px-5 py-3 border-b text-sm overflow-auto max-h-48 shrink-0 ${
           darkMode ? 'border-slate-700 text-gray-300 bg-slate-800/30' : 'border-gray-100 text-gray-600 bg-gray-50/50'
         }`}>
           <MarkdownContent content={node.summary} />
@@ -465,7 +475,7 @@ function NodeDetail({
 
       {/* Children summary */}
       {children.length > 0 && (
-        <div className={`px-5 py-3 border-b ${
+        <div className={`px-5 py-3 border-b shrink-0 ${
           darkMode ? 'border-slate-700' : 'border-gray-100'
         }`}>
           <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${
@@ -499,7 +509,7 @@ function NodeDetail({
       )}
 
       {/* Live output */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="shrink-0 min-h-[14rem] md:min-h-0 md:flex-1 flex flex-col overflow-hidden">
         <div className={`flex items-center gap-2 px-5 py-2 border-b shrink-0 ${
           darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-gray-200 bg-gray-50'
         }`}>
