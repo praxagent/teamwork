@@ -1005,12 +1005,18 @@ function SpaceFiles({ spaceSlug, dark }: { spaceSlug: string; dark: boolean }) {
 
                 {/* Inline preview */}
                 {previewFile?.name === file.name && (
+                  // Previews are capped against the VIEWPORT, not in absolute
+                  // pixels. A 600px PDF frame is taller than most phone
+                  // viewports, so opening one pushed the chat box and its send
+                  // button off the bottom of the screen — the space became
+                  // unusable until you closed the file again. A preview should
+                  // never cost you the composer.
                   <div className={clsx('mt-2 rounded-lg overflow-hidden border', border)}>
                     {isImage && (
-                      <img src={url} alt={file.name} className="max-w-full max-h-96 mx-auto" />
+                      <img src={url} alt={file.name} className="max-w-full max-h-[50vh] md:max-h-96 mx-auto" />
                     )}
                     {isPdf && (
-                      <iframe src={url} className="w-full h-[600px]" title={file.name} />
+                      <iframe src={url} className="w-full h-[55vh] md:h-[600px]" title={file.name} />
                     )}
                     {isAudio && (
                       <audio controls className="w-full p-4" src={url}>
@@ -1018,7 +1024,7 @@ function SpaceFiles({ spaceSlug, dark }: { spaceSlug: string; dark: boolean }) {
                       </audio>
                     )}
                     {isVideo && (
-                      <video controls className="w-full max-h-96" src={url}>
+                      <video controls className="w-full max-h-[50vh] md:max-h-96" src={url}>
                         Your browser does not support the video element.
                       </video>
                     )}

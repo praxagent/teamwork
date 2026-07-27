@@ -81,32 +81,20 @@ html.app-shell .message-text * {
   word-break: break-word;
 }
 
-/* Vertical scrollers accept vertical pans only.
+/* NOTE: there is deliberately no `touch-action: pan-y` rule here.
  *
- * A finger never travels exactly straight. Left to itself the browser reads the
- * slight sideways component of a scroll gesture as a horizontal pan and the view
- * slides left and right while you are trying to move down the page — small, but
- * constant, and it makes reading feel unsteady.
+ * One was added to stop chat drifting sideways, and it broke the Kanban:
+ * touch-action on an ancestor constrains every descendant, so horizontal
+ * panning only worked where the finger happened to land on the scroller itself
+ * — the top third of the board — and died everywhere below it. Suppressing a
+ * gesture app-wide to fix one surface takes the gesture away from the surfaces
+ * that need it.
  *
- * `pan-y` tells the browser the horizontal component is not for it. Applied to
- * the app shell only, where every scroller is vertical; a genuinely horizontal
- * scroller (a wide table, a code block) opts back in with `touch-pan-x` on
- * itself, since a rule on the element beats this one.
+ * The drift is fixed at its source above: long strings wrap, so nothing is
+ * wider than the screen and there is nothing to drift to. If sideways wobble
+ * ever returns, look for new unwrapped content rather than reaching for
+ * touch-action.
  */
-html.app-shell .overflow-y-auto {
-  touch-action: pan-y;
-}
-
-/* Deliberately NOT applied to `.overflow-auto`, which scrolls both axes, and
- * explicitly released on horizontally-scrolling content. A wide code block,
- * table or mermaid diagram in a chat message has to keep panning sideways —
- * constraining the whole subtree to pan-y would trade a small wobble for
- * content you cannot reach.
- */
-html.app-shell .overflow-x-auto,
-html.app-shell .overflow-auto {
-  touch-action: auto;
-}
 
 /* Prevent Safari from zooming in on input focus (triggers at font < 16px) */
 @media screen and (max-width: 767px) {

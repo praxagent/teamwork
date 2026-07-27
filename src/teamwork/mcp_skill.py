@@ -128,6 +128,26 @@ One optimistic card destroys that for every other card.
 
 
 def connection_snippet(*, server_url: str, token_hint: str = "<your-key>") -> str:
-    """The one-liner for wiring a harness up, without the surrounding skill."""
+    """The one-liner for wiring Claude Code up, without the surrounding skill."""
     return (f'claude mcp add --transport http teamwork {server_url} '
             f'--header "X-API-Key: {token_hint}"')
+
+
+def codex_snippet(*, server_url: str, token_hint: str = "<your-key>") -> str:
+    """The equivalent for Codex, which is configured by file rather than CLI.
+
+    We were naming Codex in the UI and then handing over a `claude mcp add`
+    command, which is only useful to one of the two harnesses we claimed to
+    support. Telling someone their tool works and then not saying how is worse
+    than not mentioning it.
+
+    Codex reads ``~/.codex/config.toml``. It speaks MCP over stdio, so an HTTP
+    server is reached through the `mcp-remote` bridge rather than directly.
+    """
+    return (
+        "# ~/.codex/config.toml\n"
+        "[mcp_servers.teamwork]\n"
+        'command = "npx"\n'
+        f'args = ["-y", "mcp-remote", "{server_url}", '
+        f'"--header", "X-API-Key:{token_hint}"]'
+    )
