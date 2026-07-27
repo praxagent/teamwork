@@ -17,6 +17,31 @@ html, body {
   min-height: 100dvh;
   overflow-x: hidden;
 }
+
+/* App-shell mode — set by ProjectWorkspace while it is mounted.
+ *
+ * The workspace is a fixed-height shell whose panes scroll internally, but the
+ * DOCUMENT was scrollable underneath it: #root asks for min-height:100vh, and on
+ * iOS 100vh is the LARGE viewport (as if the URL bar were hidden), so the page
+ * is taller than the visible area even when nothing overflows. Dragging then
+ * moved the document rather than the list under your finger, and because a
+ * document with almost nothing to scroll just rubber-bands, both directions
+ * looked the same — a pull, never a scroll.
+ *
+ * Pinning the document to the visible height and forbidding vertical overscroll
+ * leaves the gesture nowhere to go except the pane that should have had it.
+ * Scoped to this route so the lander and project list keep normal page scroll.
+ */
+html.app-shell,
+html.app-shell body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+}
+html.app-shell #root {
+  height: 100%;
+  min-height: 0;
+}
 /* Prevent Safari from zooming in on input focus (triggers at font < 16px) */
 @media screen and (max-width: 767px) {
   input, textarea, select {

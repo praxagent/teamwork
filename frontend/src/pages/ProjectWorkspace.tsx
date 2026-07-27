@@ -301,6 +301,17 @@ export function ProjectWorkspace() {
     : showScheduler ? 'scheduler'
     : 'chat';
 
+  // Pin the document while the workspace is mounted. Without this the page
+  // itself is scrollable behind a shell that manages its own overflow, so a
+  // drag moved the document instead of the pane under your finger — and a
+  // document with nothing to scroll only rubber-bands, which is why up and
+  // down felt identical. Removed on unmount so the lander and project list
+  // keep normal page scrolling.
+  useEffect(() => {
+    document.documentElement.classList.add('app-shell');
+    return () => document.documentElement.classList.remove('app-shell');
+  }, []);
+
   const handleSendMessage = (content: string, attachments?: Attachment[]) => {
     if (!currentChannelId) return;
     sendMessage.mutate({
