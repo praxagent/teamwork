@@ -1022,8 +1022,13 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
           <div className="flex-1 flex min-h-0 overflow-hidden">
             {/* Column 1: Graph list */}
             <div
-              style={{ width: col1Width }}
-              className={`${mobileGraphTab === 'runs' ? 'flex' : 'hidden'} md:flex w-full md:w-auto shrink-0 flex-col overflow-hidden ${
+              // Handed to CSS as a variable rather than set as `width` directly:
+              // an inline width applies at every breakpoint and outranks
+              // `w-full`, so the desktop resizer's pixel value was also the
+              // MOBILE column width — wider than the screen, which is the empty
+              // band to the right of everything.
+              style={{ ['--col-w' as string]: `${col1Width}px` }}
+              className={`${mobileGraphTab === 'runs' ? 'flex' : 'hidden'} md:flex w-full md:w-[var(--col-w)] shrink-0 flex-col min-h-0 overflow-hidden ${
                 darkMode ? 'bg-slate-800' : 'bg-gray-50'
               }`}
             >
@@ -1072,8 +1077,8 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
                 {/* Column 2: Node tree */}
                 {selectedGraph && (
                   <div
-                    style={{ width: col2Width }}
-                    className={`${mobileGraphTab === 'nodes' ? 'flex' : 'hidden'} md:flex w-full md:w-auto shrink-0 flex-col overflow-hidden`}
+                    style={{ ['--col-w' as string]: `${col2Width}px` }}
+                    className={`${mobileGraphTab === 'nodes' ? 'flex' : 'hidden'} md:flex w-full md:w-[var(--col-w)] shrink-0 flex-col min-h-0 overflow-hidden`}
                   >
                     <div className={`hidden md:block px-4 py-3 border-b shrink-0 ${
                       darkMode ? 'border-slate-700' : 'border-gray-200'
@@ -1190,8 +1195,8 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
                       <ResizeHandle onDrag={(d) => handleCol2Drag(-d)} darkMode={darkMode} />
                     </div>
                     <div
-                      style={{ width: col2Width }}
-                      className={`${mobileGraphTab === 'detail' ? 'flex' : 'hidden'} md:flex shrink-0 flex-col overflow-hidden w-full md:w-auto ${bg}`}
+                      style={{ ['--col-w' as string]: `${col2Width}px` }}
+                      className={`${mobileGraphTab === 'detail' ? 'flex' : 'hidden'} md:flex shrink-0 flex-col min-h-0 overflow-hidden w-full md:w-[var(--col-w)] ${bg}`}
                     >
                       {selectedNode ? (
                         <NodeDetail
