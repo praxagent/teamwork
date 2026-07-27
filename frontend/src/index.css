@@ -42,6 +42,17 @@ html.app-shell #root {
   height: 100%;
   min-height: 0;
 }
+/* Touch handling for controls.
+ *
+ * `manipulation` drops the double-tap-to-zoom gesture on interactive elements,
+ * which is what causes the ~300ms delay before a tap registers — the app feels
+ * sluggish on a phone for no reason other than the browser waiting to see if a
+ * second tap is coming. Layout-neutral, so it cannot regress anything visually.
+ */
+button, [role="button"], a, summary, select {
+  touch-action: manipulation;
+}
+
 /* Prevent Safari from zooming in on input focus (triggers at font < 16px) */
 @media screen and (max-width: 767px) {
   input, textarea, select {

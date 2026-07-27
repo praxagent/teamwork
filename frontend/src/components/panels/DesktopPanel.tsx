@@ -278,7 +278,7 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
   };
 
   return (
-    <div ref={containerRef} tabIndex={-1} className="flex-1 flex flex-col overflow-hidden outline-none">
+    <div ref={containerRef} tabIndex={-1} className="flex-1 flex flex-col min-h-0 overflow-hidden outline-none">
       {/* Toolbar — wraps on narrow (mobile) widths so its many shortcut/
           clipboard/chat/close buttons are never clipped off the right edge
           (matches BrowserPanel). The flex-1 label keeps the desktop layout

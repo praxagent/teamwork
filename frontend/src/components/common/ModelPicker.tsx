@@ -71,7 +71,7 @@ export function ModelPicker({ info, darkMode = false, onSelect }: Props) {
     darkMode ? 'text-gray-500' : 'text-gray-400');
 
   return (
-    <div className={clsx('w-80 rounded-lg border shadow-lg overflow-hidden flex flex-col',
+    <div className={clsx('w-[min(20rem,calc(100vw-2rem))] rounded-lg border shadow-lg overflow-hidden flex flex-col',
       darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200')}>
 
       {/* Auto and the tiers stay pinned: they are the choices most people want,

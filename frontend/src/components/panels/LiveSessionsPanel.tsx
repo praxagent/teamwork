@@ -163,13 +163,13 @@ export function LiveSessionsPanel({ agents: rawAgents, isVisible, onClose, fullP
   if (!isVisible) return null;
 
   const containerClass = fullPage
-    ? 'flex-1 flex overflow-hidden'
-    : 'flex overflow-hidden h-full';
+    ? 'flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden'
+    : 'flex flex-col md:flex-row overflow-hidden h-full min-h-0';
 
   return (
     <div className={containerClass}>
       {/* Agent list sidebar */}
-      <div className={`w-64 shrink-0 flex flex-col border-r overflow-hidden ${
+      <div className={`w-full md:w-64 shrink-0 flex flex-col border-b md:border-b-0 md:border-r max-h-40 md:max-h-none overflow-hidden ${
         darkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-200'
       }`}>
         {/* Sidebar header */}

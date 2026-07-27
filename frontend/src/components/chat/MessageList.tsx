@@ -369,7 +369,7 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, 
           {/* Quick reactions */}
           <div className="relative">
             <button
-              className={`p-1 rounded ${actionsHoverBg}`}
+              className={`p-2 md:p-1 min-h-[40px] min-w-[40px] md:min-h-0 md:min-w-0 flex items-center justify-center rounded ${actionsHoverBg}`}
               onClick={() => setShowReactionPicker((v) => !v)}
               title="Add reaction"
             >
@@ -408,7 +408,7 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, 
           {/* Trace button — shown only for agent messages with trace metadata */}
           {message.extra_data?.trace_id ? (
             <button
-              className={`p-1 rounded ${actionsHoverBg}`}
+              className={`p-2 md:p-1 min-h-[40px] min-w-[40px] md:min-h-0 md:min-w-0 flex items-center justify-center rounded ${actionsHoverBg}`}
               onClick={() => {
                 const traceId = String(message.extra_data!.trace_id);
                 if (onTraceClick) {
@@ -449,7 +449,7 @@ function MessageItem({ message, agent, showHeader, onThreadClick, onAgentClick, 
           ) : null}
           {onThreadClick && (
             <button
-              className={`p-1 rounded ${actionsHoverBg}`}
+              className={`p-2 md:p-1 min-h-[40px] min-w-[40px] md:min-h-0 md:min-w-0 flex items-center justify-center rounded ${actionsHoverBg}`}
               onClick={() => onThreadClick(message.id)}
             >
               <MessageSquare className={`w-4 h-4 ${actionsIconColor}`} />

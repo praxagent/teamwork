@@ -55,7 +55,7 @@ export function ClaudeCodeStatus({ darkMode }: ClaudeCodeStatusProps) {
 
       {/* Expanded dropdown */}
       {expanded && (
-        <div className={`absolute top-full right-0 mt-1 z-50 w-72 rounded-lg shadow-lg border ${
+        <div className={`absolute top-full right-0 mt-1 z-50 w-[min(18rem,calc(100vw-2rem))] rounded-lg shadow-lg border ${
           darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
         }`}>
           <div className={`px-3 py-2 border-b text-xs font-semibold ${

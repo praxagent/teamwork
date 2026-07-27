@@ -121,7 +121,7 @@ export function ProgressPanel({ projectId, onClose, onEditCoach }: ProgressPanel
   }, [agents, tasks]);
 
   return (
-    <div className={`flex-1 flex flex-col overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
+    <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${
         darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'

@@ -172,9 +172,9 @@ function LiveAgentsTab({ projectId, darkMode }: { projectId: string; darkMode: b
   }, [agents, selectedAgentId]);
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
       {/* Agent list sidebar */}
-      <div className={`w-56 shrink-0 flex flex-col border-r overflow-hidden ${
+      <div className={`w-full md:w-56 shrink-0 flex flex-col border-b md:border-b-0 md:border-r max-h-40 md:max-h-none overflow-hidden ${
         darkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-200'
       }`}>
         <div className={`flex items-center gap-2 px-4 py-3 border-b shrink-0 ${

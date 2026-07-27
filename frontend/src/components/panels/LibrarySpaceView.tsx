@@ -194,7 +194,7 @@ export function LibrarySpaceView({ project, dark, onClose, embedded }: Props) {
   };
 
   return (
-    <div className={clsx('flex-1 flex flex-col min-w-0 overflow-hidden', dark ? 'bg-slate-900' : 'bg-white')}>
+    <div className={clsx('flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden', dark ? 'bg-slate-900' : 'bg-white')}>
       {/* Cover banner — hidden when embedded in SpacePage */}
       {!embedded && <div className="relative w-full h-32 shrink-0 group">
         {coverSrc ? (

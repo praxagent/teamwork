@@ -147,7 +147,7 @@ export function TerminalPanel({ projectId, isVisible, onClose }: TerminalPanelPr
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ display: isVisible ? undefined : 'none' }}>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ display: isVisible ? undefined : 'none' }}>
       {/* Toolbar */}
       <div className={`flex items-center gap-1.5 px-2 py-1.5 border-b ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
         <TerminalIcon className={`w-4 h-4 ${connected ? 'text-green-500' : darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
