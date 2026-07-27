@@ -172,10 +172,42 @@ function formatDuration(s: number): string {
   return sec > 0 ? `${m}m ${sec}s` : `${m}m`;
 }
 
+/** Clock time only — for spans WITHIN a trace, where the date is the trace's. */
 function formatTime(iso: string): string {
   try {
     const d = new Date(iso);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch { return iso; }
+}
+
+/**
+ * Date AND time, for a trace in the list.
+ *
+ * Time alone was ambiguous the moment the list held more than one day of
+ * traces: "14:32" tells you nothing about whether that run was an hour ago or
+ * last Tuesday, and the list is exactly where you go to find a run you remember
+ * by when it happened.
+ *
+ * Today's runs keep a "Today" prefix so the common case stays scannable rather
+ * than becoming a wall of identical dates.
+ */
+function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const now = new Date();
+    const sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+    if (sameDay) return `Today ${time}`;
+
+    const date = d.toLocaleDateString([], {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+    return `${date}, ${time}`;
   } catch { return iso; }
 }
 
@@ -570,8 +602,11 @@ function GraphListItem({
             </div>
           )}
           {rootNode && (
-            <div className={`text-[10px] mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-              {formatTime(rootNode.started_at)}
+            <div
+              className={`text-[10px] mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}
+              title={new Date(rootNode.started_at).toLocaleString()}
+            >
+              {formatDateTime(rootNode.started_at)}
             </div>
           )}
         </div>
@@ -1052,6 +1087,23 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
                         }`}>
                           {selectedGraph.node_count}
                         </span>
+                        {/* When this ran. The header named the trace and its
+                            source but never said when — so the one question you
+                            open an old trace to answer was the one thing the
+                            detail view could not tell you. */}
+                        {(() => {
+                          const root = selectedGraph.nodes.find(
+                            (n) => !n.parent_id ||
+                              !selectedGraph.nodes.find((p) => p.span_id === n.parent_id));
+                          return root ? (
+                            <span
+                              className={`ml-auto text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                              title={new Date(root.started_at).toLocaleString()}
+                            >
+                              {formatDateTime(root.started_at)}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       {selectedGraph.source && (
                         <div className={`mt-1 text-[11px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
