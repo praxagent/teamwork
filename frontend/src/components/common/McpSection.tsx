@@ -170,9 +170,20 @@ export function McpSection({ space, spaceName, darkMode = false }: Props) {
             {grant.rotated ? 'New key issued — the previous one no longer works' : 'Key issued'}
           </p>
           <p className={clsx('text-xs mb-2', t2)}>{grant.warning}</p>
+          <p className={clsx('text-xs mt-3 mb-1 font-medium', t2)}>Claude Code</p>
           <div className={pre}>{grant.connect}</div>
           <div className="flex gap-2 mt-2 flex-wrap">
-            <CopyButton text={grant.connect} label="Copy connect command" darkMode={darkMode} />
+            <CopyButton text={grant.connect} label="Copy command" darkMode={darkMode} />
+          </div>
+
+          {/* Codex is configured by file rather than by a CLI call, and it
+              speaks stdio — so an HTTP server is reached through mcp-remote.
+              We named Codex in the blurb above and then handed over a
+              `claude mcp add` line, which only helps one of the two. */}
+          <p className={clsx('text-xs mt-3 mb-1 font-medium', t2)}>Codex</p>
+          <div className={pre}>{grant.connect_codex}</div>
+          <div className="flex gap-2 mt-2 flex-wrap">
+            <CopyButton text={grant.connect_codex} label="Copy config" darkMode={darkMode} />
             <CopyButton text={grant.token} label="Copy token" darkMode={darkMode} />
           </div>
         </div>

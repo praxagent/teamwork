@@ -21,6 +21,7 @@ import { useExecutionGraphs, useAgentLiveOutput, useAgents, useDeleteExecutionGr
 import type { ExecutionGraph, GraphNode } from '@/hooks/useApi';
 import { MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
+import { useHistoryState } from '@/hooks/useHistoryState';
 import { GraphVisualView } from './GraphVisualView';
 
 interface GraphPanelProps {
@@ -172,10 +173,42 @@ function formatDuration(s: number): string {
   return sec > 0 ? `${m}m ${sec}s` : `${m}m`;
 }
 
+/** Clock time only — for spans WITHIN a trace, where the date is the trace's. */
 function formatTime(iso: string): string {
   try {
     const d = new Date(iso);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch { return iso; }
+}
+
+/**
+ * Date AND time, for a trace in the list.
+ *
+ * Time alone was ambiguous the moment the list held more than one day of
+ * traces: "14:32" tells you nothing about whether that run was an hour ago or
+ * last Tuesday, and the list is exactly where you go to find a run you remember
+ * by when it happened.
+ *
+ * Today's runs keep a "Today" prefix so the common case stays scannable rather
+ * than becoming a wall of identical dates.
+ */
+function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const now = new Date();
+    const sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+    if (sameDay) return `Today ${time}`;
+
+    const date = d.toLocaleDateString([], {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+    return `${date}, ${time}`;
   } catch { return iso; }
 }
 
@@ -369,7 +402,17 @@ function NodeDetail({
   const children = graph.nodes.filter((n) => n.parent_id === node.span_id);
 
   return (
-    <div className="flex flex-col h-full">
+    // On a phone this is ONE scrolling column. It used to be a fixed-height
+    // flex stack, and the summary lost: an `overflow-auto` flex item has an
+    // automatic minimum size of zero, so it is the first thing crushed when
+    // space runs short, while the Delegated Spans list below it has visible
+    // overflow and refuses to shrink at all. The result was a one-line sliver
+    // of summary — not even tall enough to read a full letter — under a
+    // full-height list of span names.
+    //
+    // Sections keep their natural height and the column scrolls. The desktop
+    // pane layout is untouched at md, where there is height to divide.
+    <div className="flex flex-col h-full min-h-0 overflow-y-auto md:overflow-hidden">
       {/* Header */}
       <div className={`px-5 py-4 border-b shrink-0 ${
         darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-gray-200 bg-gray-50'
@@ -423,7 +466,7 @@ function NodeDetail({
 
       {/* Summary */}
       {node.summary && (
-        <div className={`px-5 py-3 border-b text-sm overflow-auto max-h-48 ${
+        <div className={`px-5 py-3 border-b text-sm overflow-auto max-h-48 shrink-0 ${
           darkMode ? 'border-slate-700 text-gray-300 bg-slate-800/30' : 'border-gray-100 text-gray-600 bg-gray-50/50'
         }`}>
           <MarkdownContent content={node.summary} />
@@ -432,7 +475,7 @@ function NodeDetail({
 
       {/* Children summary */}
       {children.length > 0 && (
-        <div className={`px-5 py-3 border-b ${
+        <div className={`px-5 py-3 border-b shrink-0 ${
           darkMode ? 'border-slate-700' : 'border-gray-100'
         }`}>
           <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${
@@ -466,7 +509,7 @@ function NodeDetail({
       )}
 
       {/* Live output */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="shrink-0 min-h-[14rem] md:min-h-0 md:flex-1 flex flex-col overflow-hidden">
         <div className={`flex items-center gap-2 px-5 py-2 border-b shrink-0 ${
           darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-gray-200 bg-gray-50'
         }`}>
@@ -570,8 +613,11 @@ function GraphListItem({
             </div>
           )}
           {rootNode && (
-            <div className={`text-[10px] mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-              {formatTime(rootNode.started_at)}
+            <div
+              className={`text-[10px] mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}
+              title={new Date(rootNode.started_at).toLocaleString()}
+            >
+              {formatDateTime(rootNode.started_at)}
             </div>
           )}
         </div>
@@ -823,6 +869,12 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
   const [showToolsInGraph, setShowToolsInGraph] = useState(true);
   // Mobile: which column/tab is shown (runs | nodes | detail)
   const [mobileGraphTab, setMobileGraphTab] = useState<'runs' | 'nodes' | 'detail'>('runs');
+  // Drilling runs -> nodes -> detail is navigation, so Back should walk it back
+  // rather than exiting the panel. Opening a trace detail and pressing Back used
+  // to leave the workspace entirely, which loses the whole path you took to get
+  // there.
+  useHistoryState('twGraphTab', mobileGraphTab, (tab) =>
+    setMobileGraphTab(tab as 'runs' | 'nodes' | 'detail'));
 
   // Resizable column widths (pixels)
   const [col1Width, setCol1Width] = useState(208); // graph list
@@ -987,8 +1039,13 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
           <div className="flex-1 flex min-h-0 overflow-hidden">
             {/* Column 1: Graph list */}
             <div
-              style={{ width: col1Width }}
-              className={`${mobileGraphTab === 'runs' ? 'flex' : 'hidden'} md:flex w-full md:w-auto shrink-0 flex-col overflow-hidden ${
+              // Handed to CSS as a variable rather than set as `width` directly:
+              // an inline width applies at every breakpoint and outranks
+              // `w-full`, so the desktop resizer's pixel value was also the
+              // MOBILE column width — wider than the screen, which is the empty
+              // band to the right of everything.
+              style={{ ['--col-w' as string]: `${col1Width}px` }}
+              className={`${mobileGraphTab === 'runs' ? 'flex' : 'hidden'} md:flex w-full md:w-[var(--col-w)] shrink-0 flex-col min-h-0 overflow-hidden ${
                 darkMode ? 'bg-slate-800' : 'bg-gray-50'
               }`}
             >
@@ -1037,8 +1094,8 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
                 {/* Column 2: Node tree */}
                 {selectedGraph && (
                   <div
-                    style={{ width: col2Width }}
-                    className={`${mobileGraphTab === 'nodes' ? 'flex' : 'hidden'} md:flex w-full md:w-auto shrink-0 flex-col overflow-hidden`}
+                    style={{ ['--col-w' as string]: `${col2Width}px` }}
+                    className={`${mobileGraphTab === 'nodes' ? 'flex' : 'hidden'} md:flex w-full md:w-[var(--col-w)] shrink-0 flex-col min-h-0 overflow-hidden`}
                   >
                     <div className={`hidden md:block px-4 py-3 border-b shrink-0 ${
                       darkMode ? 'border-slate-700' : 'border-gray-200'
@@ -1052,6 +1109,23 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
                         }`}>
                           {selectedGraph.node_count}
                         </span>
+                        {/* When this ran. The header named the trace and its
+                            source but never said when — so the one question you
+                            open an old trace to answer was the one thing the
+                            detail view could not tell you. */}
+                        {(() => {
+                          const root = selectedGraph.nodes.find(
+                            (n) => !n.parent_id ||
+                              !selectedGraph.nodes.find((p) => p.span_id === n.parent_id));
+                          return root ? (
+                            <span
+                              className={`ml-auto text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                              title={new Date(root.started_at).toLocaleString()}
+                            >
+                              {formatDateTime(root.started_at)}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       {selectedGraph.source && (
                         <div className={`mt-1 text-[11px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1138,8 +1212,8 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
                       <ResizeHandle onDrag={(d) => handleCol2Drag(-d)} darkMode={darkMode} />
                     </div>
                     <div
-                      style={{ width: col2Width }}
-                      className={`${mobileGraphTab === 'detail' ? 'flex' : 'hidden'} md:flex shrink-0 flex-col overflow-hidden w-full md:w-auto ${bg}`}
+                      style={{ ['--col-w' as string]: `${col2Width}px` }}
+                      className={`${mobileGraphTab === 'detail' ? 'flex' : 'hidden'} md:flex shrink-0 flex-col min-h-0 overflow-hidden w-full md:w-[var(--col-w)] ${bg}`}
                     >
                       {selectedNode ? (
                         <NodeDetail

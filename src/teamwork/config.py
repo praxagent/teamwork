@@ -82,6 +82,23 @@ class Settings(BaseSettings):
     chrome_cdp_host: str = "sandbox"
     chrome_cdp_port: int = 9223
 
+    # noVNC desktop, proxied from the sandbox container. Declared here rather
+    # than read straight from the environment: main.py used
+    # `getattr(settings, "desktop_vnc_url", None) or os.environ[...]`, and since
+    # the field did not exist the getattr always returned None. So the only way
+    # to learn this variable was required was to read the proxy handler — it was
+    # in neither this model nor .env.example. A setting you cannot discover is a
+    # setting nobody sets.
+    #
+    # Empty disables the desktop panel. For the usual shape (TeamWork on the
+    # host, sandbox in Docker with ports published to loopback) this is
+    # http://127.0.0.1:6080; inside the sandbox compose network, http://sandbox:6080.
+    desktop_vnc_url: str = ""
+
+    # Clipboard bridge in the same container. Derived from desktop_vnc_url when
+    # left empty, since it is the same host on a fixed port.
+    clipboard_port: int = 6090
+
     def __init__(self, **data):
         super().__init__(**data)
         resolved_db = resolve_database_path(self.database_url, _project_root)

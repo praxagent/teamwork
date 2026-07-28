@@ -518,7 +518,7 @@ export function TaskBoard({ projectId, agents, isCoachingProject, onWatchLive }:
   const totalTasks = data?.total ?? 0;
 
   return (
-    <div className={clsx('flex-1 flex flex-col overflow-hidden', containerBg)}>
+    <div className={clsx('flex-1 flex flex-col min-h-0 overflow-hidden', containerBg)}>
       {/* Board header */}
       <div className={clsx('flex items-center justify-between px-5 py-3 border-b', darkMode ? 'border-slate-700' : 'border-gray-200')}>
         <div>

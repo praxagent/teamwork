@@ -301,7 +301,7 @@ export function MessageInput({
       >
         {/* Mention popup */}
         {showMentions && filteredAgents.length > 0 && (
-          <div className={`absolute bottom-full left-0 w-64 mb-2 border rounded-lg shadow-lg overflow-hidden ${popupBg}`}>
+          <div className={`absolute bottom-full left-0 w-[min(16rem,calc(100vw-2rem))] mb-2 border rounded-lg shadow-lg overflow-hidden ${popupBg}`}>
             <div className={`px-3 py-2 text-xs font-medium ${popupHeaderBg}`}>
               Team Members
             </div>

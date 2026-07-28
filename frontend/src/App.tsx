@@ -51,6 +51,17 @@ function App() {
       const root = document.documentElement.style;
       root.setProperty('--app-height', `${vv.height}px`);
       root.setProperty('--app-top', `${vv.offsetTop}px`);
+
+      // Is the on-screen keyboard up? The visual viewport shrinks while the
+      // layout viewport does not, so the gap between them is the keyboard.
+      // 150px is comfortably more than the browser chrome that also comes and
+      // goes on scroll, and comfortably less than any real keyboard.
+      //
+      // This matters because the mobile tab bar is `fixed bottom-0`, which
+      // pins it to the LAYOUT bottom — so when the keyboard opens it sits
+      // squarely over the composer and you cannot see what you are typing.
+      const keyboardOpen = window.innerHeight - vv.height > 150;
+      document.documentElement.classList.toggle('keyboard-open', keyboardOpen);
     };
     update();
     vv.addEventListener('resize', update);

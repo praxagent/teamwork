@@ -185,10 +185,17 @@ async def desktop_vnc_client():
 async def desktop_vnc_proxy(path: str):
     """Reverse-proxy noVNC from the sandbox container."""
     import httpx
-    desktop_url = getattr(settings, 'desktop_vnc_url', None) or os.environ.get("DESKTOP_VNC_URL", "")
+    desktop_url = settings.desktop_vnc_url or os.environ.get("DESKTOP_VNC_URL", "")
     if not desktop_url:
         from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "DESKTOP_VNC_URL not configured"}, status_code=503)
+        # Say what to do, not just what is wrong. This surfaces in a browser
+        # console as a failed asset fetch, where "not configured" alone sends
+        # people hunting through the UI code.
+        return JSONResponse({
+            "error": "Desktop is not configured",
+            "fix": "Set DESKTOP_VNC_URL (e.g. http://127.0.0.1:6080) in TeamWork's "
+                   ".env and make sure the sandbox container is running.",
+        }, status_code=503)
     from starlette.requests import Request
     from starlette.responses import Response
     try:
@@ -214,9 +221,18 @@ async def desktop_vnc_proxy(path: str):
 @app.websocket("/api/desktop/websockify")
 async def desktop_vnc_ws_proxy(websocket: WebSocket):
     """WebSocket reverse-proxy: browser ↔ websockify in the sandbox."""
-    desktop_url = getattr(settings, 'desktop_vnc_url', None) or os.environ.get("DESKTOP_VNC_URL", "")
+    desktop_url = settings.desktop_vnc_url or os.environ.get("DESKTOP_VNC_URL", "")
     if not desktop_url:
-        await websocket.close(code=1008, reason="DESKTOP_VNC_URL not configured")
+        # Accept BEFORE closing. Closing an un-accepted websocket makes Starlette
+        # reject the handshake with a bare HTTP 403, so the browser reports
+        # "Forbidden" for what is actually "nobody configured the desktop" — and
+        # whoever debugs it goes looking at auth and tailnet ACLs, which are
+        # fine. Accepting first means the close reason reaches the client.
+        await websocket.accept()
+        await websocket.close(
+            code=1008,
+            reason="Desktop is not configured: set DESKTOP_VNC_URL "
+                   "(e.g. http://127.0.0.1:6080) and ensure the sandbox is running.")
         return
 
     # Convert http://sandbox:6080 → ws://sandbox:6080/websockify
@@ -292,7 +308,7 @@ async def desktop_vnc_ws_proxy(websocket: WebSocket):
 @app.websocket("/api/desktop/clipboard")
 async def desktop_clipboard_ws_proxy(websocket: WebSocket):
     """WebSocket reverse-proxy: browser clipboard ↔ clipboard bridge in sandbox."""
-    desktop_url = getattr(settings, 'desktop_vnc_url', None) or os.environ.get("DESKTOP_VNC_URL", "")
+    desktop_url = settings.desktop_vnc_url or os.environ.get("DESKTOP_VNC_URL", "")
     if not desktop_url:
         await websocket.close(code=1008, reason="DESKTOP_VNC_URL not configured")
         return

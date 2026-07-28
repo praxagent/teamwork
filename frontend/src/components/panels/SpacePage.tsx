@@ -151,6 +151,17 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
   const readingNotebookNote = activeTab === 'notebooks' && viewingNote !== null;
   const showingSpaceChat = chatOpen && (!readingNotebookNote || noteChatVisible);
 
+  // How wide the chat should be, per space. Persisted because the answer is a
+  // property of the work: a reference space wants a narrow chat beside the
+  // notes, a space where you are thinking out loud wants most of the window.
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(`tw:chatw:${spaceSlug}`));
+    return Number.isFinite(saved) && saved >= 280 ? saved : 320;
+  });
+  useEffect(() => {
+    localStorage.setItem(`tw:chatw:${spaceSlug}`, String(chatWidth));
+  }, [spaceSlug, chatWidth]);
+
   const handleUploadClick = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -587,14 +598,63 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
           )}
         </div>
 
-        {/* Space-scoped chat — sidebar on desktop, bottom panel on mobile */}
+        {/* Space-scoped chat — sidebar on desktop, bottom panel on mobile.
+            Resizable on desktop: it was a fixed 320px, which is fine for a
+            glance and wrong whenever the chat IS the work. The width persists
+            per space, because how much room a conversation deserves is a
+            property of what you are doing in that space. */}
+        {showingSpaceChat && (
+          <div
+            // Width as a class, not an inline style: the mobile-layout guard
+            // forbids inline pixel widths precisely because they outrank
+            // Tailwind at every breakpoint, and a rule with an exception for
+            // "small ones" stops being a rule.
+            className="hidden md:block shrink-0 w-1.5 cursor-col-resize hover:bg-slate-400/30"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              let lastX = e.clientX;
+              const move = (ev: MouseEvent) => {
+                // Dragging LEFT widens the chat, since it is anchored right.
+                setChatWidth((w) => {
+                  const next = Math.max(280, Math.min(880, w - (ev.clientX - lastX)));
+                  lastX = ev.clientX;
+                  return next;
+                });
+              };
+              const up = () => {
+                document.removeEventListener('mousemove', move);
+                document.removeEventListener('mouseup', up);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+              };
+              document.body.style.cursor = 'col-resize';
+              document.body.style.userSelect = 'none';
+              document.addEventListener('mousemove', move);
+              document.addEventListener('mouseup', up);
+            }}
+            title="Drag to resize the chat"
+          />
+        )}
         {showingSpaceChat && (
           <div className={clsx(
-            'w-full md:w-80 flex flex-col shrink-0',
+            'w-full md:w-[var(--chat-w)] flex flex-col shrink-0 min-h-0',
             'border-t md:border-t-0 md:border-l',
-            'h-[40vh] md:h-auto',
+            // svh, not vh: on iOS `vh` is the LARGE viewport — the height as
+            // if the browser chrome were hidden — so a 40vh pane is taller than
+            // 40% of what you can actually see, and with shrink-0 it can be
+            // pushed past the bottom edge. `svh` is the small viewport, which
+            // is the one that is always really there. A floor keeps it usable
+            // rather than a sliver on a short screen.
+            'h-[45svh] min-h-[10rem] md:h-auto md:min-h-0',
           )}
-            style={{ borderColor: 'var(--space-accent-border)', backgroundColor: 'var(--space-chat-bg)' }}>
+            style={{
+              borderColor: 'var(--space-accent-border)',
+              backgroundColor: 'var(--space-chat-bg)',
+              // A CSS variable rather than an inline width: an inline width
+              // applies at every breakpoint and would beat w-full on a phone,
+              // which is the bug that put a dead band beside the trace panel.
+              ['--chat-w' as string]: `${chatWidth}px`,
+            }}>
             <div className={clsx('px-3 py-2 border-b flex items-center gap-2', border)}>
               <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor(space.theme_hue, dark) }} />
               <span className={clsx('text-sm font-medium flex-1', t1)}>Chat — {space.name}</span>
@@ -1005,12 +1065,18 @@ function SpaceFiles({ spaceSlug, dark }: { spaceSlug: string; dark: boolean }) {
 
                 {/* Inline preview */}
                 {previewFile?.name === file.name && (
+                  // Previews are capped against the VIEWPORT, not in absolute
+                  // pixels. A 600px PDF frame is taller than most phone
+                  // viewports, so opening one pushed the chat box and its send
+                  // button off the bottom of the screen — the space became
+                  // unusable until you closed the file again. A preview should
+                  // never cost you the composer.
                   <div className={clsx('mt-2 rounded-lg overflow-hidden border', border)}>
                     {isImage && (
-                      <img src={url} alt={file.name} className="max-w-full max-h-96 mx-auto" />
+                      <img src={url} alt={file.name} className="max-w-full max-h-[50vh] md:max-h-96 mx-auto" />
                     )}
                     {isPdf && (
-                      <iframe src={url} className="w-full h-[600px]" title={file.name} />
+                      <iframe src={url} className="w-full h-[55vh] md:h-[600px]" title={file.name} />
                     )}
                     {isAudio && (
                       <audio controls className="w-full p-4" src={url}>
@@ -1018,7 +1084,7 @@ function SpaceFiles({ spaceSlug, dark }: { spaceSlug: string; dark: boolean }) {
                       </audio>
                     )}
                     {isVideo && (
-                      <video controls className="w-full max-h-96" src={url}>
+                      <video controls className="w-full max-h-[50vh] md:max-h-96" src={url}>
                         Your browser does not support the video element.
                       </video>
                     )}

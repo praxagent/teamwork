@@ -399,7 +399,7 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
   // and so the cast-receive WebSocket stays connected while the user goes
   // to the Desktop tab to click the prax-cast icon.
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ display: isVisible ? 'flex' : 'none' }}>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ display: isVisible ? 'flex' : 'none' }}>
       {/* Browser toolbar — wraps on very narrow (mobile) widths so the trailing
           actions (esp. the chat toggle) are never clipped off the right edge. */}
       <div className={`flex flex-wrap items-center gap-1.5 px-2 py-1.5 border-b ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>

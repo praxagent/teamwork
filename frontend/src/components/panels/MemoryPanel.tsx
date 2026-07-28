@@ -487,9 +487,9 @@ function GraphTab({ userId, darkMode }: { userId: string; darkMode: boolean }) {
     : [];
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
       {/* Entity list */}
-      <div className={`w-72 shrink-0 flex flex-col border-r overflow-hidden ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
+      <div className={`w-full md:w-72 shrink-0 flex flex-col border-b md:border-b-0 md:border-r max-h-40 md:max-h-none overflow-hidden ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
         <div className={`px-4 py-3 border-b shrink-0 ${darkMode ? 'border-slate-700' : 'border-gray-200'}`}>
           <div className="flex items-center gap-2">
             <Network className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
@@ -642,7 +642,7 @@ function StatsTab({ userId, darkMode }: { userId: string; darkMode: boolean }) {
                 {'info' in c && (
                   <div className="relative ml-auto">
                     <Info className={`w-3.5 h-3.5 ${subtext} opacity-40 hover:opacity-100 cursor-help`} />
-                    <div className={`absolute top-full right-0 mt-2 w-64 p-3 rounded-lg text-xs leading-relaxed shadow-lg border z-50 hidden group-hover:block ${
+                    <div className={`absolute top-full right-0 mt-2 w-[min(16rem,calc(100vw-2rem))] p-3 rounded-lg text-xs leading-relaxed shadow-lg border z-50 hidden group-hover:block ${
                       darkMode ? 'bg-slate-700 border-slate-600 text-gray-200' : 'bg-white border-gray-200 text-gray-700'
                     }`}>
                       {(c as any).info}

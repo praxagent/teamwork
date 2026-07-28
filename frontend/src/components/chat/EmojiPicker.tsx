@@ -34,7 +34,7 @@ export function EmojiPicker({ onSelect, onClose, position = 'above' }: EmojiPick
     <div
       ref={ref}
       className={clsx(
-        'absolute z-50 w-72 rounded-xl shadow-xl border overflow-hidden',
+        'absolute z-50 w-[min(18rem,calc(100vw-2rem))] rounded-xl shadow-xl border overflow-hidden',
         position === 'above' ? 'bottom-full mb-2' : 'top-full mt-2',
         darkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-gray-200'
       )}

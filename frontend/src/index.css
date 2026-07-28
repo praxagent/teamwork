@@ -17,6 +17,104 @@ html, body {
   min-height: 100dvh;
   overflow-x: hidden;
 }
+
+/* App-shell mode — set by ProjectWorkspace while it is mounted.
+ *
+ * The workspace is a fixed-height shell whose panes scroll internally, but the
+ * DOCUMENT was scrollable underneath it: #root asks for min-height:100vh, and on
+ * iOS 100vh is the LARGE viewport (as if the URL bar were hidden), so the page
+ * is taller than the visible area even when nothing overflows. Dragging then
+ * moved the document rather than the list under your finger, and because a
+ * document with almost nothing to scroll just rubber-bands, both directions
+ * looked the same — a pull, never a scroll.
+ *
+ * Pinning the document to the visible height and forbidding vertical overscroll
+ * leaves the gesture nowhere to go except the pane that should have had it.
+ * Scoped to this route so the lander and project list keep normal page scroll.
+ */
+html.app-shell,
+html.app-shell body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+}
+html.app-shell #root {
+  height: 100%;
+  min-height: 0;
+}
+/* Touch handling for controls.
+ *
+ * `manipulation` drops the double-tap-to-zoom gesture on interactive elements,
+ * which is what causes the ~300ms delay before a tap registers — the app feels
+ * sluggish on a phone for no reason other than the browser waiting to see if a
+ * second tap is coming. Layout-neutral, so it cannot regress anything visually.
+ */
+button, [role="button"], a, summary, select {
+  touch-action: manipulation;
+}
+
+/* While the keyboard is up, the mobile tab bar gets out of the way.
+ *
+ * It is `fixed bottom-0`, so it anchors to the LAYOUT viewport — which does not
+ * shrink when the keyboard opens. The bar therefore sat directly over the
+ * message composer, hiding the text as you typed it. Navigation you cannot use
+ * mid-sentence is worth less than seeing your own sentence.
+ *
+ * It comes straight back when the field is dismissed.
+ */
+html.keyboard-open .mobile-tab-bar {
+  display: none;
+}
+
+/* Panes that reserved room for that bar should reclaim it at the same time,
+ * or the layout keeps a strip of dead space where the bar used to be. */
+html.keyboard-open .pb-\\[calc\\(3\\.5rem\\+env\\(safe-area-inset-bottom\\,0px\\)\\)\\] {
+  padding-bottom: 0;
+}
+
+/* Long unbreakable strings must wrap.
+ *
+ * This is the actual cause of the sideways slide in chat, and it is worth
+ * fixing here rather than by suppressing the gesture. A pasted URL —
+ * https://x.com/someone/status/2081762065392541951?s=46 — has no break
+ * opportunity, so it forces the message wider than the screen. And because CSS
+ * computes `overflow-x: visible` to `auto` whenever the other axis is not
+ * visible, the `overflow-y-auto` message list quietly becomes horizontally
+ * scrollable the moment that happens.
+ *
+ * Suppressing the pan would leave the content unreachable off-screen. Wrapping
+ * it means there is nothing to pan TO, which fixes the wobble and the truncated
+ * URL in one move.
+ *
+ * `anywhere` rather than `break-word` so the break can happen mid-token when
+ * there is genuinely no other option. Scoped to prose and message text, so
+ * tables and code blocks keep their own horizontal scrolling.
+ */
+html.app-shell .prose,
+html.app-shell .prose p,
+html.app-shell .prose li,
+html.app-shell .prose a,
+html.app-shell .message-text,
+html.app-shell .message-text * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* NOTE: there is deliberately no `touch-action: pan-y` rule here.
+ *
+ * One was added to stop chat drifting sideways, and it broke the Kanban:
+ * touch-action on an ancestor constrains every descendant, so horizontal
+ * panning only worked where the finger happened to land on the scroller itself
+ * — the top third of the board — and died everywhere below it. Suppressing a
+ * gesture app-wide to fix one surface takes the gesture away from the surfaces
+ * that need it.
+ *
+ * The drift is fixed at its source above: long strings wrap, so nothing is
+ * wider than the screen and there is nothing to drift to. If sideways wobble
+ * ever returns, look for new unwrapped content rather than reaching for
+ * touch-action.
+ */
+
 /* Prevent Safari from zooming in on input focus (triggers at font < 16px) */
 @media screen and (max-width: 767px) {
   input, textarea, select {

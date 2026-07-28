@@ -213,3 +213,39 @@ async def test_a_broken_registry_is_a_400_not_a_500(registry):
 
     assert r.status_code == 400
     assert "not readable JSON" in r.json()["detail"]
+
+
+# ── Both harnesses get instructions, not just the one ────────────────────────
+
+def test_codex_gets_a_config_block_not_a_claude_command():
+    """The UI names Claude Code AND Codex. Offering only `claude mcp add`
+    tells half the audience their tool works and then not how."""
+    from teamwork import mcp_skill
+
+    cfg = mcp_skill.codex_snippet(server_url="https://tw.example.ts.net/mcp",
+                                  token_hint="tok123")
+    assert "[mcp_servers.teamwork]" in cfg
+    assert "claude mcp add" not in cfg
+    assert "tw.example.ts.net/mcp" in cfg
+    assert "tok123" in cfg
+
+
+def test_codex_is_bridged_because_it_speaks_stdio():
+    from teamwork import mcp_skill
+
+    cfg = mcp_skill.codex_snippet(server_url="https://x/mcp")
+    assert "mcp-remote" in cfg, "an HTTP server needs a bridge for a stdio client"
+
+
+@pytest.mark.asyncio
+async def test_enabling_returns_both_connection_forms(registry):
+    from teamwork.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        body = (await c.post("/api/mcp/spaces/project-a/enable")).json()
+
+    assert body["token"] in body["connect"]
+    assert body["token"] in body["connect_codex"]
+    assert "claude mcp add" in body["connect"]
+    assert "[mcp_servers.teamwork]" in body["connect_codex"]

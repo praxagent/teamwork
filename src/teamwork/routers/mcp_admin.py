@@ -101,6 +101,10 @@ async def enable_for_space(space: str, request: Request,
         # pasted into repos, and this does not.
         "connect": mcp_skill.connection_snippet(
             server_url=url, token_hint=result["token"]),
+        # Codex is configured by file, not by CLI. Naming it in the UI and then
+        # offering only `claude mcp add` left half the promise unkept.
+        "connect_codex": mcp_skill.codex_snippet(
+            server_url=url, token_hint=result["token"]),
         "warning": ("This token is shown once. It is stored only as a hash, so "
                     "it cannot be recovered — re-enable to issue a new one."),
         "needs_restart": not bool(getattr(settings, "mcp_enabled", False)),

@@ -1212,6 +1212,8 @@ export interface McpGrant {
   token: string;
   rotated: boolean;
   connect: string;
+  /** Codex is configured by file, so it gets a config block rather than a CLI line. */
+  connect_codex: string;
   warning: string;
   needs_restart: boolean;
 }

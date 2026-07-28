@@ -15,6 +15,7 @@ import { SpacePage } from '@/components/panels/SpacePage';
 import { DesktopPanel } from '@/components/panels/DesktopPanel';
 import { CommandPalette } from '@/components/common';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import { useHistoryState } from '@/hooks/useHistoryState';
 import { ModelPicker } from '@/components/common/ModelPicker';
 import {
   useProject,
@@ -300,6 +301,23 @@ export function ProjectWorkspace() {
     : showProgressPanel ? 'progress'
     : showScheduler ? 'scheduler'
     : 'chat';
+
+  // Let Back move between panels instead of leaving the app. Without this the
+  // workspace was a single history entry, so Back from six panels deep landed
+  // on the project picker — and on a phone Back is how people navigate, so the
+  // app was losing an argument with the platform.
+  useHistoryState('twView', activeView, (view) => switchTo(view));
+
+  // Pin the document while the workspace is mounted. Without this the page
+  // itself is scrollable behind a shell that manages its own overflow, so a
+  // drag moved the document instead of the pane under your finger — and a
+  // document with nothing to scroll only rubber-bands, which is why up and
+  // down felt identical. Removed on unmount so the lander and project list
+  // keep normal page scrolling.
+  useEffect(() => {
+    document.documentElement.classList.add('app-shell');
+    return () => document.documentElement.classList.remove('app-shell');
+  }, []);
 
   const handleSendMessage = (content: string, attachments?: Attachment[]) => {
     if (!currentChannelId) return;
@@ -779,6 +797,7 @@ export function ProjectWorkspace() {
 
       {/* ── Mobile Bottom Tab Bar ── */}
       <nav className={clsx(
+        'mobile-tab-bar',
         'md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t',
         darkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-200'
       )} style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
