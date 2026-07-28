@@ -797,6 +797,7 @@ export function ProjectWorkspace() {
 
       {/* ── Mobile Bottom Tab Bar ── */}
       <nav className={clsx(
+        'mobile-tab-bar',
         'md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t',
         darkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-200'
       )} style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>

@@ -53,6 +53,25 @@ button, [role="button"], a, summary, select {
   touch-action: manipulation;
 }
 
+/* While the keyboard is up, the mobile tab bar gets out of the way.
+ *
+ * It is `fixed bottom-0`, so it anchors to the LAYOUT viewport — which does not
+ * shrink when the keyboard opens. The bar therefore sat directly over the
+ * message composer, hiding the text as you typed it. Navigation you cannot use
+ * mid-sentence is worth less than seeing your own sentence.
+ *
+ * It comes straight back when the field is dismissed.
+ */
+html.keyboard-open .mobile-tab-bar {
+  display: none;
+}
+
+/* Panes that reserved room for that bar should reclaim it at the same time,
+ * or the layout keeps a strip of dead space where the bar used to be. */
+html.keyboard-open .pb-\\[calc\\(3\\.5rem\\+env\\(safe-area-inset-bottom\\,0px\\)\\)\\] {
+  padding-bottom: 0;
+}
+
 /* Long unbreakable strings must wrap.
  *
  * This is the actual cause of the sideways slide in chat, and it is worth
