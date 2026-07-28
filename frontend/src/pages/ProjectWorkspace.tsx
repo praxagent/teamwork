@@ -503,7 +503,7 @@ export function ProjectWorkspace() {
           hidden without leaving the library view. */}
       {((activeView === 'files') || (activeView === 'library' && !libraryHideChat)) && projectId && (
         <div className="order-1 md:order-none flex-shrink-0 flex flex-col h-[35vh] md:h-auto border-t md:border-t-0 border-slate-700">
-          <div className="flex-1 min-h-0 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
+          <div className="flex-1 min-h-0 flex flex-col pb-mobile-nav pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
             {activeView === 'library' ? (
               <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />
             ) : (
@@ -526,7 +526,7 @@ export function ProjectWorkspace() {
           panels (Terminal/Browser/Desktop/etc.) don't render under the
           nav.  Tailwind arbitrary value evaluates env() at runtime; the
           md:pb-0 override clears it on desktop where the nav isn't shown. */}
-      <div className={`flex-1 flex flex-col min-w-0 min-h-0 order-0 md:order-none pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 min-h-0 order-0 md:order-none pb-mobile-nav pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
 
         {/* Desktop Panel — full Linux desktop via noVNC */}
         {activeView === 'desktop' && (
@@ -801,13 +801,19 @@ export function ProjectWorkspace() {
         'md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t',
         darkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-200'
       )} style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-        <MobileTabButton
-          icon={Home}
-          label="Spaces"
-          active={activeView === 'spaces' || activeView === 'space'}
-          onClick={() => switchTo('spaces')}
-          darkMode={darkMode}
-        />
+        {/* Five slots is everything a phone gets, so they go to what you can
+            actually DO with a thumb.
+
+            Browser and Scheduler used to hold two of them. The browser tab is a
+            CDP screencast of a 1920x1080 desktop Chrome scaled onto a 390px
+            screen — you can see that something is happening, you cannot read
+            it. The scheduler is set-once admin, and was duplicated inside More
+            anyway. Meanwhile Tasks and Library — checking a board, moving a
+            card, reading a note, the two most thumb-native things in the
+            product — were buried under More.
+
+            Both keep their place in More, where an occasional surface belongs.
+            See docs/mobile-audit.md. */}
         <MobileTabButton
           icon={MessageSquare}
           label="Chat"
@@ -816,17 +822,24 @@ export function ProjectWorkspace() {
           darkMode={darkMode}
         />
         <MobileTabButton
-          icon={Globe}
-          label="Browser"
-          active={activeView === 'browser'}
-          onClick={() => switchTo('browser')}
+          icon={Home}
+          label="Spaces"
+          active={activeView === 'spaces' || activeView === 'space'}
+          onClick={() => switchTo('spaces')}
           darkMode={darkMode}
         />
         <MobileTabButton
-          icon={Timer}
-          label="Scheduler"
-          active={activeView === 'scheduler'}
-          onClick={() => switchTo('scheduler')}
+          icon={ListTodo}
+          label="Tasks"
+          active={activeView === 'tasks'}
+          onClick={() => switchTo('tasks')}
+          darkMode={darkMode}
+        />
+        <MobileTabButton
+          icon={Library}
+          label="Library"
+          active={activeView === 'library'}
+          onClick={() => switchTo('library')}
           darkMode={darkMode}
         />
         <div className="relative">
@@ -845,6 +858,10 @@ export function ProjectWorkspace() {
                 darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'
               )}>
                 <MobileMoreItem icon={ListTodo} label="Tasks" active={activeView === 'tasks'} onClick={() => { switchTo('tasks'); setMobileMoreOpen(false); }} darkMode={darkMode} />
+                {/* Browser lives here now rather than in the tab bar — it was
+                    never in this sheet, so removing it from the bar would have
+                    orphaned the panel entirely. */}
+                <MobileMoreItem icon={Globe} label="Browser" active={activeView === 'browser'} onClick={() => { switchTo('browser'); setMobileMoreOpen(false); }} darkMode={darkMode} />
                 <MobileMoreItem icon={TerminalSquare} label="Terminal" active={activeView === 'terminal'} onClick={() => { switchTo('terminal'); setMobileMoreOpen(false); }} darkMode={darkMode} />
                 <MobileMoreItem icon={Monitor} label="Desktop" active={activeView === 'desktop'} onClick={() => { switchTo('desktop'); setMobileMoreOpen(false); }} darkMode={darkMode} />
                 <MobileMoreItem icon={Code} label="Files" active={activeView === 'files'} onClick={() => { switchTo('files'); setMobileMoreOpen(false); }} darkMode={darkMode} />

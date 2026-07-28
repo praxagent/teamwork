@@ -171,9 +171,17 @@ function EmbeddedTerminal({
       }
     };
     window.addEventListener('resize', handleResize);
+    // Same as TerminalPanel: a mobile keyboard shrinks the VISUAL viewport
+    // only, so `window.resize` never fires and the pane keeps a height that no
+    // longer fits.
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', handleResize);
+    vv?.addEventListener('scroll', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      vv?.removeEventListener('resize', handleResize);
+      vv?.removeEventListener('scroll', handleResize);
       ws.close();
       term.dispose();
     };

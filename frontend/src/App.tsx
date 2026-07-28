@@ -52,16 +52,11 @@ function App() {
       root.setProperty('--app-height', `${vv.height}px`);
       root.setProperty('--app-top', `${vv.offsetTop}px`);
 
-      // Is the on-screen keyboard up? The visual viewport shrinks while the
-      // layout viewport does not, so the gap between them is the keyboard.
-      // 150px is comfortably more than the browser chrome that also comes and
-      // goes on scroll, and comfortably less than any real keyboard.
-      //
-      // This matters because the mobile tab bar is `fixed bottom-0`, which
-      // pins it to the LAYOUT bottom — so when the keyboard opens it sits
-      // squarely over the composer and you cannot see what you are typing.
-      const keyboardOpen = window.innerHeight - vv.height > 150;
-      document.documentElement.classList.toggle('keyboard-open', keyboardOpen);
+      // NOTE: keyboard detection is deliberately NOT done here. The obvious
+      // heuristic — `window.innerHeight - vv.height > 150` — was tried and does
+      // not work on iOS, where the layout viewport can shrink along with the
+      // visual one, leaving a difference near zero and the check silently
+      // false. See the focus listener below, which asks the question directly.
     };
     update();
     vv.addEventListener('resize', update);
@@ -69,6 +64,41 @@ function App() {
     return () => {
       vv.removeEventListener('resize', update);
       vv.removeEventListener('scroll', update);
+    };
+  }, []);
+
+  // Is a text field focused? That is the question worth asking — not "how tall
+  // is the viewport", which was the first attempt and failed on the platform it
+  // was written for.
+  //
+  // The mobile tab bar is `fixed bottom-0`, so it anchors to the bottom of the
+  // visible area and sits over the message composer while you type. Focus is
+  // deterministic: the field either has it or it does not, on every browser,
+  // with no threshold to tune and nothing to be wrong about.
+  useEffect(() => {
+    const isTextField = (el: EventTarget | null) => {
+      const node = el as HTMLElement | null;
+      if (!node || !node.tagName) return false;
+      const tag = node.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || node.isContentEditable;
+    };
+    const onFocus = (e: FocusEvent) => {
+      if (isTextField(e.target)) {
+        document.documentElement.classList.add('keyboard-open');
+      }
+    };
+    const onBlur = (e: FocusEvent) => {
+      // relatedTarget is where focus is GOING. Moving between two fields should
+      // not flash the bar back for one frame.
+      if (isTextField(e.target) && !isTextField(e.relatedTarget)) {
+        document.documentElement.classList.remove('keyboard-open');
+      }
+    };
+    document.addEventListener('focusin', onFocus);
+    document.addEventListener('focusout', onBlur);
+    return () => {
+      document.removeEventListener('focusin', onFocus);
+      document.removeEventListener('focusout', onBlur);
     };
   }, []);
 
