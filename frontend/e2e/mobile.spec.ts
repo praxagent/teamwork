@@ -18,10 +18,17 @@
  * Run against a live instance:
  *   BASE_URL=https://teamwork.your-tailnet.ts.net npx playwright test e2e/mobile.spec.ts
  *
- * NOT covered here, and worth being explicit about: the on-screen KEYBOARD.
- * Playwright cannot summon one, so `visualViewport` never shrinks and the
- * composer-hidden-by-the-tab-bar class of bug stays device-only. Focus events
- * fire, so the class toggle is checkable; the geometry it exists to fix is not.
+ * The KEYBOARD is more testable than it first appears. Playwright cannot summon
+ * one, so `visualViewport` never shrinks — but a keyboard only ever appears
+ * BECAUSE a field took focus, and focus is fully driveable. So the chain
+ *
+ *     field focused  ->  html.keyboard-open  ->  tab bar hidden, padding released
+ *
+ * can be verified link by link here. What remains device-only is narrow: whether
+ * the visual viewport lands exactly where we expect once the keyboard is up.
+ * (An Android emulator would close even that, but this build machine has no
+ * /dev/kvm and no vmx/svm flags, so an AVD would run in software at ~10-50x
+ * slowdown — too slow to be a test loop.)
  */
 import { devices, expect, test, type Page } from '@playwright/test';
 
@@ -136,5 +143,54 @@ test.describe('mobile layout', () => {
       return bad.slice(0, 5);
     });
     expect(clipped, 'content is clipped with no way to scroll to it').toEqual([]);
+  });
+});
+
+test.describe('keyboard', () => {
+  test('focusing a text field hides the tab bar and releases its padding', async ({ page }) => {
+    await openWorkspace(page);
+
+    const bar = page.locator('.mobile-tab-bar');
+    await expect(bar, 'the bar should be visible before typing').toBeVisible();
+
+    // The composer lives in Chat; a fresh context can land on another tab.
+    await page.locator('.mobile-tab-bar button', { hasText: 'Chat' }).click();
+    const field = page.locator('textarea, input[type="text"]').first();
+    await expect(field, 'no composer found in Chat').toBeVisible({ timeout: 15_000 });
+    await field.focus();
+
+    // The class the CSS hangs on.
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.classList.contains('keyboard-open')),
+            { message: 'focusing a field did not mark the document' })
+      .toBe(true);
+
+    // And what it is FOR: the bar that was covering the composer.
+    await expect(bar, 'the tab bar still covers the composer while typing').toBeHidden();
+
+    // Panes reserve room for the bar; they must give it back at the same
+    // moment or a strip of dead space sits where it was.
+    const padding = await page.evaluate(() => {
+      const el = document.querySelector('.pb-mobile-nav') as HTMLElement | null;
+      return el ? getComputedStyle(el).paddingBottom : null;
+    });
+    if (padding !== null) {
+      expect(padding, 'the reserved strip was not reclaimed').toBe('0px');
+    }
+  });
+
+  test('blurring brings the tab bar back', async ({ page }) => {
+    await openWorkspace(page);
+    await page.locator('.mobile-tab-bar button', { hasText: 'Chat' }).click();
+    const field = page.locator('textarea, input[type="text"]').first();
+    await expect(field).toBeVisible({ timeout: 15_000 });
+    await field.focus();
+    await expect(page.locator('.mobile-tab-bar')).toBeHidden();
+
+    await field.blur();
+    await expect(
+      page.locator('.mobile-tab-bar'),
+      'navigation must come back when you stop typing',
+    ).toBeVisible();
   });
 });
