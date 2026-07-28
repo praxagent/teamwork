@@ -53,23 +53,27 @@ button, [role="button"], a, summary, select {
   touch-action: manipulation;
 }
 
-/* While the keyboard is up, the mobile tab bar gets out of the way.
+/* While a text field is focused, the mobile tab bar gets out of the way.
  *
- * It is `fixed bottom-0`, so it anchors to the LAYOUT viewport — which does not
- * shrink when the keyboard opens. The bar therefore sat directly over the
- * message composer, hiding the text as you typed it. Navigation you cannot use
- * mid-sentence is worth less than seeing your own sentence.
+ * It is `fixed bottom-0`, so it anchors to the bottom of the visible area and
+ * sits directly over the message composer — you cannot see what you are typing.
  *
- * It comes straight back when the field is dismissed.
+ * The class is set from a focusin/focusout listener rather than from viewport
+ * arithmetic. The first attempt compared window.innerHeight to
+ * visualViewport.height and assumed only the latter shrinks; on iOS both can,
+ * so the difference stayed near zero and the rule never applied. Focus is a
+ * fact, not an estimate.
  */
 html.keyboard-open .mobile-tab-bar {
   display: none;
 }
 
-/* Panes that reserved room for that bar should reclaim it at the same time,
- * or the layout keeps a strip of dead space where the bar used to be. */
-html.keyboard-open .pb-\\[calc\\(3\\.5rem\\+env\\(safe-area-inset-bottom\\,0px\\)\\)\\] {
-  padding-bottom: 0;
+/* Panes reserve room for that bar. They must give it back at the same moment,
+ * or a strip of dead space sits where the bar was. Targeted by a named class:
+ * the previous version escaped every bracket of the generated Tailwind class,
+ * which is unreadable and was never verified to match. */
+html.keyboard-open .pb-mobile-nav {
+  padding-bottom: 0 !important;
 }
 
 /* Long unbreakable strings must wrap.

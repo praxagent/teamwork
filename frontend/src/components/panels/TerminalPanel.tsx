@@ -121,9 +121,22 @@ export function TerminalPanel({ projectId, isVisible, onClose }: TerminalPanelPr
       }
     };
     window.addEventListener('resize', handleResize);
+    // The window does NOT fire `resize` when a mobile keyboard opens — the
+    // layout viewport is unchanged, only the VISUAL one shrinks. So xterm kept
+    // its pre-keyboard height and its lower half sat behind the keyboard, which
+    // reads as the tab bar covering half the terminal. Listening to the visual
+    // viewport is what actually observes that change.
+    //
+    // `scroll` as well as `resize`: Safari also shifts the visual viewport when
+    // it brings a focused element into view, without resizing anything.
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', handleResize);
+    vv?.addEventListener('scroll', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      vv?.removeEventListener('resize', handleResize);
+      vv?.removeEventListener('scroll', handleResize);
       ws.close();
       wsRef.current = null;
       term.dispose();

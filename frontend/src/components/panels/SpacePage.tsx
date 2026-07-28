@@ -404,7 +404,7 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
                             value={editingNoteBody}
                             onChange={(e) => setEditingNoteBody(e.target.value)}
                             className={clsx(
-                              'min-h-[60vh] w-full resize-y rounded-xl border p-4 font-mono text-sm outline-none',
+                              'min-h-[60svh] w-full resize-y rounded-xl border p-4 font-mono text-sm outline-none',
                               dark ? 'border-slate-700 bg-slate-950 text-slate-100' : 'border-gray-200 bg-white text-slate-900',
                             )}
                           />
@@ -1073,10 +1073,10 @@ function SpaceFiles({ spaceSlug, dark }: { spaceSlug: string; dark: boolean }) {
                   // never cost you the composer.
                   <div className={clsx('mt-2 rounded-lg overflow-hidden border', border)}>
                     {isImage && (
-                      <img src={url} alt={file.name} className="max-w-full max-h-[50vh] md:max-h-96 mx-auto" />
+                      <img src={url} alt={file.name} className="max-w-full max-h-[50svh] md:max-h-96 mx-auto" />
                     )}
                     {isPdf && (
-                      <iframe src={url} className="w-full h-[55vh] md:h-[600px]" title={file.name} />
+                      <iframe src={url} className="w-full h-[55svh] md:h-[600px]" title={file.name} />
                     )}
                     {isAudio && (
                       <audio controls className="w-full p-4" src={url}>
@@ -1084,7 +1084,7 @@ function SpaceFiles({ spaceSlug, dark }: { spaceSlug: string; dark: boolean }) {
                       </audio>
                     )}
                     {isVideo && (
-                      <video controls className="w-full max-h-[50vh] md:max-h-96" src={url}>
+                      <video controls className="w-full max-h-[50svh] md:max-h-96" src={url}>
                         Your browser does not support the video element.
                       </video>
                     )}
