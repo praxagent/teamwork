@@ -502,7 +502,7 @@ export function ProjectWorkspace() {
           own header toggle (libraryHideChat) so the chat column can be
           hidden without leaving the library view. */}
       {((activeView === 'files') || (activeView === 'library' && !libraryHideChat)) && projectId && (
-        <div className="order-1 md:order-none flex-shrink-0 flex flex-col h-[35vh] md:h-auto border-t md:border-t-0 border-slate-700">
+        <div className="order-1 md:order-none flex-shrink-0 flex flex-col h-[35svh] md:h-auto border-t md:border-t-0 border-slate-700">
           <div className="flex-1 min-h-0 flex flex-col pb-mobile-nav pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
             {activeView === 'library' ? (
               <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />

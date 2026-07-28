@@ -16,6 +16,7 @@ import { clsx } from 'clsx';
 import {
   Star, Target, Calendar, Archive as ArchiveIcon,
   CheckCircle2, Pause, X, Plus, Layout, Loader2,
+  Archive,
 } from 'lucide-react';
 import { useLibrary, useCreateLibrarySpace } from '@/hooks/useApi';
 import type { LibrarySpace } from '@/hooks/useApi';
@@ -53,27 +54,36 @@ export function HomeDashboard({ isVisible, onOpenProject }: Props) {
 
   return (
     <div className={clsx('flex-1 flex flex-col min-w-0', bg)}>
-      <div className={clsx('px-6 py-4 border-b flex items-center gap-3', border)}>
-        <Layout className={clsx('w-5 h-5', dark ? 'text-indigo-400' : 'text-indigo-600')} />
-        <h2 className={clsx('text-xl font-bold flex-1', t1)}>Spaces</h2>
+      {/* Header sized for a phone first. At 390px, "New Space" wrapped onto
+          two lines and "Show archived" onto two more, so the header ate ~250px
+          of screen before any content — chrome outweighing the page. Labels
+          shrink to their essentials on mobile ("New", an icon-only archive
+          toggle) and expand at md. whitespace-nowrap because a wrapped button
+          label is how this was discovered in a screenshot. */}
+      <div className={clsx('px-4 md:px-6 py-3 md:py-4 border-b flex items-center gap-2 md:gap-3', border)}>
+        <Layout className={clsx('w-5 h-5 shrink-0', dark ? 'text-indigo-400' : 'text-indigo-600')} />
+        <h2 className={clsx('text-xl font-bold flex-1 truncate', t1)}>Spaces</h2>
         <button
           onClick={() => setCreating(true)}
           className={clsx(
-            'px-3 py-1.5 rounded-lg text-sm font-medium text-white',
+            'px-3 py-1.5 rounded-lg text-sm font-medium text-white whitespace-nowrap shrink-0',
             dark ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-indigo-600 hover:bg-indigo-500',
           )}
         >
           <Plus className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
-          New Space
+          <span className="hidden md:inline">New Space</span>
+          <span className="md:hidden">New</span>
         </button>
         <button
           onClick={() => setShowArchived((v) => !v)}
+          title={showArchived ? 'Hide archived spaces' : 'Show archived spaces'}
           className={clsx(
-            'text-xs px-2 py-1 rounded',
+            'text-xs px-2 py-1.5 rounded whitespace-nowrap shrink-0 min-h-[36px] flex items-center',
             dark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-gray-200',
           )}
         >
-          {showArchived ? 'Hide archived' : 'Show archived'}
+          <Archive className="w-4 h-4 md:hidden" />
+          <span className="hidden md:inline">{showArchived ? 'Hide archived' : 'Show archived'}</span>
         </button>
       </div>
 

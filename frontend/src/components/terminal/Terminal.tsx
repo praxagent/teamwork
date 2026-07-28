@@ -150,9 +150,17 @@ function TerminalTab({ projectId, mode, startClaude, isActive, onActivate }: Ter
     };
 
     window.addEventListener('resize', handleResize);
+    // window.resize never fires when a mobile keyboard opens — only the visual
+    // viewport shrinks — so without this the terminal keeps a height that no
+    // longer fits and its lower half sits behind the keyboard.
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', handleResize);
+    vv?.addEventListener('scroll', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      vv?.removeEventListener('resize', handleResize);
+      vv?.removeEventListener('scroll', handleResize);
       ws.close();
       term.dispose();
     };
@@ -248,7 +256,7 @@ export function Terminal({ projectId, mode, startClaude = false, onClose }: Term
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-lg shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden">
+      <div className="bg-gray-900 rounded-lg shadow-2xl w-full max-w-6xl h-[85svh] flex flex-col overflow-hidden">
         {/* Tab Bar */}
         <div className="flex items-center bg-gray-800 border-b border-gray-700">
           <div className="flex-1 flex items-center overflow-x-auto">

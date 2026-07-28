@@ -143,7 +143,7 @@ export function ProfileModal({ agent, activities = [], onClose, onSendMessage, i
   if (showPromptEditor) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className={`${darkMode ? 'bg-slate-800 text-gray-100' : 'bg-white text-gray-900'} rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col`}>
+        <div className={`${darkMode ? 'bg-slate-800 text-gray-100' : 'bg-white text-gray-900'} rounded-lg shadow-xl max-w-4xl w-full max-h-[90svh] overflow-hidden flex flex-col`}>
           {/* Header */}
           <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-slate-700' : 'border-gray-200'}`}>
             <div className="flex items-center gap-3">
@@ -238,7 +238,7 @@ export function ProfileModal({ agent, activities = [], onClose, onSendMessage, i
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className={`${darkMode ? 'bg-slate-800' : 'bg-white'} rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col`}>
+      <div className={`${darkMode ? 'bg-slate-800' : 'bg-white'} rounded-lg shadow-xl max-w-2xl w-full max-h-[90svh] overflow-hidden flex flex-col`}>
         {/* Header */}
         <div className="relative bg-gradient-to-r from-indigo-600 to-violet-600 h-32">
           <button

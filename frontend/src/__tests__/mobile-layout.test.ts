@@ -69,3 +69,40 @@ describe('mobile layout', () => {
     ).toEqual([]);
   });
 });
+
+  it('uses svh, not vh, for mobile pane heights', () => {
+    // On iOS `vh` is the LARGE viewport — as if browser chrome were hidden —
+    // so an h-[40vh] pane is taller than 40% of what is actually visible and
+    // can be pushed past the bottom edge. `svh` is the small viewport, the one
+    // that is always really there. Desktop-only values (md:h-…) are exempt:
+    // desktop browsers do not have the dual-viewport problem.
+    const offenders: string[] = [];
+    for (const file of tsxFiles(SRC)) {
+      readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+        const mobileVh = /(?<!md:)h-\[\d+vh\]/.test(line) || /max-h-\[\d+vh\](?!.*md:)/.test(line);
+        if (mobileVh && !line.includes('svh') && !line.includes('dvh')) {
+          offenders.push(`${file.replace(SRC, '')}:${i + 1}`);
+        }
+      });
+    }
+    expect(offenders, 'vh on a mobile pane overflows the visible area on iOS — '
+      + 'use svh (always-visible viewport) or dvh').toEqual([]);
+  });
+
+  it('pairs every window resize listener with a visualViewport one', () => {
+    // window.resize never fires when a mobile keyboard opens — only the visual
+    // viewport shrinks. A pane that refits on window.resize alone keeps a
+    // height that no longer fits and its lower half sits behind the keyboard.
+    // This is how the terminal lost its bottom half.
+    const offenders: string[] = [];
+    for (const file of tsxFiles(SRC)) {
+      const text = readFileSync(file, 'utf8');
+      const listens = text.includes("addEventListener('resize'")
+        && text.includes('window.addEventListener');
+      if (listens && !text.includes('visualViewport')) {
+        offenders.push(file.replace(SRC, ''));
+      }
+    }
+    expect(offenders, 'a resize listener without a visualViewport listener '
+      + 'will not see the keyboard').toEqual([]);
+  });

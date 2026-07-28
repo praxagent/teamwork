@@ -1561,7 +1561,7 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
       {/* Refine preview modal */}
       {refinePreview && (
         <Modal onClose={() => setRefinePreview(null)} dark={dark}>
-          <div className="p-4 space-y-3 w-[800px] max-h-[80vh] flex flex-col">
+          <div className="p-4 space-y-3 w-[800px] max-h-[80svh] flex flex-col">
             <h3 className={clsx('text-base font-semibold flex items-center gap-2', t1)}>
               <Sparkles className="w-4 h-4 text-indigo-500" /> Review the refinement
             </h3>
