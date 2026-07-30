@@ -1113,6 +1113,17 @@ export function GraphPanel({ projectId, isVisible, onClose, focusTraceId }: Grap
                             source but never said when — so the one question you
                             open an old trace to answer was the one thing the
                             detail view could not tell you. */}
+                        {/* What the turn cost. None/undefined renders nothing:
+                            unknown pricing is not $0.00, and showing zero would
+                            claim the turn was free. */}
+                        {typeof (selectedGraph as any).cost_estimate_usd === 'number' && (
+                          <span
+                            className={`text-[11px] font-mono ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}
+                            title={`≈ estimated from recorded token usage (${(selectedGraph as any).tokens_in ?? '?'} in / ${(selectedGraph as any).tokens_out ?? '?'} out)`}
+                          >
+                            ≈${(selectedGraph as any).cost_estimate_usd.toFixed(3)}
+                          </span>
+                        )}
                         {(() => {
                           const root = selectedGraph.nodes.find(
                             (n) => !n.parent_id ||
