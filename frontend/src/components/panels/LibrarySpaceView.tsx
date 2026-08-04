@@ -446,8 +446,14 @@ export function LibrarySpaceView({ project, dark, onClose, embedded }: Props) {
             )}
           </div>
 
-          <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
-            <div className="flex gap-3 h-full min-w-max mx-auto justify-center">
+          {/* Desktop: columns are full-height and scroll internally, so the
+              board itself must not scroll vertically. Mobile: a column is
+              taller than the screen, and overflow-y-hidden made everything
+              below the fold unreachable — you could scroll sideways but not
+              down. Below md the board scrolls vertically and the columns
+              size to their content instead of fighting for a bounded height. */}
+          <div className="flex-1 overflow-x-auto overflow-y-auto md:overflow-y-hidden p-4">
+            <div className="flex gap-3 h-auto md:h-full min-w-max mx-auto justify-center items-start md:items-stretch">
               {columns.map((col: LibraryTaskColumn) => {
                 const isDropTarget = dragOverColumn === col.id;
                 return (
@@ -513,7 +519,10 @@ export function LibrarySpaceView({ project, dark, onClose, embedded }: Props) {
                       )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                    {/* On mobile the board scrolls, so a column must grow to
+                        its content; an inner overflow-y-auto here would create
+                        a second, nested scroll region that traps the gesture. */}
+                    <div className="flex-1 md:overflow-y-auto p-2 space-y-2">
                       {(tasksByColumn[col.id] ?? []).map((task) => (
                         <TaskCard
                           key={task.id}
