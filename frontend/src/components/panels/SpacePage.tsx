@@ -637,15 +637,25 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
         )}
         {showingSpaceChat && (
           <div className={clsx(
-            'w-full md:w-[var(--chat-w)] flex flex-col shrink-0 min-h-0',
-            'border-t md:border-t-0 md:border-l',
+            'flex flex-col min-h-0',
+            // MOBILE: an overlay sheet, not a flex sibling. As a sibling it
+            // competed with the tab content for height, so on a tall board it
+            // was pushed below the fold and simply never appeared. Fixed to
+            // the bottom above everything, it always shows when toggled.
+            // z-40 clears the mobile tab bar (z-30), and the sheet sits ON
+            // TOP of it rather than behind: 'over content' is the whole point.
+            // pb-mobile-nav gives the bar its 3.5rem back, and the CSS rule
+            // zeroes that padding the moment the keyboard opens and the bar
+            // hides — otherwise a dead strip sits under the composer.
+            'fixed inset-x-0 bottom-0 z-40 h-[60svh] min-h-[12rem] border-t shadow-2xl',
+            'pb-mobile-nav pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0',
+            // DESKTOP: back to the resizable in-flow column it was.
+            'md:static md:inset-auto md:z-auto md:h-auto md:min-h-0 md:shadow-none',
+            'md:w-[var(--chat-w)] md:shrink-0 md:border-t-0 md:border-l',
             // svh, not vh: on iOS `vh` is the LARGE viewport — the height as
-            // if the browser chrome were hidden — so a 40vh pane is taller than
-            // 40% of what you can actually see, and with shrink-0 it can be
-            // pushed past the bottom edge. `svh` is the small viewport, which
-            // is the one that is always really there. A floor keeps it usable
-            // rather than a sliver on a short screen.
-            'h-[45svh] min-h-[10rem] md:h-auto md:min-h-0',
+            // if the browser chrome were hidden — so a 60vh pane is taller than
+            // 60% of what you can actually see and runs past the bottom edge.
+            // `svh` is the small viewport, the one that is always really there.
           )}
             style={{
               borderColor: 'var(--space-accent-border)',
