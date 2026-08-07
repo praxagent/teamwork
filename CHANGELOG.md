@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.22.0](https://github.com/praxagent/teamwork/compare/v0.21.0...v0.22.0) (2026-08-07)
+
+
+### Features
+
+* **graphs:** cost badge on trace detail — tokens tooltip, hidden when cost unknown (never $0.00) ([#61](https://github.com/praxagent/teamwork/issues/61)) ([c7ee522](https://github.com/praxagent/teamwork/commit/c7ee52221208fb557bb3449a7da883e5d28a9c1b))
+
+
+### Bug Fixes
+
+* **mobile:** structural refactor — sheets, drill-in, and column peek ([#64](https://github.com/praxagent/teamwork/issues/64)) ([6ec8558](https://github.com/praxagent/teamwork/commit/6ec8558e09d79a47173dfa426240bc40a37e0658))
+* **spaces:** mobile board could not scroll down, and chat never appeared ([#63](https://github.com/praxagent/teamwork/issues/63)) ([a1a31f9](https://github.com/praxagent/teamwork/commit/a1a31f9506ebccec17651ca2cc26c7cde05bbd56))
+
 ## [0.21.0](https://github.com/praxagent/teamwork/compare/v0.20.0...v0.21.0) (2026-07-26)
 
 
