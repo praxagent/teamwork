@@ -27,7 +27,9 @@ export function TerminalPanel({ projectId, isVisible, onClose }: TerminalPanelPr
   useEffect(() => { lockedRef.current = locked; }, [locked]);
   const [error, setError] = useState<string | null>(null);
   const [reconnectKey, setReconnectKey] = useState(0);
-  const [showChat, setShowChat] = useState(true);
+  // Closed by default on a phone: the sheet covers 60% of the tool the
+  // moment it opens, so it must be a deliberate tap, not the landing state.
+  const [showChat, setShowChat] = useState(() => window.matchMedia('(min-width: 768px)').matches);
 
   // Re-fit xterm when the chat toggle changes the terminal's available width.
   useEffect(() => {
@@ -245,11 +247,12 @@ export function TerminalPanel({ projectId, isVisible, onClose }: TerminalPanelPr
         </div>
 
         {showChat && projectId && (
-          // Mobile: this wrapper is a 50% flex row (terminal gets the other
-          // half). Desktop: md:contents removes the wrapper box so the
-          // sidebar is a direct flex child and keeps its resizable width
-          // (.browser-chat-sidebar in index.css).
-          <div className="flex-1 min-h-0 md:contents">
+          // display:contents at EVERY size. The old mobile branch made this a
+          // 50% flex row ("terminal gets the other half") — which is exactly
+          // the crush the sidebar's sheet mode now replaces. The sidebar is
+          // position:fixed on mobile, so it must not participate in this flex
+          // row at all; on desktop `contents` is what it already was.
+          <div className="contents">
             <BrowserChatSidebar
               projectId={projectId}
               activeView="terminal"

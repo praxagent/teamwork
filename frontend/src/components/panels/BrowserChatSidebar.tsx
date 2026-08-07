@@ -144,9 +144,20 @@ export function BrowserChatSidebar({ projectId, activeView, onTraceClick, conten
   return (
     <div
       ref={containerRef}
-      className={`flex flex-col h-full md:border-r relative ${darkMode ? 'border-slate-700 bg-slate-900' : 'border-gray-200 bg-gray-50'} browser-chat-sidebar`}
+      className={`flex flex-col relative ${darkMode ? 'border-slate-700 bg-slate-900' : 'border-gray-200 bg-gray-50'} browser-chat-sidebar
+        fixed inset-x-0 bottom-0 z-40 h-[60svh] min-h-[12rem] border-t shadow-2xl
+        pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]
+        md:pb-0 md:static md:inset-auto md:z-auto md:h-full md:min-h-0 md:shadow-none md:border-t-0 md:border-r`}
       style={{ '--bcs-width': `${width}px` } as React.CSSProperties}
     >
+      {/* MOBILE: a bottom sheet OVER the tool surface, not a flex sibling
+          beside/below it. As a sibling it took ~half the viewport, so the
+          terminal showed three lines of shell above an empty half-screen
+          chat, and the browser screencast was crushed the same way — the
+          exact failure SpacePage already solved (see its sheet comments for
+          the svh / z-index / keyboard-padding reasoning; this mirrors it).
+          DESKTOP (md:) is byte-for-byte the old layout: static, full-height,
+          right border, resizable via --bcs-width. */}
       {/* Header */}
       <div className={`px-4 py-3 border-b ${darkMode ? 'border-slate-700' : 'border-gray-200'}`}>
         <div className="flex items-center gap-2">

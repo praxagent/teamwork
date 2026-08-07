@@ -502,7 +502,13 @@ export function ProjectWorkspace() {
           own header toggle (libraryHideChat) so the chat column can be
           hidden without leaving the library view. */}
       {((activeView === 'files') || (activeView === 'library' && !libraryHideChat)) && projectId && (
-        <div className="order-1 md:order-none flex-shrink-0 flex flex-col h-[35svh] md:h-auto border-t md:border-t-0 border-slate-700">
+        // MOBILE: hidden. This wrapper hard-coded a 35svh chat band stacked
+        // under the panel — the third of three zones squeezing the explorer.
+        // On a phone the companion chat is the panel-owned bottom SHEET
+        // (FileBrowser's own toggle opens it over the file view), and the main
+        // Chat tab is one tap away; a permanently-open second chat is exactly
+        // what made these views unusable. Desktop keeps the in-flow column.
+        <div className="hidden md:flex order-1 md:order-none flex-shrink-0 flex-col h-[35svh] md:h-auto border-t md:border-t-0 border-slate-700">
           <div className="flex-1 min-h-0 flex flex-col pb-mobile-nav pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
             {activeView === 'library' ? (
               <BrowserChatSidebar projectId={projectId} activeView={activeView} onTraceClick={handleTraceClick} contentContext={contentContext} />

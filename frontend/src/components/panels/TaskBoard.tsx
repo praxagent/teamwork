@@ -542,8 +542,12 @@ export function TaskBoard({ projectId, agents, isCoachingProject, onWatchLive }:
       </div>
 
       {/* Columns */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        <div className="flex gap-4 p-4 h-full min-w-max">
+      {/* MOBILE: scroll-snap per column, sized to ~85vw so the next column
+          PEEKS at the edge — the affordance that there is more board. Without
+          it, cards clipped mid-word at the viewport edge with no hint that a
+          swipe would reveal them. Desktop keeps free horizontal scrolling. */}
+      <div className="flex-1 overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:snap-none">
+        <div className="flex gap-3 md:gap-4 p-3 md:p-4 h-full min-w-max">
           {COLUMNS.map((col) => {
             const tasks = tasksByColumn[col.status];
             const isCreatingHere = creatingInColumn === col.status;
@@ -552,7 +556,7 @@ export function TaskBoard({ projectId, agents, isCoachingProject, onWatchLive }:
               <div
                 key={col.status}
                 className={clsx(
-                  'flex flex-col w-72 rounded-lg border-t-2 border',
+                  'flex flex-col w-[85vw] max-w-[20rem] snap-start md:w-72 md:max-w-none rounded-lg border-t-2 border',
                   col.accent,
                   columnBorder,
                   darkMode ? 'bg-slate-800/40' : 'bg-white/60',

@@ -89,7 +89,9 @@ function isTeamWorkShortcut(e: KeyboardEvent): boolean {
 
 export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
   const dark = useUIStore((s) => s.darkMode);
-  const [showChat, setShowChat] = useState(true);
+  // Closed by default on a phone: the sheet covers 60% of the tool the
+  // moment it opens, so it must be a deliberate tap, not the landing state.
+  const [showChat, setShowChat] = useState(() => window.matchMedia('(min-width: 768px)').matches);
   const [toast, setToast] = useState<string | null>(null);
   const [keyboardCaptured, setKeyboardCaptured] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -404,7 +406,7 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
         {showChat && projectId && (
           // Mobile: 50% flex row (desktop gets the other half). Desktop:
           // md:contents drops the wrapper so the sidebar keeps its width.
-          <div className="flex-1 min-h-0 md:contents">
+          <div className="contents">
             <BrowserChatSidebar
               projectId={projectId}
               activeView="desktop"
