@@ -36,7 +36,9 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
   const [error, setError] = useState<string | null>(null);
   const [browserAvailable, setBrowserAvailable] = useState<boolean | null>(null);
   const [wsDebug, setWsDebug] = useState('');
-  const [showChat, setShowChat] = useState(true);
+  // Closed by default on a phone: the sheet covers 60% of the tool the
+  // moment it opens, so it must be a deliberate tap, not the landing state.
+  const [showChat, setShowChat] = useState(() => window.matchMedia('(min-width: 768px)').matches);
   const screenSize = useRef({ width: 1280, height: 900 });
 
   // Tab-cast state: A+V stream of the active sandbox-Chrome tab.  The
@@ -603,7 +605,7 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
         {showChat && projectId && (
           // Mobile: 50% flex row (canvas gets the other half). Desktop:
           // md:contents drops the wrapper so the sidebar keeps its width.
-          <div className="flex-1 min-h-0 md:contents">
+          <div className="contents">
             <BrowserChatSidebar
               projectId={projectId}
               activeView="browser"

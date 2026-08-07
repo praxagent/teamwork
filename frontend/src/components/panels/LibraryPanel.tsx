@@ -25,7 +25,7 @@ import {
   Trash2, Save, Pencil, User, Sparkles, Lock, Unlock, ArrowRightCircle,
   Settings, FileCode, Archive, Inbox, Network, Stethoscope, Play,
   Link as LinkIcon, AlertTriangle, CheckCircle, Circle, Clock,
-  RefreshCw, MessageSquare, StickyNote, Home,
+  RefreshCw, MessageSquare, StickyNote, Home, ChevronLeft,
 } from 'lucide-react';
 import {
   useLibrary,
@@ -424,8 +424,15 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
 
   return (
     <div className={clsx('flex-1 flex min-w-0 min-h-0 h-full', bg)}>
-      {/* ── Sidebar ──────────────────────────────── */}
-      <div className={clsx('w-72 border-r overflow-y-auto shrink-0 min-h-0', border, sidebarBg)}>
+      {/* ── Sidebar ──────────────────────────────────────────────────
+          MOBILE: drill-in — the sidebar IS the screen until something is
+          opened (mainView leaves 'empty' or a note is being created), then
+          it yields entirely to the main pane. The old fixed w-72 beside a
+          flex-1 pane left the note a text-wrapped sliver on a 390px phone.
+          mainView doubles as the navigation state; desktop is untouched. */}
+      <div className={clsx(
+        mainView.kind === 'empty' && !creatingNoteIn ? 'flex flex-col w-full' : 'hidden md:block',
+        'md:w-72 border-r overflow-y-auto shrink-0 min-h-0', border, sidebarBg)}>
         <div className={clsx('px-3 py-2.5 flex items-center justify-between border-b sticky top-0 z-10', border, sidebarBg)}>
           <div className="flex items-center gap-2">
             <FolderOpen className={clsx('w-4 h-4', dark ? 'text-indigo-400' : 'text-indigo-600')} />
@@ -800,8 +807,20 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
         })}
       </div>
 
-      {/* ── Main pane ───────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+      {/* ── Main pane — on mobile, only once something is opened ── */}
+      <div className={clsx(
+        mainView.kind === 'empty' && !creatingNoteIn ? 'hidden md:flex' : 'flex',
+        'flex-1 flex-col min-w-0 min-h-0 overflow-hidden')}>
+        {/* Mobile back to the library nav — mirrors FileBrowser's drill-in. */}
+        {(mainView.kind !== 'empty' || creatingNoteIn) && (
+          <button
+            onClick={() => { setMainView({ kind: 'empty' }); setCreatingNoteIn(null); }}
+            className={clsx('md:hidden flex items-center gap-1.5 px-3 py-2.5 border-b text-sm font-medium',
+              border, dark ? 'text-gray-300 active:bg-slate-800' : 'text-gray-600 active:bg-gray-100')}
+          >
+            <ChevronLeft className="w-4 h-4" /> Library
+          </button>
+        )}
         {creatingNoteIn && (
           <div className={clsx('px-4 py-3 border-b space-y-2', border)}>
             <div className={clsx('text-xs font-semibold', t1)}>

@@ -16,6 +16,7 @@ import {
   Save,
   MessageSquare,
   Download,
+  ChevronLeft,
 } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -254,9 +255,14 @@ export function FileBrowser({ projectId, onOpenClaudePanel }: FileBrowserProps) 
 
   return (
     <div className={`flex-1 flex min-h-0 ${panelBg}`}>
-      {/* Left: Tree view */}
+      {/* Left: Tree view.
+          MOBILE: drill-in navigation — this pane IS the screen until a file
+          is picked, then it yields entirely to the viewer (a fixed w-72
+          beside a flex-1 viewer left the viewer ~100px on a 390px phone).
+          Selection doubles as the navigation state, so no new state and
+          desktop is untouched. */}
       <div
-        className={`w-72 flex-shrink-0 flex flex-col border-r ${borderColor} ${treeBg}`}
+        className={`${selectedFilePath ? 'hidden md:flex' : 'flex w-full'} md:w-72 flex-shrink-0 flex-col border-r ${borderColor} ${treeBg}`}
       >
         {/* Tree header */}
         <div
@@ -359,14 +365,21 @@ export function FileBrowser({ projectId, onOpenClaudePanel }: FileBrowserProps) 
         </div>
       </div>
 
-      {/* Right: File content viewer */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Right: File content viewer — on mobile, only once a file is picked. */}
+      <div className={`${selectedFilePath ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>
         {selectedFilePath ? (
           <>
             {/* File header */}
             <div
               className={`px-4 py-2 flex items-center gap-2 border-b ${borderColor} flex-shrink-0`}
             >
+              <button
+                onClick={() => setSelectedFilePath(null)}
+                className={`md:hidden -ml-1 p-1.5 rounded min-w-[44px] min-h-[44px] flex items-center justify-center ${darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                aria-label="Back to file list"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
               <FileIcon fileName={selectedFilePath.split('/').pop() || ''} />
               <span className={`text-sm font-medium truncate ${textPrimary}`}>
                 {selectedFilePath}
