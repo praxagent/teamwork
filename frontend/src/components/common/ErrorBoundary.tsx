@@ -25,6 +25,13 @@ interface Props {
   fallback?: ReactNode;
   /** Remount children when any of these change (e.g. the selected channel). */
   resetKeys?: unknown[];
+  /**
+   * 'panel' (default) isolates one widget; 'root' is the last-line-of-defence
+   * boundary around the whole app. They must not say the same thing: the root
+   * one telling a user "the rest of the app is still working" is false, and it
+   * sent a 2026-08-30 React #310 (a hook-order bug) to be read as an outage.
+   */
+  scope?: 'panel' | 'root';
 }
 
 interface State {
@@ -69,8 +76,15 @@ export class ErrorBoundary extends Component<Props, State> {
           <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-amber-500" />
           <p className="font-medium text-gray-700 dark:text-gray-200">{label} couldn’t load</p>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            The rest of the app is still working. This usually means a backend it
-            depends on is unreachable.
+            {/* Say only what is known. The old copy asserted a CAUSE ("a backend
+                is unreachable") that the boundary cannot observe — it catches
+                render errors too, and on 2026-08-30 it reported a React
+                hook-order bug as a backend outage. The message below is the
+                actual failure; everything above it is context, not diagnosis. */}
+            {this.props.scope === 'root'
+              ? 'This is the whole page, not one panel — reloading is the fastest way back.'
+              : 'The rest of the app is still working.'}{' '}
+            The error below is what actually failed.
           </p>
           <p className="mt-2 text-xs font-mono text-gray-400 dark:text-gray-500 break-words">
             {error.message}

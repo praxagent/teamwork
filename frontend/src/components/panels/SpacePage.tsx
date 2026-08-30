@@ -108,6 +108,17 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
       .catch(() => {});
   }, [chatOpen, spaceSlug]);
 
+  // How wide the chat should be, per space. Persisted because the answer is a
+  // property of the work: a reference space wants a narrow chat beside the
+  // notes, a space where you are thinking out loud wants most of the window.
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(`tw:chatw:${spaceSlug}`));
+    return Number.isFinite(saved) && saved >= 280 ? saved : 320;
+  });
+  useEffect(() => {
+    localStorage.setItem(`tw:chatw:${spaceSlug}`, String(chatWidth));
+  }, [spaceSlug, chatWidth]);
+
   const space = spaceQuery.data;
   const theme = getSpaceTheme(space?.theme_hue, dark);
 
@@ -118,6 +129,15 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
   const border = dark ? 'border-slate-700' : 'border-gray-200';
   const cardBg = dark ? 'bg-slate-800/60' : 'bg-gray-50';
 
+  // EVERY hook above this line, unconditionally. This early return used to sit
+  // ABOVE the chat-width useState/useEffect, so a render that took this branch
+  // ran two fewer hooks than one that did not — React #310 ("Rendered more hooks
+  // than during the previous render"), which unmounts the whole tree.
+  //
+  // It looked like a backend outage because the branch is taken exactly when the
+  // space query is slow OR returns nothing, so the top-level boundary reported
+  // "a backend it depends on is unreachable". The trigger was the backend; the
+  // fault was here.
   if (spaceQuery.isLoading || !space) {
     return (
       <div className={clsx('flex-1 flex items-center justify-center', bg)}>
@@ -150,17 +170,6 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
   const tasks = tasksQuery.data?.tasks ?? [];
   const readingNotebookNote = activeTab === 'notebooks' && viewingNote !== null;
   const showingSpaceChat = chatOpen && (!readingNotebookNote || noteChatVisible);
-
-  // How wide the chat should be, per space. Persisted because the answer is a
-  // property of the work: a reference space wants a narrow chat beside the
-  // notes, a space where you are thinking out loud wants most of the window.
-  const [chatWidth, setChatWidth] = useState<number>(() => {
-    const saved = Number(localStorage.getItem(`tw:chatw:${spaceSlug}`));
-    return Number.isFinite(saved) && saved >= 280 ? saved : 320;
-  });
-  useEffect(() => {
-    localStorage.setItem(`tw:chatw:${spaceSlug}`, String(chatWidth));
-  }, [spaceSlug, chatWidth]);
 
   const handleUploadClick = () => {
     const input = document.createElement('input');
