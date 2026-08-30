@@ -47,19 +47,38 @@ function buildCron(freq: string, h: string, m: string, dow: string): string {
   }
 }
 
-function describeCron(cron: string): string {
+export function describeCron(cron: string): string {
   const p = cron.split(' ');
   if (p.length !== 5) return cron;
   const [min, hour, , , dow] = p;
+  // 12-hour rendering of a single cron hour. Exported logic below must never
+  // receive a non-numeric field — the guards come first.
+  const fmt = (h: number) =>
+    `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${min.padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  const dayPrefix = (t: string) => {
+    if (dow === '*') return `Daily ${t}`;
+    if (dow === '1-5') return `Weekdays ${t}`;
+    if (dow === '0,6') return `Weekends ${t}`;
+    const d: Record<string, string> = { '0': 'Sun', '1': 'Mon', '2': 'Tue', '3': 'Wed', '4': 'Thu', '5': 'Fri', '6': 'Sat' };
+    return d[dow] ? `${d[dow]} ${t}` : cron;
+  };
   if (hour === '*') return `Hourly at :${min.padStart(2, '0')}`;
   if (hour.startsWith('*/')) return `Every ${hour.slice(2)}h at :${min.padStart(2, '0')}`;
+  // An hour RANGE (9-20) or LIST (9,12,15): render honestly instead of
+  // Number('9-20') -> NaN -> "Daily at NaN:00 PM", which shipped to a real
+  // schedule ("hourly 9am-9pm" is exactly what a cron range is for).
+  const range = hour.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (range) {
+    const lo = Number(range[1]), hi = Number(range[2]);
+    if (lo <= 23 && hi <= 23) return dayPrefix(`hourly, ${fmt(lo)}\u2013${fmt(hi)}`);
+  }
+  if (/^\d{1,2}(,\d{1,2})+$/.test(hour)) {
+    const hours = hour.split(',').map(Number);
+    if (hours.every((h) => h <= 23)) return dayPrefix(`at ${hours.map(fmt).join(', ')}`);
+  }
   const h = Number(hour);
-  const t = `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${min.padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-  if (dow === '*') return `Daily at ${t}`;
-  if (dow === '1-5') return `Weekdays at ${t}`;
-  if (dow === '0,6') return `Weekends at ${t}`;
-  const d: Record<string, string> = { '0': 'Sun', '1': 'Mon', '2': 'Tue', '3': 'Wed', '4': 'Thu', '5': 'Fri', '6': 'Sat' };
-  return d[dow] ? `${d[dow]} at ${t}` : cron;
+  if (!Number.isInteger(h) || h > 23) return cron;  // anything else: show the cron, never NaN
+  return dayPrefix(`at ${fmt(h)}`);
 }
 
 function currentTimeStr(): string {
