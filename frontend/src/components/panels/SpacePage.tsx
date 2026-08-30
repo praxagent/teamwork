@@ -220,7 +220,14 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0" style={{ ...theme.vars, backgroundColor: 'var(--space-page-bg)' }}>
+    // min-h-0 here is THE page's scroll fix, not tidying. This is SpacePage's
+    // root: a flex item whose default min-height:auto let it grow to its content
+    // (measured 1362px tall in an 800px slot on the live box, 2026-08-30).
+    // Every descendant then sized to the inflated height, so NOTHING overflowed
+    // and NOTHING scrolled — tasks, notebooks, all of it — while the excess was
+    // clipped by an overflow-hidden ancestor. One missing constraint at the top
+    // disabled every scroll region below it.
+    <div className="flex-1 flex flex-col min-w-0 min-h-0" style={{ ...theme.vars, backgroundColor: 'var(--space-page-bg)' }}>
 
       {/* Compact header */}
       <div className={clsx('px-4 py-3 flex items-center gap-3 shrink-0')}
