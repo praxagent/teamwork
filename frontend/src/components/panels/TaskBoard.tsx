@@ -593,7 +593,13 @@ export function TaskBoard({ projectId, agents, isCoachingProject, onWatchLive }:
                 </div>
 
                 {/* Cards list */}
-                <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
+                {/* min-h-0 is load-bearing, not tidying: a flex item defaults to
+                    min-height:auto, so `flex-1 overflow-y-auto` GROWS to fit its
+                    content instead of scrolling — the list then overflows its column
+                    and the tail is clipped by an ancestor, with no scrollbar anywhere.
+                    Measured on the live board 2026-08-30: scrollHeight == clientHeight
+                    == 754 with min-height:auto, i.e. it had silently expanded. */}
+                <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-2">
                   {/* Inline create form */}
                   {isCreatingHere && (
                     <CreateTaskForm
