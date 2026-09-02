@@ -1682,7 +1682,7 @@ function WikilinkMarkdown({
   onLinkClick: (project: string, notebook: string, slug: string) => void;
 }) {
   const segments = useMemo(() => {
-    const re = /\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]/g;
+    const re = /\[\[([^[\]|]+?)(?:\|([^[\]]+?))?\]\]/g;
     const out: Array<{ kind: 'md'; text: string } | { kind: 'link'; target: string; display: string }> = [];
     let lastIndex = 0;
     let m: RegExpExecArray | null;

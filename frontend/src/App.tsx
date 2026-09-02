@@ -106,7 +106,7 @@ function App() {
     <BrowserRouter>
       {/* Last line of defence. Panels have their own boundaries; this one keeps
           an unexpected error in shared chrome from blanking the page entirely. */}
-      <ErrorBoundary name="TeamWork">
+      <ErrorBoundary name="TeamWork" scope="root">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/projects" element={<Projects />} />

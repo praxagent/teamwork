@@ -92,6 +92,27 @@ export function ConfigOptions({
   const { data: capabilities } = useSystemCapabilities();
 
   // Show simplified loading view during quick launch
+  const [config, setConfig] = useState<ConfigValues>({
+    runtime_mode: 'docker',  // Always Docker for security
+    workspace_type: 'local_git',
+    generate_images: true,
+    auto_execute_tasks: true,
+    claude_code_mode: 'terminal',  // Recommended - real terminal experience
+  });
+  
+  const [name, setName] = useState(projectName);
+  const [description, setDescription] = useState(projectDescription);
+  
+  // Auto-disable image generation if OpenAI is not configured
+  useEffect(() => {
+    if (capabilities && !capabilities.image_generation_available) {
+      setConfig(prev => ({ ...prev, generate_images: false }));
+    }
+  }, [capabilities]);
+  // EVERY hook above this line, unconditionally. These four used to sit BELOW
+  // the `if (quickLaunching)` early return, so a render that showed the spinner
+  // ran four fewer hooks than one that did not — React #310, which unmounts the
+  // whole tree rather than just this component.
   if (quickLaunching) {
     return (
       <div className="max-w-3xl mx-auto">
@@ -113,23 +134,6 @@ export function ConfigOptions({
     );
   }
   
-  const [config, setConfig] = useState<ConfigValues>({
-    runtime_mode: 'docker',  // Always Docker for security
-    workspace_type: 'local_git',
-    generate_images: true,
-    auto_execute_tasks: true,
-    claude_code_mode: 'terminal',  // Recommended - real terminal experience
-  });
-  
-  const [name, setName] = useState(projectName);
-  const [description, setDescription] = useState(projectDescription);
-  
-  // Auto-disable image generation if OpenAI is not configured
-  useEffect(() => {
-    if (capabilities && !capabilities.image_generation_available) {
-      setConfig(prev => ({ ...prev, generate_images: false }));
-    }
-  }, [capabilities]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

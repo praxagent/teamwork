@@ -137,7 +137,14 @@ function preprocessContent(content: string): string {
   // Strip zero-width characters that break inline code rendering.
   // Claude Code and other LLMs sometimes include U+200B (zero-width space),
   // U+200C/D (zero-width non-joiner/joiner), U+FEFF (BOM) in output.
-  let result = content.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+  // Alternation, not a character class: eslint's no-misleading-character-class
+  // is right that U+200D in a class is suspicious — it is the ZERO WIDTH JOINER
+  // that builds emoji sequences (a family emoji is several code points joined by
+  // it), so stripping it splits those into separate glyphs. Behaviour is
+  // unchanged here on purpose (this is a crash fix, not a rendering change), but
+  // the tradeoff is now a recorded decision rather than an accident: stray ZWJ
+  // from LLM output is common, joined emoji in agent chat is rare.
+  let result = content.replace(/\u200B|\u200C|\u200D|\uFEFF/g, '');
 
   // Convert bullet characters to proper markdown list syntax
   result = result
