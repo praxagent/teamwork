@@ -42,9 +42,9 @@ on *how*:
 | Core substrate | **Nostr relay** — one log of signed events | Display shell over a REST/WS API |
 | Backend | Rust / Axum | Python / FastAPI |
 | Storage | Postgres + Redis + S3/MinIO | **SQLite, single container** |
-| Agent identity | **Cryptographic keypair** (Schnorr); scoped by identity, not permission flags | `X-API-Key` shared secret + webhook pushes |
-| Auth | NIP-42 / NIP-98 signed requests | API key header |
-| Audit trail | **Every event signed by its author's key** — non-repudiable | Server-side app log (trust-by-shared-secret) |
+| Agent identity | **Cryptographic keypair** (Schnorr); scoped by identity, not permission flags | Per-agent credential — identity derived from the token, capability set per credential, optional Ed25519 request signing (since 2026-07); a legacy shared `X-API-Key` is still accepted |
+| Auth | NIP-42 / NIP-98 signed requests | `X-API-Key` per-agent token (SHA-256 at rest) + optional Ed25519 signed envelope (`X-Agent-Signature` / `-Timestamp` / `-Nonce`) |
+| Audit trail | **Every event signed by its author's key** — non-repudiable | Append-only, hash-chained event log (`/api/external/projects/{id}/events`, `/api/external/events/verify`); carries the agent's signature when the request was signed. Covers the `/api/external` surface only |
 | Agent plug-in | `buzz-acp` (ACP↔MCP for Goose/Codex/Claude Code), `buzz-cli` | `/api/external` REST + WebSocket + webhooks |
 | Git | **Native**: NIP-34 signed patches, branch→channel, CI/reviews as events | None (the agent's sandbox does git out-of-band) |
 | Watch the agent *act* | Not a focus — you see **events**, not the live process | **Core**: PTY terminal, Chrome screencast + take-over, desktop, exec-graph, live output |
@@ -60,8 +60,13 @@ on *how*:
    permission flags — the same way you'd scope a teammate." You get a
    tamper-evident, attributable record of *which specific agent identity* said or
    did what, verifiable after the fact by anyone. TeamWork's `/api/external`
-   authenticates with a **shared `X-API-Key`** — any holder can impersonate the
-   agent, and the audit trail is only as trustworthy as the server writing it.
+   *used to* authenticate with a **shared `X-API-Key`** — any holder could
+   impersonate the agent, and the audit trail was only as trustworthy as the
+   server writing it. That gap was closed in 2026-07 (per-agent credentials,
+   Ed25519 envelopes, hash-chained log — see below). What remains Buzz's edge:
+   key custody sits with the orchestrator rather than each agent, the chain is
+   internally consistent but not externally anchored, and TeamWork's log covers
+   only the `/api/external` surface.
 2. **Open protocol / interoperability.** Any Nostr client can talk to a Buzz
    relay; identities and events are portable across relays. TeamWork's API is
    bespoke — powerful for one agent, but not an open standard.
