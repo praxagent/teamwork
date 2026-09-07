@@ -4,7 +4,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.testclient import TestClient
 
 from teamwork.proxy_auth import ProxyAuthConfig, ProxyAuthMiddleware
@@ -108,3 +108,79 @@ def test_invalid_token_is_rejected(monkeypatch):
 
     client = TestClient(app)
     assert client.get("/api/secret", headers={"x-goog-iap-jwt-assertion": "tok"}).status_code == 401
+
+
+# ── Websocket scopes (pure ASGI) ────────────────────────────────────────────
+#
+# The previous BaseHTTPMiddleware implementation never saw websocket scopes, so
+# /ws connected with no assertion at all while /api/* was refused.
+
+from starlette.websockets import WebSocketDisconnect  # noqa: E402
+
+from teamwork.proxy_auth import WS_CLOSE_UNAUTHORIZED  # noqa: E402
+
+
+def _ws_app(monkeypatch, *, verify_returns=None):
+    cfg = ProxyAuthConfig(_settings(proxy_auth_provider="iap", proxy_auth_audience="aud"))
+    app = FastAPI()
+    app.add_middleware(ProxyAuthMiddleware, config=cfg)
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket):
+        await websocket.accept()
+        await websocket.send_json({"identity": websocket.scope["state"].get("proxy_identity")})
+        await websocket.close()
+
+    @app.get("/api/whoami")
+    def whoami(request: Request):
+        return {"identity": request.state.proxy_identity}
+
+    if verify_returns is not None:
+        monkeypatch.setattr(ProxyAuthMiddleware, "_verify", lambda self, token: verify_returns)
+    return TestClient(app)
+
+
+def test_websocket_without_assertion_is_closed_4401_before_accept(monkeypatch):
+    client = _ws_app(monkeypatch)
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/ws"):
+            pass
+    assert exc.value.code == WS_CLOSE_UNAUTHORIZED
+
+
+def test_websocket_with_invalid_assertion_is_refused(monkeypatch):
+    def boom(self, token):
+        raise ValueError("bad signature")
+
+    monkeypatch.setattr(ProxyAuthMiddleware, "_verify", boom)
+    client = _ws_app(monkeypatch)
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/ws", headers={"x-goog-iap-jwt-assertion": "tok"}):
+            pass
+    assert exc.value.code == WS_CLOSE_UNAUTHORIZED
+
+
+def test_websocket_with_valid_assertion_connects_and_carries_identity(monkeypatch):
+    client = _ws_app(monkeypatch, verify_returns={"email": "alice@example.com"})
+    with client.websocket_connect("/ws", headers={"x-goog-iap-jwt-assertion": "tok"}) as ws:
+        assert ws.receive_json() == {"identity": "alice@example.com"}
+    r = client.get("/api/whoami", headers={"x-goog-iap-jwt-assertion": "tok"})
+    assert r.status_code == 200 and r.json() == {"identity": "alice@example.com"}
+
+
+def test_options_preflight_is_exempt(monkeypatch):
+    client = _ws_app(monkeypatch)
+    # No assertion; must not be a 401 from the middleware (the route itself 405s).
+    assert client.options("/api/whoami").status_code != 401
+
+
+def test_real_app_refuses_api_and_ws_with_preset_enabled(client):
+    """PROXY_AUTH_ENABLED with the IAP preset on the real app: HTTP 401 and /ws refused."""
+    cfg = ProxyAuthConfig(_settings(proxy_auth_provider="iap", proxy_auth_audience="aud"))
+    gated = TestClient(ProxyAuthMiddleware(client.app, config=cfg))
+    assert gated.get("/api/projects").status_code == 401
+    assert gated.get("/health").status_code == 200
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with gated.websocket_connect("/ws"):
+            pass
+    assert exc.value.code == WS_CLOSE_UNAUTHORIZED

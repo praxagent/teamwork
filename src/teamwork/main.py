@@ -95,8 +95,8 @@ app = FastAPI(
 )
 
 # Reverse-proxy authentication (defense-in-depth, default OFF). Added BEFORE CORS
-# so CORS remains the OUTERMOST middleware and still answers preflight; the
-# proxy-auth check then runs on actual requests. See docs/security/network-exposure.md.
+# so CORS remains the outermost *gating* middleware and still answers preflight;
+# the proxy-auth check then runs on actual requests. See docs/security/network-exposure.md.
 if settings.proxy_auth_enabled:
     from teamwork.proxy_auth import ProxyAuthConfig, ProxyAuthMiddleware
 
@@ -106,6 +106,15 @@ if settings.proxy_auth_enabled:
         settings.proxy_auth_provider or "custom",
     )
 
+# Internal UI key (default OFF — with an empty key the middleware is not installed
+# and nothing changes). Same placement as proxy auth: inside CORS. See internal_auth.py.
+if settings.internal_api_key:
+    from teamwork.internal_auth import InternalKeyMiddleware
+
+    app.add_middleware(InternalKeyMiddleware, key=settings.internal_api_key)
+    logger.info("Internal API key ENABLED — /api and websockets require X-Internal-Key "
+                "or a session cookie from POST /api/session/login")
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -114,6 +123,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class NoSniffMiddleware:
+    """Add ``X-Content-Type-Options: nosniff`` to every HTTP response.
+
+    Outermost on purpose (added last), so the auth middlewares' own 401s carry
+    it too. Pure ASGI: it only touches the ``http.response.start`` message and
+    never buffers a body, so FileResponse/StreamingResponse are unaffected.
+    Without it a browser may sniff an uploaded file into HTML and run it.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_nosniff(message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                if not any(k.lower() == b"x-content-type-options" for k, _ in headers):
+                    headers.append((b"x-content-type-options", b"nosniff"))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_nosniff)
+
+
+app.add_middleware(NoSniffMiddleware)
 
 # Include routers
 app.include_router(agent_plan_router, prefix="/api")
@@ -134,6 +174,12 @@ app.include_router(uploads_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
 app.include_router(prax_router, prefix="/api")
+# Login/logout/status for the internal UI key. Mounted always so the UI can ask
+# whether a key is required; with no key configured, /login answers 400 and
+# /status reports required=false.
+from teamwork.internal_auth import router as session_router  # noqa: E402
+
+app.include_router(session_router, prefix="/api")
 # Content router is mounted at root (no /api prefix) so /courses/<id>/
 # and /notes/<slug>/ are valid public-looking URLs.  Must be registered
 # before the SPA catch-all at the bottom of this file or it'd be shadowed.
@@ -427,15 +473,44 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+def resolve_static_file(static_dir: Path, full_path: str) -> Path | None:
+    """The bundled file *full_path* names, or None if it does not exist or
+    would leave *static_dir*.
+
+    Resolve-then-``relative_to`` containment, the same pattern as
+    ``routers/content.py``. Joining alone is not enough: ``Path(static) / "/etc/x"``
+    is ``/etc/x`` (an absolute right operand replaces the left), and ``..``
+    segments survive the join and are followed by the OS — a request path
+    such as ``/%2e%2e/%2e%2e/etc/hostname`` arrives here decoded and served
+    a host file.
+    """
+    if not full_path:
+        return None
+    try:
+        resolved = (static_dir / full_path).resolve()
+        resolved.relative_to(static_dir.resolve())
+    except (ValueError, OSError):
+        return None
+    return resolved if resolved.is_file() else None
+
+
 if STATIC_DIR.exists():
     # Serve hashed JS/CSS/font bundles directly
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        """SPA catch-all: serve the file if it exists, otherwise index.html."""
-        file_path = STATIC_DIR / full_path
-        if full_path and file_path.is_file():
+        """SPA catch-all: serve the bundled file if it exists, otherwise index.html."""
+        # An unknown API route must 404 like an API, not answer with the SPA
+        # shell — a 200 text/html on /api/typo hides the bug from the caller.
+        if full_path == "api" or full_path.startswith("api/"):
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        file_path = resolve_static_file(STATIC_DIR, full_path)
+        if file_path is not None:
             return FileResponse(file_path)
         return FileResponse(STATIC_DIR / "index.html")
 

@@ -2,7 +2,7 @@
 
 ![TeamWork Header](docs/screenshots/startup/teamwork-header.png)
 
-> **Breaking change (v0.2.0):** TeamWork is now a pure display shell — all built-in AI agent logic (PM orchestration, coaching, persona generation, response generation) has been removed. TeamWork no longer calls any LLM APIs directly. Instead, an external agent (like [Prax](https://github.com/praxagent/gpt-transcriber)) provides the intelligence via TeamWork's REST API. If you were using the previous self-contained version with built-in agents, it is preserved at [v0.1.0](https://github.com/praxagent/teamwork/releases/tag/v0.1.0).
+> **History.** Since v0.2.0 (2026-03) TeamWork is a pure display shell — the built-in AI agent logic (PM orchestration, coaching, persona generation, response generation) was removed, and an external agent such as [Prax](https://github.com/praxagent/prax) provides the intelligence via TeamWork's REST API. The last self-contained version is preserved at [v0.1.0](https://github.com/praxagent/teamwork/releases/tag/v0.1.0). The one place TeamWork still calls an LLM itself is the opt-in [Compactify](#compactify-old-messages) maintenance task, with a key you type in per request. Current version and release notes: [`CHANGELOG.md`](CHANGELOG.md).
 
 An open-source, **agent-agnostic collaboration shell** — a Slack-like web UI for AI agent teams. TeamWork provides the body (chat, channels, task board, file browser, **embedded terminal**, **live browser screencast**) while you bring the brains (your own agent framework).
 
@@ -10,7 +10,7 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 
 <img src="assets/teamwork-embedded-browser.png" alt="TeamWork embedded browser — chat with your agent while watching it browse the web" width="800">
 
-*Chat with your agent on the left while watching it browse the web in real time on the right. The embedded browser streams a live screencast from a headless Chrome instance running in the agent's sandbox — you see exactly what the agent sees, and can take over with mouse and keyboard at any time.*
+*Chat with your agent on the left while watching it browse the web in real time on the right. The embedded browser streams a live screencast from the Chrome instance running in the agent's sandbox — you see exactly what the agent sees, and can take over with mouse and keyboard at any time.*
 
 > **API Keys & Costs** — TeamWork itself requires no AI API keys. However, the external agent you connect (e.g. Prax) will consume API credits. Monitor your usage dashboards and set spending limits.
 
@@ -42,17 +42,17 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 - **Kanban task board** — Drag-and-drop task management with status tracking
 - **File browser** — View and edit workspace files in-browser
 - **Embedded terminal** — Full PTY shell into the agent's sandbox container, right in the browser. Watch your agent run commands, or take over and type yourself. Powered by xterm.js with Docker exec under the hood
-- **Live browser screencast** — Stream a real-time view of the headless Chrome running in the sandbox. See exactly what your agent sees as it browses, scrapes, or interacts with web apps. Click "Take Over" to control the browser with your own mouse and keyboard — then hand it back
+- **Live browser screencast** — Stream a real-time view of the Chrome running in the sandbox. See exactly what your agent sees as it browses, scrapes, or interacts with web apps. Click "Take Over" to control the browser with your own mouse and keyboard — then hand it back
 - **Execution graph visualization** — Real-time tree view of agent delegation chains. See which spokes are running, tool call counts, timing, and status. Click any node to inspect live output
 - **Live agent output** — Terminal-style real-time execution stream for each agent. Select any agent to watch its work; working agents highlighted and sorted to top. Full-width layout for maximum visibility
 - **Agent roster** — Display agent names, roles, avatars, and online status
 - **External Agent API** — REST endpoints for any agent to send messages, update tasks, manage files, push live output, and ensure channels
-- **Per-agent identity & governance** — each agent gets its own credential (identity derived from the token, never from the request body), its own capability set, and optional **Ed25519 request signing**. Destructive actions can be put behind an **approval gate**: the agent proposes, a human decides, and the approval is bound to that exact action and single-use
-- **Append-only audit log** — one ordered, **hash-chained** record of what happened across every agent. Editing, deleting or reordering an entry breaks verification, so the history can't be quietly rewritten
+- **Per-agent identity & governance** — each agent gets its own credential (identity derived from the token, never from the request body), its own capability set, and optional **Ed25519 request signing**. Destructive actions can be put behind an **approval gate**: the agent proposes, a human decides, and the approval is bound to that exact action and single-use. **Known gap (2026-09):** the decide endpoint accepts any valid agent credential and takes the approver's name from the request body, so today nothing enforces that the decider is human — see [`docs/security/agent-identity.md`](docs/security/agent-identity.md) §5
+- **Append-only audit log** — one ordered, **hash-chained** record of what happened across every agent. Editing, deleting or reordering an entry breaks verification, so the history can't be quietly rewritten. **Known gap (2026-09):** only external message posts, approvals and membership changes are written to it; the internal `/api/...` routes the UI uses change the same tables without a log entry — see [`docs/security/agent-identity.md`](docs/security/agent-identity.md) §4
 - **Agent-first CLI** — `teamwork-agent <command> '<json>'`: JSON in, JSON out, named errors and non-zero exits, so an agent can drive TeamWork as a tool without an HTTP integration
-- **Installable** — `uv pip install` from GitHub; bundles the React frontend as static files
+- **Installable** — `uv pip install -e .` from a clone. The wheel bundles the React build (`src/teamwork/static/`) only if it exists at install time: `static/` is gitignored and there is no build hook, so `uv pip install git+https://…` gives you the API without the UI — run `make build-frontend` first, or use the Docker image, which builds it
 - **Single container** — One Docker image serves both API and frontend (no nginx needed)
-- **Zero AI dependencies** — No LLM API keys, no anthropic/openai packages
+- **Zero AI dependencies** — No LLM API keys, no anthropic/openai packages. One opt-in exception: the [Compactify](#compactify-old-messages) maintenance task calls an OpenAI-compatible endpoint over plain `httpx` with a key you type in per request (`POST /api/messages/compactify`)
 
 ## Roadmap
 
@@ -74,7 +74,7 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 
 **Embedded sessions**
 - [x] PTY terminal into the sandbox container (`docker exec` over WebSocket, xterm.js)
-- [x] Live headless-Chrome screencast (CDP proxy) with take-over mouse/keyboard
+- [x] Live Chrome screencast (CDP proxy) with take-over mouse/keyboard
 - [x] Full Linux desktop tab via noVNC (HTTP + websockify + clipboard reverse-proxy)
 
 **Agent introspection (proxied from Prax)**
@@ -110,11 +110,11 @@ Most agent UIs are chat-only — you talk to the agent but you can't *see* what 
 
 ### Live Browser Screencast
 
-Your agent runs a headless Chrome inside its sandbox container. TeamWork proxies the Chrome DevTools Protocol (CDP) and streams screenshots to the frontend over WebSocket. You get a real-time, low-latency view of whatever the agent is looking at — web pages, documentation, dashboards, anything.
+Your agent runs a Chrome inside its sandbox container. TeamWork proxies the Chrome DevTools Protocol (CDP) and streams screenshots to the frontend over WebSocket. You get a real-time, low-latency view of whatever the agent is looking at — web pages, documentation, dashboards, anything.
 
-Click **"Take Over"** in the top-right corner to seize control: your mouse clicks and keystrokes are relayed directly to the headless browser. When you're done, hand it back to the agent. This makes debugging, guiding, and collaborating with your agent seamless — you're not guessing what it did, you're watching it happen.
+Click **"Take Over"** in the top-right corner to seize control: your mouse clicks and keystrokes are relayed directly to the sandbox browser. When you're done, hand it back to the agent. This makes debugging, guiding, and collaborating with your agent seamless — you're not guessing what it did, you're watching it happen.
 
-**How it works:** The sandbox container runs Chromium with `--headless=new` and exposes CDP on port 9222. A `socat` bridge forwards it to `0.0.0.0:9223` so TeamWork can reach it across the Docker network. TeamWork's `/api/browser/ws/{project_id}` endpoint captures screenshots via CDP and relays input events back.
+**How it works:** In the prax-sandbox image, Chromium is an ordinary (not headless) browser drawn on an Xvfb display — the same instance the Desktop tab shows over noVNC — launched by `sandbox/chromium-launch.sh` with `--remote-debugging-port=9222`. A `socat` bridge (`[program:cdp-proxy]` in the sandbox's `supervisord.conf`) forwards `127.0.0.1:9222` to `0.0.0.0:9223` so TeamWork can reach it across the Docker network. TeamWork's `/api/browser/ws/{project_id}` endpoint captures screenshots via CDP and relays input events back.
 
 ### In-Browser Terminal
 
@@ -271,7 +271,9 @@ The API is split into two groups:
 | **Browser** | Check if Chrome CDP is reachable; stream a live browser screencast via WebSocket at `/api/browser/ws/{project_id}`. |
 | **Projects** | Pause/resume/reset projects, update config. |
 
-> See `http://localhost:8000/docs` for the full list of 40+ endpoints with request/response schemas.
+> **The internal API has no authentication of its own** (as of 2026-09). None of the credential, capability, membership, approval or event-log machinery above applies to it, and that includes the WebSocket surfaces — `/ws`, `/api/terminal/ws/{project_id}` (a shell in the sandbox container), `/api/browser/ws/{project_id}` (CDP relay: screenshots, input, navigation), `/api/desktop/websockify`. The optional `PROXY_AUTH_*` check covers HTTP requests only, not WebSockets (see [Environment Variables](#environment-variables)). Treat the bound port as trusted-network-only: loopback, or a tailnet / authenticating proxy in front. Details: [`docs/security/agent-identity.md`](docs/security/agent-identity.md).
+
+> See `http://localhost:8000/docs` for the full list of endpoints with request/response schemas.
 
 ### WebSocket
 
@@ -479,7 +481,7 @@ That's it — TeamWork handles the rest. The frontend opens a WebSocket to `/api
 
 ### 8. Browser Screencast
 
-If your agent runs a headless Chrome in its sandbox, TeamWork streams a live screencast to the UI. Users can watch the agent browse and take over with mouse/keyboard.
+If your agent runs a Chrome with CDP enabled in its sandbox, TeamWork streams a live screencast to the UI. Users can watch the agent browse and take over with mouse/keyboard.
 
 ```bash
 # .env
@@ -488,13 +490,14 @@ CHROME_CDP_HOST=sandbox          # hostname of the container (Docker network nam
 CHROME_CDP_PORT=9223             # CDP port exposed by the container
 ```
 
-Your sandbox container needs to run Chrome headless with CDP enabled. Example entrypoint:
+Your sandbox container needs to run Chromium with CDP reachable from TeamWork. TeamWork only speaks CDP (`Page.captureScreenshot`, `Input.dispatch*`, `Page.navigate` — see `src/teamwork/routers/browser.py`) and does not require the browser to be headless. What prax-sandbox actually runs (`sandbox/chromium-launch.sh` under supervisord, on an `Xvfb :99` display, abridged):
 
 ```bash
-# In your sandbox Dockerfile / entrypoint:
-chromium --headless=new --no-sandbox --disable-gpu --remote-debugging-port=9222 &
-# socat bridge: Chrome only binds to 127.0.0.1, so forward to 0.0.0.0
-socat TCP-LISTEN:9223,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:9222 &
+# prax-sandbox: supervisord starts Xvfb :99, then
+chromium-browser --no-sandbox --disable-gpu --remote-debugging-port=9222 \
+  --user-data-dir=/root/.browser_profiles/default --window-size=1920,1080
+# socat bridge ([program:cdp-proxy]): Chrome only binds to 127.0.0.1, so forward to 0.0.0.0
+socat TCP-LISTEN:9223,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:9222
 ```
 
 ```python
@@ -550,14 +553,15 @@ Your agent handles: understanding user intent, generating responses, planning wo
 
 ## Prax — First-Class Agent
 
-[**Prax**](https://github.com/praxagent/gpt-transcriber) is an AI agent built to use TeamWork as its web interface. If you want a ready-made agent with tool use, planning, multi-channel chat (SMS, Discord, web), and code execution — start with Prax.
+[**Prax**](https://github.com/praxagent/prax) is an AI agent built to use TeamWork as its web interface. If you want a ready-made agent with tool use, planning, multi-channel chat (SMS, Discord, web), and code execution — start with Prax.
 
 ### Prax + TeamWork Setup
 
-Prax's `docker-compose.yml` includes TeamWork as a service. No separate clone needed:
+Prax's `docker-compose.yml` builds TeamWork **into the `prax` image** from a sibling checkout (`additional_contexts: teamwork: ${TEAMWORK_PATH:-../teamwork}`), so clone the two repos side by side:
 
 ```bash
-git clone https://github.com/praxagent/gpt-transcriber.git prax
+git clone https://github.com/praxagent/teamwork.git
+git clone https://github.com/praxagent/prax.git
 cd prax
 cp .env-example .env  # configure API keys
 docker compose up -d
@@ -565,8 +569,10 @@ docker compose up -d
 # TeamWork:  http://localhost:3000
 ```
 
+> **Known gap (2026-09):** as shipped, `docker compose up` in the prax repo does not bring `prax` up. Its `sandbox` service is health-checked with `curl http://localhost:4096/global/health`, a server the prax-sandbox image removed (prax-sandbox's own `sandbox/Dockerfile` and `docker-compose.yml` use `pgrep -x supervisord`), and `prax` declares `depends_on: sandbox: condition: service_healthy` — so the sandbox never reports healthy and `prax` never starts. Until that is fixed, use Prax's native path, `make run-local-all` from the prax checkout, which runs TeamWork as a host process and starts the sandbox from prax-sandbox's own compose file.
+
 Prax automatically:
-- Creates a project and registers its agents (Planner, Researcher, Executor, Skeptic, Auditor)
+- Creates a project and registers its agents: the orchestrator (named by Prax's `AGENT_NAME`, default `Prax`) plus Planner, Researcher, Executor and Auditor (`prax/app.py`)
 - Receives user messages via webhook and processes them through its LLM orchestrator
 - Mirrors SMS/Discord conversations to TeamWork's #discord and #sms channels
 - Pushes real-time execution output and agent delegation graphs to the UI
@@ -620,7 +626,7 @@ teamwork/
 
 ### How Static Serving Works
 
-When you install TeamWork, the React build is bundled inside the package at `teamwork/static/`. FastAPI serves static assets at `/assets/` and uses a catch-all route to return `index.html` for all other paths, enabling client-side routing. No nginx, no separate frontend container.
+When the React build is present at `src/teamwork/static/` at install time (it is gitignored; `make build-frontend` or the Dockerfile produces it), it is bundled inside the package at `teamwork/static/`. FastAPI serves static assets at `/assets/` and uses a catch-all route to return `index.html` for all other paths, enabling client-side routing. No nginx, no separate frontend container.
 
 ## Workspace Structure
 
@@ -814,6 +820,8 @@ Key performance characteristics relevant to TeamWork:
 
 TeamWork enables WAL mode and sets a 5-second busy timeout at startup, which effectively eliminates write contention for single-user workloads.
 
+**Known gap (2026-09):** the SQLAlchemy engine is created with `poolclass=StaticPool` (`src/teamwork/models/base.py`) — a pool of exactly one connection shared by every request — so within one TeamWork process all queries go through that single connection, one statement at a time. The WAL reader/writer rows above describe SQLite; they are not what the current engine configuration delivers. `POST /api/messages/cleanup` and `/compactify` also run `VACUUM` inside the request handler, which rewrites the database file while the request waits.
+
 #### Per-user SQLite sandboxing
 
 TeamWork's architecture — one user, one project, one SQLite database — sidesteps the single-writer limitation entirely. Each user gets their own database file, their own containers, and their own agent processes. There is no shared write path.
@@ -878,22 +886,38 @@ Create a `.env` file (copy from `.env.example`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `sqlite+aiosqlite:///data/vteam.db` | Database connection string |
-| `WORKSPACE_PATH` | `./workspace` | Directory for generated code/files |
-| `EXTERNAL_API_KEY` | — | **Required.** Shared key for external agent access; must equal the agent's `TEAMWORK_API_KEY`. Generate: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. Unset ⇒ the external API returns 503 |
-| `AGENT_CLIENTS_PATH` | — | JSON registry binding one token to one agent + capability set (preferred over the shared key when running several agents) |
-| `REQUIRE_SIGNED_REQUESTS` | `false` | Require a valid Ed25519 envelope on every external request |
-| `ALLOW_UNAUTHENTICATED_AGENTS` | `false` | Dev only — restores accept-anything when no credential is configured |
-| `CORS_ORIGINS` | `localhost:5173,3000` | Allowed CORS origins |
-| `HOST` | `0.0.0.0` | Server bind address |
+| `DATABASE_URL` | `sqlite+aiosqlite:///{project_root}/data/vteam.db` | Database connection string |
+| `WORKSPACE_PATH` | `{project_root}/workspace` | Root directory containing per-project workspaces |
+| `HOST_WORKSPACE_PATH` | — | Declared for host-path volume mapping when TeamWork runs in Docker; as of 2026-09 no TeamWork code path reads it |
+| `HOST` | `0.0.0.0` | Server bind address — all interfaces by default; the internal API and WebSockets carry no authentication of their own (see [API Overview](#api-overview)) |
 | `PORT` | `8000` | Server port |
 | `DEBUG` | `false` | Enable debug mode |
+| `SQLALCHEMY_ECHO` | `false` | Echo every SQL statement to stdout |
+| `PRAX_URL` | — | Prax backend URL for the proxy panels (plugins, execution graphs, memory, scheduler, …) and the MCP tools (e.g. `http://app:5001`) |
+| `EXTERNAL_API_KEY` | — | **Required** unless a registry is configured. Shared key for external agent access; must equal the agent's `TEAMWORK_API_KEY`. Generate: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. No credential at all ⇒ the external API returns 503 |
+| `AGENT_CLIENTS_PATH` | `~/.teamwork/agent-clients.json` | JSON registry binding one token to one agent + capability set (preferred over the shared key when running several agents). Created on the first MCP grant. No `TEAMWORK_` prefix — the settings model declares none, so the prefixed spelling is ignored |
+| `REQUIRE_SIGNED_REQUESTS` | `false` | Require a valid Ed25519 envelope on every external request |
+| `ENFORCE_CHANNEL_MEMBERSHIP` | `false` | Agents may only post in channels they belong to. Checked on `POST /api/external/projects/{id}/messages` only; the internal `POST /api/messages` is not membership-checked |
+| `MCP_ENABLED` | `false` | Mount `/mcp` for other agents (Claude Code, Codex, …); grants nothing by itself — see [`docs/security/mcp-server.md`](docs/security/mcp-server.md) |
+| `ALLOW_UNAUTHENTICATED_AGENTS` | `false` | Dev only — restores accept-anything when no credential is configured |
+| `CORS_ORIGINS` | `["http://localhost:5173","http://localhost:3000","http://localhost:80"]` | Allowed CORS origins (JSON list) |
 | `SANDBOX_CONTAINER` | — | Docker container name for terminal sessions |
 | `CHROME_CDP_HOST` | `sandbox` | CDP host for browser screencast |
 | `CHROME_CDP_PORT` | `9223` | CDP port for browser screencast |
-| `PRAX_URL` | — | Prax backend URL for plugin management proxy and execution graph API (e.g. `http://app:5001`) |
+| `DESKTOP_VNC_URL` | — | noVNC HTTP endpoint the Desktop tab is proxied from (`http://sandbox:6080` in Docker, `http://127.0.0.1:6080` natively). Unset ⇒ desktop panel 503 and the clipboard socket is refused |
+| `CLIPBOARD_PORT` | `6090` | Declared, but as of 2026-09 the clipboard proxy (`main.py`, `/api/desktop/clipboard`) hard-codes port 6090 on `DESKTOP_VNC_URL`'s host and does not read this setting |
+| `PROXY_AUTH_ENABLED` | `false` | Require a signed JWT assertion from a fronting proxy (Google IAP / Cloudflare Access) on every HTTP request except exempt paths; refuses to start if misconfigured. **Known gap (2026-09):** implemented as a Starlette `BaseHTTPMiddleware` (`src/teamwork/proxy_auth.py`), which never runs for WebSocket connections — `/ws`, the terminal, browser, desktop and clipboard sockets are not covered by it |
+| `PROXY_AUTH_PROVIDER` | — | Preset: `iap` or `cloudflare_access`; empty = supply the fields below yourself |
+| `PROXY_AUTH_AUDIENCE` | — | Required when enabled (IAP backend audience / Cloudflare AUD tag) |
+| `PROXY_AUTH_ISSUER` | — | Cloudflare: your team-domain URL; IAP: preset default |
+| `PROXY_AUTH_JWKS_URL` | — | Override the preset's JWKS URL |
+| `PROXY_AUTH_HEADER` | — | Override the preset's assertion header |
+| `PROXY_AUTH_ALGORITHMS` | — | Comma-separated; overrides the preset |
+| `PROXY_AUTH_EXEMPT_PATHS` | `/health,/healthz` | Comma-separated path prefixes that skip the proxy-auth check |
 
-TeamWork itself does **not** require any AI API keys. All AI calls are made by the external agent you connect.
+Names and defaults above are taken from `src/teamwork/config.py` (as of 2026-09); that file is authoritative.
+
+TeamWork itself does **not** require any AI API keys. All AI calls are made by the external agent you connect — except the opt-in [Compactify](#compactify-old-messages) task, which takes a key per request and never stores it.
 
 ## Development
 
@@ -973,7 +997,7 @@ make build  # builds frontend + Python wheel
 
 ## API Reference
 
-Full API docs with request/response schemas are auto-generated at **`http://localhost:8000/docs`** (Swagger UI) when the server is running. This is the authoritative reference for all 40+ endpoints — every field, type, and constraint is documented there.
+Full API docs with request/response schemas are auto-generated at **`http://localhost:8000/docs`** (Swagger UI) when the server is running. This is the authoritative reference for every endpoint — every field, type, and constraint is documented there.
 
 ## License
 

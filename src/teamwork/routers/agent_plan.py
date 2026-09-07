@@ -17,6 +17,7 @@ import httpx
 from fastapi import APIRouter
 
 from teamwork.config import settings
+from teamwork.routers.prax import prax_client
 
 router = APIRouter(prefix="/agent-plan", tags=["agent-plan"])
 _logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ async def _proxy(method: str, path: str, **kwargs) -> Any:
     if not prax_url:
         return None
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.request(
                 method,
                 f"{prax_url.rstrip('/')}/teamwork/agent-plan{path}",

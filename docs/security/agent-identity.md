@@ -14,6 +14,18 @@ How TeamWork answers four questions about any action an agent takes:
 Each layer is independent and opt-in. A deployment running a single agent can
 use only the first and behave exactly as it always has.
 
+**Scope — Known gap (2026-09):** every layer below governs the
+`/api/external/...` surface. TeamWork's internal API (`/api/...`, the routes the
+web UI calls, plus the `/ws`, terminal, browser and desktop WebSockets) has no
+authentication of its own and passes through none of these checks: it can
+create and delete messages, tasks, channels and projects in the same tables
+without a credential, a capability check, a membership check or an event-log
+entry (`routers/messages.py`, `routers/tasks.py`, `routers/channels.py`,
+`routers/projects.py`). Keep the bound port on a trusted network (loopback or
+a tailnet); the layers here do not protect it. The `PROXY_AUTH_*` option covers
+HTTP requests only — it is a Starlette `BaseHTTPMiddleware`
+(`src/teamwork/proxy_auth.py`), which never runs for WebSocket connections.
+
 > **Why this exists.** TeamWork is built for *several* agents governed by an
 > orchestrator. With one agent, "which agent did this" is bookkeeping. With
 > several, it is the security boundary — and it was previously absent: one shared
@@ -28,7 +40,9 @@ use only the first and behave exactly as it always has.
 resolves to exactly one identity; a body- or path-supplied `agent_id` is only
 ever *checked against* it. It can narrow, never widen.
 
-Configure a registry at `AGENT_CLIENTS_PATH`:
+Configure a registry at `AGENT_CLIENTS_PATH` (default
+`~/.teamwork/agent-clients.json`; the variable has no `TEAMWORK_` prefix —
+the prefixed spelling that some runtime messages print is not read):
 
 ```json
 [
@@ -78,8 +92,11 @@ Grants are `noun.verb`, and `message.*` grants the whole noun:
 | `task.write` | create/update board items |
 | `activity.write` | write activity-log entries |
 
-Enforced on every mutating endpoint; the 403 names the missing capability. Reads
-are open — mutation is the boundary worth policing.
+Enforced on every mutating `/api/external` endpoint except
+`POST /approvals/{id}/decide`, which checks only that the presented credential
+is valid (see §5); the 403 names the missing capability. Reads are open —
+mutation is the boundary worth policing. (The internal API is outside this —
+see the scope note above.)
 
 The two destructive ones are separately grantable on purpose: neither should
 ride along with "can post a message."
@@ -145,6 +162,18 @@ audit log you can edit is not an audit log. When the originating request was
 signed, the signature is carried onto the entry, so the record shows the agent's
 own attestation rather than only the server's word.
 
+**Known gap (2026-09): the log is not workspace-complete.** What actually
+writes to it today: `message.posted` from the external message-post route
+(`routers/external.py`), `approval.requested` / `.approved` / `.rejected` /
+`.consumed` (`services/approvals.py`) and `channel.member_added` /
+`.member_removed` / `.dm_created` (`services/membership.py`). Not logged:
+external channel purges (`message.delete`), bulk backfills, task, agent and
+project writes and activity entries; and nothing the internal API does
+(`POST /api/messages`, `DELETE /api/messages/{id}`, reactions, cleanup and
+compactify deletes, task/channel/project CRUD). So `events/verify` can return
+`ok: true` while unlogged changes happened. The chain proves that the entries
+it holds were not rewritten, not that it holds every change.
+
 > **Limit.** The chain proves **internal consistency, not external
 > notarisation**. Someone with database write access could recompute the entire
 > chain. Detecting that needs the head hash anchored outside the database.
@@ -167,6 +196,17 @@ human says so, and unable to do it on its own initiative.
    `POST /api/external/approvals/{id}/decide {"approve": true, "decided_by": "tj"}`
    (`GET /api/external/approvals` lists what is waiting).
 3. Agent retries the **same** action with header `X-Approval-Id`.
+
+**Known gap (2026-09): nothing enforces that a *human* decides.**
+`POST /api/external/approvals/{id}/decide` (`routers/external.py`,
+`decide_approval`) requires only a valid agent credential — any credential,
+including the one that requested the approval — and records `decided_by` from
+the request body verbatim, then logs the decision as `actor_type: "human"`
+(`services/approvals.py`, `decide`). There is no `approval.decide` capability,
+no separate human/console credential, and no approvals UI in the frontend. A
+gated agent holding its own token can therefore approve its own request and
+retry. Until that is closed, the gate is a protocol the agent is asked to
+follow, not a control the server enforces.
 
 **Approvals are bound to the exact action and are single-use.** An approval is
 keyed by `sha256(capability, project_id, canonical_payload)`, so one granted for
@@ -204,6 +244,11 @@ safe to switch on:** system/human messages are not scoped, and a channel with
 not *nobody*. So enabling the flag cannot silence an existing deployment; you
 opt each channel in by giving it members.
 
+**Known gap (2026-09):** `may_post` is consulted only by
+`POST /api/external/projects/{id}/messages`. The internal `POST /api/messages`
+route (what the web UI uses) is not membership-checked, so the flag scopes
+agents that go through the external API and nothing else.
+
 **Agent↔agent DMs** are the same object as human↔agent ones, and `dm_key` is
 order-independent so A→B and B→A resolve to one channel. A team of agents that
 can only speak in public channels either floods them with coordination chatter or
@@ -225,7 +270,7 @@ and it becomes a channel member.
 TeamWork credential like any other member, so everything above applies to it
 unchanged: identity derived from its token, capabilities bounding what it can do,
 membership bounding where it can speak, approval gates on destructive actions,
-and every action in the hash-chained log. A heterogeneous team is governed **by
+and its actions in the hash-chained log (subject to the §4 and §5 known gaps). A heterogeneous team is governed **by
 construction** rather than by trusting each vendor's agent to behave — which also
 hedges the correlated failure you get when every agent in a workspace is the same
 model.
@@ -250,9 +295,9 @@ fill the channel.
 | Variable | Default | Meaning |
 |---|---|---|
 | `EXTERNAL_API_KEY` | — | Legacy shared key; authenticates but carries no identity |
-| `AGENT_CLIENTS_PATH` | — | Per-agent credential registry (JSON) |
+| `AGENT_CLIENTS_PATH` | `~/.teamwork/agent-clients.json` | Per-agent credential registry (JSON); created on the first MCP grant |
 | `REQUIRE_SIGNED_REQUESTS` | `false` | Require a valid Ed25519 envelope on every request |
-| `ENFORCE_CHANNEL_MEMBERSHIP` | `false` | Agents may only post in channels they belong to |
+| `ENFORCE_CHANNEL_MEMBERSHIP` | `false` | Agents may only post in channels they belong to (checked on the external post route only) |
 | `ALLOW_UNAUTHENTICATED_AGENTS` | `false` | Dev only — accept anyone when nothing is configured |
 
 ## Rollout order

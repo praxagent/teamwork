@@ -26,6 +26,7 @@ from teamwork.agent_auth import (
 )
 from teamwork.models import Project, Agent, Channel, Message, Task, get_db, AsyncSessionLocal
 from teamwork.services.event_log import append_event
+from teamwork.utils.workspace import require_valid_workspace_dir
 from teamwork.routers.agents import get_live_output_store, _LiveOutputEntry
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
@@ -318,6 +319,8 @@ async def create_external_project(
         },
         status="active",
     )
+    if request.workspace_dir:
+        require_valid_workspace_dir(request.workspace_dir)
     project.workspace_dir = request.workspace_dir or project.get_workspace_dir_name()
     db.add(project)
     await db.flush()
@@ -367,6 +370,8 @@ async def update_external_project(
     require_capability(api_key, CAP_PROJECT_WRITE)
     project = await _get_external_project(project_id, db)
     if request.workspace_dir is not None:
+        if request.workspace_dir:
+            require_valid_workspace_dir(request.workspace_dir)
         project.workspace_dir = request.workspace_dir
     if request.webhook_url is not None:
         config = project.config or {}
@@ -587,6 +592,7 @@ async def send_external_message(
 async def clear_channel_messages(
     project_id: str,
     channel_id: str,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, int]:
@@ -872,7 +878,7 @@ async def create_activity_log(
     project_id: str,
     request: ActivityLogRequest,
     db: AsyncSession = Depends(get_db),
-    x_api_key: str | None = Header(None),
+    api_key: AgentClient = Depends(_verify_api_key),
 ):
     """Create an activity log entry for an agent."""
     require_capability(api_key, CAP_ACTIVITY_WRITE)

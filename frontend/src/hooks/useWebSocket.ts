@@ -3,12 +3,20 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { WebSocketEvent } from '@/types';
 import { useProjectStore, useMessageStore, useUIStore } from '@/stores';
 import { toast } from '@/stores/toastStore';
+import { useInternalKeyStore } from './useInternalKey';
 
 type MessageHandler = (event: WebSocketEvent) => void;
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
-class WebSocketManager {
+/**
+ * The backend's close code for "no internal-key session" — sent before the
+ * socket is accepted, so it arrives as a close with no open in front of it.
+ */
+export const WS_CLOSE_INTERNAL_KEY_REQUIRED = 4401;
+
+// Exported for tests; the app uses the singleton below.
+export class WebSocketManager {
   private ws: WebSocket | null = null;
   private reconnectTimeout: number | null = null;
   private handlers: Set<MessageHandler> = new Set();
@@ -26,9 +34,28 @@ class WebSocketManager {
   private hadConnection = false;
   /** Called after a reconnect that followed a drop, so the UI can catch up. */
   onResync: (() => void) | null = null;
+  // Set when the server refused us with 4401. Reconnecting on the usual
+  // backoff would only be refused again, so the loop parks here and a
+  // successful login (the store flipping locked -> unlocked) is what connects
+  // — exactly once.
+  private awaitingLogin = false;
+
+  constructor() {
+    useInternalKeyStore.subscribe((state, prev) => {
+      if (prev.locked && !state.locked && this.awaitingLogin) {
+        this.awaitingLogin = false;
+        this.connect();
+      }
+    });
+  }
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      return;
+    }
+    if (useInternalKeyStore.getState().locked) {
+      // Do not open a socket the server is going to close with 4401.
+      this.awaitingLogin = true;
       return;
     }
 
@@ -61,8 +88,18 @@ class WebSocketManager {
       }
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
       console.log('WebSocket disconnected');
+      // No session cookie: either the server said so on this socket (4401), or
+      // the fetch side already learned it and the app is locked — a refusal
+      // sent before accept reaches a browser as a failed handshake (1006), not
+      // as its close code. Either way the gate, not a "reconnecting" toast, is
+      // the message, and the connect happens once the gate reports a login.
+      if (event.code === WS_CLOSE_INTERNAL_KEY_REQUIRED || useInternalKeyStore.getState().locked) {
+        this.awaitingLogin = true;
+        useInternalKeyStore.getState().lock();
+        return;
+      }
       if (this.reconnectAttempts === 0) {
         toast.warning('Connection lost. Reconnecting...');
       }
@@ -93,6 +130,7 @@ class WebSocketManager {
   }
 
   disconnect() {
+    this.awaitingLogin = false;
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;

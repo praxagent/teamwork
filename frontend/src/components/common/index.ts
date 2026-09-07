@@ -7,3 +7,4 @@ export { MarkdownContent } from './MarkdownContent';
 export { ToastContainer } from './ToastContainer';
 export { CommandPalette } from './CommandPalette';
 export { ErrorBoundary } from './ErrorBoundary';
+export { InternalKeyGate } from './InternalKeyGate';

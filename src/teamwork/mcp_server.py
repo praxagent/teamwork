@@ -339,13 +339,16 @@ async def _prax(method: str, path: str, **kwargs: Any) -> Any:
     import httpx
 
     from teamwork.config import settings
+    # Built here so this path carries PRAX_API_KEY like every proxy router does —
+    # otherwise the Library tools alone would 401 the moment Prax enforces it.
+    from teamwork.routers.prax import prax_client
 
     base = (getattr(settings, "prax_url", "") or "").rstrip("/")
     if not base:
         raise McpError("TeamWork has no Prax backend configured (PRAX_URL is unset), "
                        "so Library reads and writes cannot be served.")
     try:
-        async with httpx.AsyncClient(timeout=30.0) as http:
+        async with prax_client(timeout=30.0) as http:
             resp = await http.request(method, f"{base}/teamwork/library{path}", **kwargs)
             resp.raise_for_status()
             return resp.json()

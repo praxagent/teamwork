@@ -16,6 +16,8 @@ import httpx
 from fastapi import APIRouter, Body, File, UploadFile, HTTPException
 
 from teamwork.config import settings
+from teamwork.routers.prax import prax_client
+from teamwork.routers.uploads import content_disposition_type
 
 router = APIRouter(prefix="/library", tags=["library"])
 _logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ async def _proxy(method: str, path: str, **kwargs) -> Any:
     if not prax_url:
         return None
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with prax_client(timeout=15.0) as client:
             resp = await client.request(
                 method,
                 f"{prax_url.rstrip('/')}{_PRAX_BASE}{path}",
@@ -531,10 +533,9 @@ async def get_space_cover(space: str):
     prax_url = settings.prax_url
     if not prax_url:
         raise HTTPException(status_code=502, detail="Prax backend unavailable")
-    import httpx
     from fastapi.responses import Response
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with prax_client(timeout=30.0) as client:
             resp = await client.get(
                 f"{prax_url.rstrip('/')}{_PRAX_BASE}/spaces/{space}/cover",
             )
@@ -600,7 +601,7 @@ async def upload_space_file(space: str, file: UploadFile = File(...)):
         return JSONResponse({"error": "Prax backend unavailable"}, status_code=502)
     try:
         content = await file.read()
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with prax_client(timeout=60.0) as client:
             resp = await client.post(
                 f"{prax_url.rstrip('/')}{_PRAX_BASE}/spaces/{space}/files",
                 files={"file": (file.filename, content, file.content_type or "application/octet-stream")},
@@ -621,17 +622,21 @@ async def get_space_file(space: str, filename: str):
     if not prax_url:
         raise HTTPException(status_code=502, detail="Prax backend unavailable")
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with prax_client(timeout=30.0) as client:
             resp = await client.get(
                 f"{prax_url.rstrip('/')}{_PRAX_BASE}/spaces/{space}/files/{filename}",
             )
             if resp.status_code == 404:
                 return {"error": "File not found"}
             resp.raise_for_status()
+            media_type = resp.headers.get("content-type", "application/octet-stream")
+            # HTML/SVG/XML would run script under TeamWork's origin if rendered
+            # inline; those download. Images/pdf/audio/video stay inline.
+            disposition = content_disposition_type(media_type)
             return Response(
                 content=resp.content,
-                media_type=resp.headers.get("content-type", "application/octet-stream"),
-                headers={"Content-Disposition": f'inline; filename="{filename}"'},
+                media_type=media_type,
+                headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
             )
     except Exception as exc:
         _logger.debug("Failed to proxy space file download: %s", exc)
@@ -747,7 +752,7 @@ async def space_chat(space: str, data: dict = Body(...)):
     if not prax_url:
         raise HTTPException(status_code=502, detail="Prax backend unavailable")
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with prax_client(timeout=120.0) as client:
             resp = await client.post(
                 f"{prax_url.rstrip('/')}{_PRAX_BASE}/spaces/{space}/chat",
                 json=data,

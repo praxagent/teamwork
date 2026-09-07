@@ -3,6 +3,7 @@
 import base64
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from teamwork.config import settings
 from teamwork.models import Agent, Project, ActivityLog, get_db
+from teamwork.routers.prax import prax_client
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -435,9 +437,8 @@ def _slugify_agent_name(name: str) -> str:
     return slug.strip('-')
 
 
-def _get_agent_prompts_dir(project: Project, agent: Agent) -> "Path":
+def _get_agent_prompts_dir(project: Project, agent: Agent) -> Path:
     """Get the directory for an agent's prompts in the workspace."""
-    from pathlib import Path
     from teamwork.config import settings
 
     workspace_dir = project.workspace_dir or project.get_workspace_dir_name()
@@ -670,7 +671,7 @@ async def get_active_graphs(limit: int = 100):
     if not prax_url:
         return {"graphs": [], "total": 0}
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.get(
                 f"{prax_url.rstrip('/')}/execution/graphs",
                 params={"limit": limit},
@@ -689,7 +690,7 @@ async def delete_execution_graph(trace_id: str):
     if not prax_url:
         raise HTTPException(status_code=502, detail="Prax backend not configured")
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.delete(
                 f"{prax_url.rstrip('/')}/execution/graphs/{trace_id}",
             )
@@ -709,7 +710,7 @@ async def move_graph_session(trace_id: str, data: dict = Body(...)):
     if not prax_url:
         raise HTTPException(status_code=502, detail="Prax backend not configured")
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.patch(
                 f"{prax_url.rstrip('/')}/execution/graphs/{trace_id}/session",
                 json=data,

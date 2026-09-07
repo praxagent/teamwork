@@ -8,9 +8,25 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from teamwork.config import settings
 from teamwork.models import Channel, Project, Task, Agent, get_db
+from teamwork.utils.workspace import validate_workspace_dir
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _stored_workspace_path(name: str | None):
+    """Join a stored workspace_dir under WORKSPACE_PATH for rmtree-class work,
+    or None if it is empty or not a safe single directory name. These paths
+    delete; a legacy row holding "../.." must not reach them."""
+    if not name:
+        return None
+    try:
+        validate_workspace_dir(name)
+    except ValueError as exc:
+        print(f">>> Refusing workspace dir {name!r}: {exc}", flush=True)
+        return None
+    return settings.workspace_path / name
 
 
 class ProjectCreate(BaseModel):
@@ -430,8 +446,8 @@ async def delete_project(
             await db.delete(activity)
     
     # 4. Delete workspace directory
-    if project.workspace_dir:
-        workspace_path = settings.workspace_path / project.workspace_dir
+    workspace_path = _stored_workspace_path(project.workspace_dir)
+    if workspace_path is not None:
         if workspace_path.exists() and workspace_path.is_dir():
             try:
                 shutil.rmtree(workspace_path)
@@ -567,8 +583,8 @@ async def reset_project(
     # Clear workspace directory (use project.workspace_dir, not config)
     workspace_dir_name = project.workspace_dir or project.get_workspace_dir_name()
     files_deleted = 0
-    if workspace_dir_name:
-        workspace_path = settings.workspace_path / workspace_dir_name
+    workspace_path = _stored_workspace_path(workspace_dir_name)
+    if workspace_path is not None:
         print(f">>> Reset: Looking for workspace at {workspace_path}", flush=True)
         if workspace_path.exists() and workspace_path.is_dir():
             print(f">>> Reset: Clearing workspace {workspace_path}", flush=True)
@@ -584,7 +600,7 @@ async def reset_project(
                         item.unlink()
                     files_deleted += 1
                     print(f">>> Reset: Deleted {item.name}", flush=True)
-                except PermissionError as e:
+                except PermissionError:
                     print(f">>> Reset: Permission denied for {item.name}, will try Docker cleanup", flush=True)
                 except Exception as e:
                     print(f">>> Reset: Could not delete {item}: {e}", flush=True)

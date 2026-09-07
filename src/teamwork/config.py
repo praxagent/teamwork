@@ -122,6 +122,20 @@ class Settings(BaseSettings):
     # Prax backend URL (for plugin management proxy)
     prax_url: str = ""
 
+    # Credential TeamWork presents to Prax (as ``X-API-Key``) on every upstream
+    # request the proxy routers make and on the webhook POST. Empty (default)
+    # sends no header — the pre-existing behaviour. Set it to the same value as
+    # Prax's PRAX_API_KEY once Prax enforces it. Only ever sent to PRAX_URL's
+    # origin: a project whose webhook points elsewhere never sees this key.
+    prax_api_key: str = ""
+
+    # ── Internal UI key (shared secret for the browser) ──────────────────────
+    # Empty (default): the UI and its /api are open to whoever can reach the
+    # port, exactly as before. Set it and every /api and websocket request must
+    # carry ``X-Internal-Key: <key>`` or the session cookie minted by
+    # POST /api/session/login. See internal_auth.py for what stays exempt.
+    internal_api_key: str = ""
+
     # External agent API key — the legacy *shared* credential. It authenticates a
     # caller but carries no agent identity, so any holder can act as any agent.
     # Prefer agent_clients_path below, which binds one token to one agent.

@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter, Body, Query
 
 from teamwork.config import settings
+from teamwork.routers.prax import prax_client
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 _logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ async def _proxy_get(path: str, params: dict | None = None) -> Any:
     if not prax_url:
         return None
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.get(
                 f"{prax_url.rstrip('/')}{_PRAX_BASE}{path}",
                 params=params,
@@ -40,7 +41,7 @@ async def _proxy_request(method: str, path: str, **kwargs: Any) -> Any:
     if not prax_url:
         return None
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.request(
                 method,
                 f"{prax_url.rstrip('/')}{_PRAX_BASE}{path}",

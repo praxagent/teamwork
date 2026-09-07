@@ -30,7 +30,8 @@ route exists; the registry decides who may use it, and that is read per request.
 ### The credential registry
 
 Lives at `~/.teamwork/agent-clients.json` by default
-(`TEAMWORK_AGENT_CLIENTS_PATH` to move it). You should never need to open it, but
+(`AGENT_CLIENTS_PATH` to move it — no `TEAMWORK_` prefix; the settings model
+declares none, so the prefixed spelling is ignored). You should never need to open it, but
 if you do:
 
 - It stores **only a SHA-256 of each token**. A backup of this file grants
@@ -74,13 +75,25 @@ learn the names of spaces it cannot reach.
 | Tool | Needs |
 |---|---|
 | `list_spaces`, `list_tasks`, `list_notebooks`, `read_note` | read (no capability) |
-| `create_task`, `update_task`, `comment_on_task` | `task.write` |
+| `create_task`, `update_task`, `comment_on_task`, `delete_task` | `task.write` — note that deletion rides on the same write grant; the tool description asks the agent to delete only its own cards, but nothing enforces that |
 | `create_notebook`, `create_note`, `update_note` | `activity.write` |
 | `post_comment` | `message.post` |
 
-Capabilities are checked exactly as they are over REST, `gated` capabilities
-still route through a human approval, and every action still lands in the
-hash-chained event log. **MCP adds a protocol, not a bypass.**
+Capabilities are checked exactly as they are over REST. **MCP adds a protocol,
+not a bypass.**
+
+**Known gap (2026-09):** two of the claims this section used to make do not
+hold today (`src/teamwork/mcp_server.py`). A `gated` capability is refused in
+`authorize` with "needs approval … ask a human to approve it, then retry", but
+no approval request is created and MCP has no `X-Approval-Id` retry, so the
+retry fails the same way — gating an MCP key's capability is a denial with a
+misleading message. And only `post_comment` reaches TeamWork's hash-chained
+event log: it is routed through the external message-post function
+(`routers/mcp.py`, `_comment_poster`), so it gets the membership check and a
+`message.posted` entry. The Library tools (tasks, notebooks, notes) are
+forwarded to Prax's `/teamwork/library` API and write nothing to TeamWork's
+log; their record is the git history of the Library writes in Prax, described
+below.
 
 `post_comment` is one-way by design: it leaves a comment, it does not join a
 conversation or read replies.

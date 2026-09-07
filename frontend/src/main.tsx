@@ -5,6 +5,11 @@ import App from './App'
 import './index.css'
 // Import store early to ensure dark mode is initialized on page load
 import './stores/uiStore'
+import { installInternalKeyFetchInterceptor } from './hooks/useInternalKey'
+
+// Before the first render, so no /api call can slip past it. Passive: it only
+// acts on a 401 {"error":"internal_key_required"} from the backend.
+installInternalKeyFetchInterceptor()
 
 const queryClient = new QueryClient({
   defaultOptions: {

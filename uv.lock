@@ -870,7 +870,7 @@ wheels = [
 
 [[package]]
 name = "teamwork"
-version = "0.14.1"
+version = "0.22.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
