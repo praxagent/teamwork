@@ -14,6 +14,7 @@ import {
   Trash2,
   Sparkles,
   Globe,
+  LogOut,
 } from 'lucide-react';
 import {
   useUpdateProject,
@@ -30,6 +31,7 @@ import { PluginsSection } from './PluginsSection';
 import { TimezonePicker } from '@/components/common/TimezonePicker';
 import { ModelSection } from '@/components/common/ModelSection';
 import { useUIStore } from '@/stores';
+import { useInternalKey } from '@/hooks/useInternalKey';
 import type { Project } from '@/types';
 
 interface SettingsPanelProps {
@@ -316,6 +318,20 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
       showStatus('error', (err as Error).message);
     } finally {
       setCompacting(false);
+    }
+  };
+
+  // Internal-key session (hooks/useInternalKey.ts). Logout clears the cookie
+  // and reloads; whether the gate then appears is the backend's call.
+  const { logout } = useInternalKey();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch (err) {
+      setLoggingOut(false);
+      showStatus('error', (err as Error).message);
     }
   };
 
@@ -988,6 +1004,41 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
               {(config.workspace_type as string) || 'local'}
             </dd>
           </dl>
+        </div>
+      </div>
+
+      {/* Session */}
+      <div className={card}>
+        <div className="px-6 py-4 border-b border-inherit">
+          <h3 className={`font-semibold ${heading}`}>Session</h3>
+          <p className={`text-sm mt-1 ${subtext}`}>
+            This browser&apos;s internal-key session.
+          </p>
+        </div>
+        <div className="px-6 py-4 flex items-center justify-between">
+          <div>
+            <p className={`text-sm font-medium ${heading}`}>Log out</p>
+            <p className={`text-xs mt-0.5 ${subtext}`}>
+              Clears the session cookie. If this TeamWork requires an internal
+              key, you will be asked for it again.
+            </p>
+          </div>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              darkMode
+                ? 'bg-slate-700 text-gray-100 hover:bg-slate-600'
+                : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+            } disabled:opacity-50`}
+          >
+            {loggingOut ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <LogOut className="w-4 h-4" />
+            )}
+            Log out
+          </button>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, Body, HTTPException
@@ -16,13 +17,66 @@ _logger = logging.getLogger(__name__)
 _PRAX_BASE = "/teamwork"
 
 
+# ---------------------------------------------------------------------------
+# Outbound credential — the one place TeamWork attaches PRAX_API_KEY
+# ---------------------------------------------------------------------------
+
+def prax_headers() -> dict[str, str]:
+    """Headers every upstream request to Prax carries.
+
+    Empty unless ``PRAX_API_KEY`` is set, so the default sends exactly what it
+    always did.
+    """
+    key = settings.prax_api_key
+    return {"X-API-Key": key} if key else {}
+
+
+def prax_client(timeout: float) -> httpx.AsyncClient:
+    """An httpx client for talking to Prax. Every proxy router builds its
+    client here so the credential cannot be forgotten at one call site."""
+    return httpx.AsyncClient(timeout=timeout, headers=prax_headers())
+
+
+def _origin(url: str) -> tuple[str, str, int | None] | None:
+    try:
+        parts = urlsplit(url)
+        if not parts.scheme or not parts.hostname:
+            return None
+        port = parts.port or {"http": 80, "https": 443}.get(parts.scheme.lower())
+    except ValueError:  # malformed URL or a non-numeric port
+        return None
+    return parts.scheme.lower(), parts.hostname.lower(), port
+
+
+def prax_headers_for_url(url: str) -> dict[str, str]:
+    """``prax_headers()`` only if *url* is on ``PRAX_URL``'s origin.
+
+    Webhook URLs are registered per project by whichever external agent created
+    it. Attaching Prax's credential to an arbitrary registered URL would hand
+    the key to anyone who can register a project, so it goes to Prax and nowhere
+    else. A mismatch is logged loudly: if Prax enforces the key, this is the
+    symptom you will be chasing.
+    """
+    headers = prax_headers()
+    if not headers:
+        return {}
+    target, prax = _origin(url), _origin(settings.prax_url)
+    if target is not None and target == prax:
+        return headers
+    _logger.warning(
+        "PRAX_API_KEY is set but %s is not on PRAX_URL's origin (%s) — sending no key",
+        url, settings.prax_url or "<unset>",
+    )
+    return {}
+
+
 async def _proxy(method: str, path: str, **kwargs: Any) -> Any:
     """Proxy a request to the Prax backend."""
     prax_url = settings.prax_url
     if not prax_url:
         return None
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with prax_client(timeout=15.0) as client:
             resp = await client.request(
                 method,
                 f"{prax_url.rstrip('/')}{_PRAX_BASE}{path}",

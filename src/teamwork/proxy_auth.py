@@ -9,6 +9,12 @@ rejected by the app itself — not only by the firewall.
 Default OFF → a complete no-op (the middleware isn't even added). When ON it is
 **fail-closed**: misconfiguration refuses to start, and a missing/invalid
 assertion returns 401. See ``docs/security/network-exposure.md`` (Scenario B).
+
+Implemented as a pure ASGI middleware, not ``BaseHTTPMiddleware``: the latter is
+HTTP-only and never sees ``websocket`` scopes, so ``/ws`` (every live channel
+feed) and the terminal/browser/desktop sockets bypassed the check entirely.
+Websocket handshakes that fail the check are closed with code 4401 before
+accept.
 """
 from __future__ import annotations
 
@@ -17,9 +23,9 @@ import logging
 import jwt
 from jwt import PyJWKClient
 from starlette.concurrency import run_in_threadpool
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from teamwork.internal_auth import header_from_scope
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +81,15 @@ class ProxyAuthConfig:
             )
 
 
-class ProxyAuthMiddleware(BaseHTTPMiddleware):
-    """Require a valid proxy-issued JWT on every non-exempt request."""
+#: Close code for a refused websocket handshake (private range 4000-4999).
+WS_CLOSE_UNAUTHORIZED = 4401
+
+
+class ProxyAuthMiddleware:
+    """Require a valid proxy-issued JWT on every non-exempt http/websocket scope."""
 
     def __init__(self, app, config: ProxyAuthConfig) -> None:
-        super().__init__(app)
+        self.app = app
         self.cfg = config
         # PyJWKClient caches signing keys (network fetch only on cache miss).
         self._jwks = PyJWKClient(config.jwks_url)
@@ -100,21 +110,37 @@ class ProxyAuthMiddleware(BaseHTTPMiddleware):
             issuer=self.cfg.issuer or None,
         )
 
-    async def dispatch(self, request: Request, call_next):
+    async def _reject(self, scope, receive, send, detail: str) -> None:
+        if scope["type"] == "websocket":
+            # Before accept, so the app never sees the connection.
+            await send({"type": "websocket.close", "code": WS_CLOSE_UNAUTHORIZED,
+                        "reason": detail})
+            return
+        await JSONResponse({"detail": detail}, status_code=401)(scope, receive, send)
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
         # CORS preflight carries no credentials and is handled by CORSMiddleware
         # (registered outermost); exempt OPTIONS + health checks so the LB and
         # browsers aren't blocked.
-        if request.method == "OPTIONS" or self._is_exempt(request.url.path):
-            return await call_next(request)
+        is_preflight = scope["type"] == "http" and scope.get("method", "").upper() == "OPTIONS"
+        if is_preflight or self._is_exempt(scope.get("path") or "/"):
+            await self.app(scope, receive, send)
+            return
 
-        token = request.headers.get(self.cfg.header)
+        token = header_from_scope(scope, self.cfg.header)
         if not token:
-            return JSONResponse({"detail": "missing proxy authentication"}, status_code=401)
+            await self._reject(scope, receive, send, "missing proxy authentication")
+            return
         try:
             claims = await run_in_threadpool(self._verify, token)
         except Exception as exc:  # noqa: BLE001 — any failure is a hard reject
             logger.warning("proxy auth rejected (%s)", type(exc).__name__)
-            return JSONResponse({"detail": "invalid proxy authentication"}, status_code=401)
+            await self._reject(scope, receive, send, "invalid proxy authentication")
+            return
 
-        request.state.proxy_identity = claims.get("email") or claims.get("sub")
-        return await call_next(request)
+        # Same slot Request.state reads from, so handlers see request.state.proxy_identity.
+        scope.setdefault("state", {})["proxy_identity"] = claims.get("email") or claims.get("sub")
+        await self.app(scope, receive, send)

@@ -17,6 +17,7 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teamwork.config import settings
+from teamwork.routers.prax import prax_headers_for_url
 from teamwork.models import Message, Channel, Agent, Project, Task, get_db, AsyncSessionLocal
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
@@ -137,7 +138,8 @@ async def _forward_to_external_webhook(
         if extra_data:
             payload["extra_data"] = extra_data
         async with httpx.AsyncClient(timeout=30.0) as client:
-            await client.post(webhook_url, json=payload)
+            await client.post(webhook_url, json=payload,
+                              headers=prax_headers_for_url(webhook_url))
     except Exception as e:
         logger.error("Failed to forward message to webhook %s: %s", webhook_url, e)
         try:

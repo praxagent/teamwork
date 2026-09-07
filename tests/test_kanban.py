@@ -183,8 +183,8 @@ def test_subtask_hierarchy(client):
     pid, aids, _ = _setup_project_with_agents(client)
     parent = _create_task(client, pid, "Epic: Payment system", assigned_to=aids[0])
 
-    child1 = _create_task(client, pid, "Add Stripe integration", parent_task_id=parent["id"])
-    child2 = _create_task(client, pid, "Add PayPal integration", parent_task_id=parent["id"])
+    _create_task(client, pid, "Add Stripe integration", parent_task_id=parent["id"])
+    _create_task(client, pid, "Add PayPal integration", parent_task_id=parent["id"])
 
     # Default listing (parent_only=True) should show only the parent
     resp = client.get(f"/api/tasks?project_id={pid}")
@@ -269,8 +269,8 @@ def test_kanban_board_view(client):
     pid, aids, _ = _setup_project_with_agents(client)
 
     # Seed board with tasks in various states
-    t1 = _create_task(client, pid, "Backlog item 1")
-    t2 = _create_task(client, pid, "Backlog item 2")
+    _create_task(client, pid, "Backlog item 1")
+    _create_task(client, pid, "Backlog item 2")
     t3 = _create_task(client, pid, "Active work", assigned_to=aids[0])
     t4 = _create_task(client, pid, "In review", assigned_to=aids[1])
     t5 = _create_task(client, pid, "Already done", assigned_to=aids[0])

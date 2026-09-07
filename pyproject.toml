@@ -60,8 +60,6 @@ ignore = [
     "E712",  # comparison to True/False
     "F401",  # imported but unused (many re-exports)
     "F811",  # redefinition of unused name (shadowed imports in long routers)
-    "F821",  # undefined name (forward refs / deferred imports)
-    "F841",  # local variable assigned but never used
 ]
 
 [tool.pytest.ini_options]

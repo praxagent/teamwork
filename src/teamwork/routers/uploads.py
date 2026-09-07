@@ -17,6 +17,25 @@ router = APIRouter(prefix="/uploads", tags=["uploads"])
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
+# Types a browser would execute if rendered inline under TeamWork's origin
+# (script in HTML/XHTML/SVG, XSLT in XML). These are served as downloads; an
+# <img src> of an SVG still renders, since Content-Disposition only governs
+# navigation. Images, pdf, audio and video stay inline for the chat.
+ATTACHMENT_MEDIA_TYPES = frozenset({
+    "text/html",
+    "application/xhtml+xml",
+    "image/svg+xml",
+    "text/xml",
+    "application/xml",
+})
+
+
+def content_disposition_type(media_type: str | None) -> str:
+    """``attachment`` for active content, ``inline`` for everything else."""
+    base = (media_type or "").split(";", 1)[0].strip().lower()
+    return "attachment" if base in ATTACHMENT_MEDIA_TYPES else "inline"
+
+
 ALLOWED_EXTENSIONS = {
     # Images
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
@@ -94,4 +113,7 @@ async def serve_upload(
         raise HTTPException(status_code=404, detail="File not found")
 
     media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    if content_disposition_type(media_type) == "attachment":
+        return FileResponse(file_path, media_type=media_type, filename=filename,
+                            content_disposition_type="attachment")
     return FileResponse(file_path, media_type=media_type)

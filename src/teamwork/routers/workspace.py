@@ -184,6 +184,21 @@ async def list_workspace_files(
     )
 
 
+def _contained_or_403(candidate: Path, workspace_path: Path) -> Path:
+    """Resolve *candidate* and refuse it unless it lies inside *workspace_path*.
+
+    ``relative_to`` on resolved paths, not a string-prefix test: with the
+    workspace at ``.../ws/abc``, the prefix test also accepted ``.../ws/abc-evil``
+    — a sibling directory that merely starts with the same characters.
+    """
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(workspace_path.resolve())
+    except (ValueError, OSError):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return resolved
+
+
 @router.get("/{project_id}/file", response_model=FileContentResponse)
 async def get_file_content(
     project_id: str,
@@ -194,14 +209,7 @@ async def get_file_content(
     workspace_path = await get_project_workspace_path(project_id, db)
     file_path = workspace_path / path
     
-    # Security: ensure path is within workspace
-    try:
-        file_path = file_path.resolve()
-        workspace_resolved = workspace_path.resolve()
-        if not str(file_path).startswith(str(workspace_resolved)):
-            raise HTTPException(status_code=403, detail="Access denied")
-    except Exception:
-        raise HTTPException(status_code=403, detail="Invalid path")
+    file_path = _contained_or_403(file_path, workspace_path)
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
@@ -242,14 +250,7 @@ async def download_workspace_file(
     workspace_path = await get_project_workspace_path(project_id, db)
     file_path = workspace_path / path
 
-    # Security: ensure path is within workspace
-    try:
-        file_path = file_path.resolve()
-        workspace_resolved = workspace_path.resolve()
-        if not str(file_path).startswith(str(workspace_resolved)):
-            raise HTTPException(status_code=403, detail="Access denied")
-    except Exception:
-        raise HTTPException(status_code=403, detail="Invalid path")
+    file_path = _contained_or_403(file_path, workspace_path)
 
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
@@ -289,14 +290,7 @@ async def save_file_content(
     workspace_path = await get_project_workspace_path(project_id, db)
     file_path = workspace_path / request.path
     
-    # Security: ensure path is within workspace
-    try:
-        file_path = file_path.resolve()
-        workspace_resolved = workspace_path.resolve()
-        if not str(file_path).startswith(str(workspace_resolved)):
-            raise HTTPException(status_code=403, detail="Access denied")
-    except Exception:
-        raise HTTPException(status_code=403, detail="Invalid path")
+    file_path = _contained_or_403(file_path, workspace_path)
     
     # Ensure parent directory exists
     file_path.parent.mkdir(parents=True, exist_ok=True)

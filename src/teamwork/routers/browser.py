@@ -13,6 +13,16 @@ from teamwork.config import settings
 router = APIRouter(prefix="/browser", tags=["browser"])
 logger = logging.getLogger(__name__)
 
+# The only expressions the frontend ever sends (BrowserPanel back/forward/
+# reload). CDP Runtime.evaluate runs arbitrary JS inside the sandbox page —
+# with whatever the user is logged into there — so anything else is refused
+# rather than relayed.
+EVAL_ALLOWLIST = frozenset({"history.back()", "history.forward()", "location.reload()"})
+
+
+def is_allowed_eval(expression: object) -> bool:
+    return isinstance(expression, str) and expression in EVAL_ALLOWLIST
+
 
 @router.get("/info")
 async def browser_info():
@@ -245,7 +255,15 @@ async def browser_websocket(
                         pass
                 elif t == "eval":
                     expr = msg.get("expression", "")
-                    await send_cdp("Runtime.evaluate", {"expression": expr})
+                    if is_allowed_eval(expr):
+                        await send_cdp("Runtime.evaluate", {"expression": expr})
+                    else:
+                        logger.warning("Refused eval expression: %r", str(expr)[:80])
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "eval expression not allowed: only "
+                                       "history.back(), history.forward(), location.reload()",
+                        })
                 else:
                     logger.warning("Unknown client msg type: %s", t)
             except WebSocketDisconnect:

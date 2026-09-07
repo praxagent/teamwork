@@ -10,6 +10,7 @@ import httpx
 from fastapi import APIRouter
 
 from teamwork.config import settings
+from teamwork.routers.prax import prax_client
 
 router = APIRouter(prefix="/observability", tags=["observability"])
 _logger = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ async def get_observability_config():
     if not prax_url:
         return {"enabled": False, "grafana_url": None, "tempo_url": None}
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.get(f"{prax_url.rstrip('/')}/teamwork/observability")
             resp.raise_for_status()
             return resp.json()
@@ -80,7 +81,7 @@ async def get_health_status():
     if not prax_url:
         return {"error": "Prax not configured"}
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.get(f"{prax_url.rstrip('/')}/teamwork/health")
             resp.raise_for_status()
             return resp.json()
@@ -106,7 +107,7 @@ async def get_health_events(
             params["category"] = category
         if severity:
             params["severity"] = severity
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with prax_client(timeout=10.0) as client:
             resp = await client.get(
                 f"{prax_url.rstrip('/')}/teamwork/health/events",
                 params=params,

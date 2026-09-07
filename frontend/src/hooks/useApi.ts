@@ -14,6 +14,10 @@ import type {
 
 const API_BASE = '/api';
 
+// A 401 {"error":"internal_key_required"} never reaches this function: the
+// global fetch wrapper in useInternalKey.ts parks the call until the user
+// unlocks the app and then retries it. Not every request goes through here
+// (panels call fetch('/api/...') directly), which is why it lives there.
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${url}`, {
     ...options,
