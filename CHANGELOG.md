@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/praxagent/teamwork/compare/v0.22.0...v0.22.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* authenticate WebSockets, contain paths, and add an opt-in internal key ([#66](https://github.com/praxagent/teamwork/issues/66)) ([d881eb3](https://github.com/praxagent/teamwork/commit/d881eb3ac3a8653c0e33912b16e8be297ad65aa3))
+
 ## [0.22.0](https://github.com/praxagent/teamwork/compare/v0.21.0...v0.22.0) (2026-09-02)
 
 
