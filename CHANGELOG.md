@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/praxagent/teamwork/compare/v0.22.1...v0.22.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **integrity:** FK cascade on delete, approvals no longer self-approvable, internal writes on the event log ([#68](https://github.com/praxagent/teamwork/issues/68)) ([6955ce8](https://github.com/praxagent/teamwork/commit/6955ce845c7e681645e410655a008712b5972ee7))
+
 ## [0.22.1](https://github.com/praxagent/teamwork/compare/v0.22.0...v0.22.1) (2026-09-07)
 
 
