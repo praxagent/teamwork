@@ -60,16 +60,51 @@ async def request_approval(
     return req
 
 
+def can_decide(client) -> tuple[bool, str]:
+    """May this credential decide approvals at all? ``(ok, reason)``.
+
+    Two conditions, both structural rather than a matter of trust:
+
+    * ``approval.decide`` must be granted **explicitly** — the ``*`` wildcard
+      does not count.  A gated agent's registry entry is typically
+      ``allow: ["*"], gated: ["message.delete"]``; if the wildcard conferred
+      the right to decide, the gate would be self-approvable by construction.
+    * a credential that is itself gated for anything may not decide.  Gating
+      says "this caller needs a second party"; the same caller cannot be the
+      second party.
+    """
+    from teamwork.config import CAP_APPROVAL_DECIDE
+
+    if CAP_APPROVAL_DECIDE not in getattr(client, "allow", frozenset()):
+        return False, f"this credential is not explicitly granted '{CAP_APPROVAL_DECIDE}'"
+    if getattr(client, "gated", frozenset()):
+        return False, "a credential whose own actions are gated may not decide approvals"
+    return True, ""
+
+
 async def decide(
     db: AsyncSession, *, approval_id: str, approve: bool, decided_by: str,
-    note: str | None = None,
+    note: str | None = None, decider_client: str | None = None,
+    decider_agent_id: str | None = None,
 ) -> ApprovalRequest:
-    """Approve or reject. A decision is final — decided requests are not reopened."""
+    """Approve or reject. A decision is final — decided requests are not reopened.
+
+    ``decided_by`` is recorded as the decider and must be the name of the
+    authenticated credential, not a body field.  ``decider_client`` /
+    ``decider_agent_id`` identify the caller for the separation-of-duties check:
+    the client (or agent) that requested an action may not decide it — raised
+    as ``PermissionError``.  Both default to None for callers that have already
+    established the decider is a different party (tests, an admin CLI).
+    """
     req = (await db.execute(
         select(ApprovalRequest).where(ApprovalRequest.id == approval_id)
     )).scalar_one_or_none()
     if req is None:
         raise LookupError("no such approval request")
+    if decider_client is not None and req.requested_by_client == decider_client:
+        raise PermissionError("the credential that requested this action may not decide it")
+    if decider_agent_id and req.requested_by_agent_id == decider_agent_id:
+        raise PermissionError("the agent that requested this action may not decide it")
     if req.status != STATUS_PENDING:
         raise ValueError(f"this request is already {req.status}")
     if req.is_expired():

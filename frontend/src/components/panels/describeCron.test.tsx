@@ -12,7 +12,6 @@ import { describe, expect, it } from 'vitest';
 // the contract instead by importing the panel file's export if present.
 import * as Panel from './SchedulerPanel';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const describeCron: (c: string) => string = (Panel as any).describeCron;
 
 describe('describeCron', () => {

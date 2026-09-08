@@ -23,8 +23,15 @@ Registry (JSON) at ``TEAMWORK_AGENT_CLIENTS_PATH``::
     [
       {"name": "prax-research", "token_sha256": "…", "agent_id": "…",
        "project_id": "…", "allow": ["message.post", "task.update"]},
-      {"name": "prax-ops", "token": "plaintext-ok-but-prefer-hash", "agent_id": "…"}
+      {"name": "prax-ops", "token": "plaintext-ok-but-prefer-hash", "agent_id": "…"},
+      {"name": "console", "token_sha256": "…", "allow": ["approval.decide"]}
     ]
+
+The ``console`` entry is the credential a human uses to rule on approval
+requests. ``approval.decide`` (``teamwork.config.CAP_APPROVAL_DECIDE``) is an
+explicit grant: neither ``*`` nor ``approval.*`` confers it, a credential with
+any ``gated`` capability cannot use it, and the client or agent that requested
+an approval can never decide it (``services/approvals.py``).
 """
 from __future__ import annotations
 

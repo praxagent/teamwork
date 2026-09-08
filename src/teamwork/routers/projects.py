@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from teamwork.config import settings
 from teamwork.models import Channel, Project, Task, Agent, get_db
+from teamwork.services.event_log import append_event
 from teamwork.utils.workspace import validate_workspace_dir
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -105,6 +106,9 @@ async def create_project(
     db.add(db_project)
     await db.flush()
     await db.refresh(db_project)
+    await append_event(db, event_type="project.created", actor_type="internal",
+                       project_id=db_project.id, subject_id=db_project.id,
+                       payload={"name": db_project.name})
 
     return ProjectResponse(
         id=db_project.id,
@@ -146,6 +150,12 @@ async def create_blank_workspace(
                       description="General discussion")
     db.add(channel)
     await db.flush()
+    await append_event(db, event_type="project.created", actor_type="internal",
+                       project_id=project.id, subject_id=project.id,
+                       payload={"name": project.name, "blank": True})
+    await append_event(db, event_type="channel.created", actor_type="internal",
+                       project_id=project.id, subject_id=channel.id,
+                       payload={"name": channel.name, "type": channel.type})
     await db.commit()
 
     return {
@@ -454,7 +464,14 @@ async def delete_project(
             except Exception as e:
                 print(f"Warning: Could not delete workspace {workspace_path}: {e}")
     
-    # 5. Delete the project (cascades to agents, channels, tasks, messages)
+    # 5. Log it, then delete the project.  The children go with it through the
+    #    database's ON DELETE CASCADE (foreign_keys is ON per connection and the
+    #    child FKs declare the action — see models/base.py); before that, the
+    #    pragma was never enabled and the FKs declared no action, so this left
+    #    every agent, channel, task and message of the project orphaned.
+    await append_event(db, event_type="project.deleted", actor_type="internal",
+                       project_id=project_id, subject_id=project_id,
+                       payload={"name": project.name, "agents": len(agent_ids)})
     await db.delete(project)
     await db.commit()
 

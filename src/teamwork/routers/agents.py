@@ -9,12 +9,13 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teamwork.config import settings
-from teamwork.models import Agent, Project, ActivityLog, get_db
+from teamwork.models import Agent, Project, ActivityLog, Message, get_db
 from teamwork.routers.prax import prax_client
+from teamwork.services.event_log import append_event
 from teamwork.websocket import manager, WebSocketEvent, EventType
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -333,13 +334,29 @@ async def delete_agent(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Delete an agent."""
+    """Delete an agent — and, by ``ON DELETE CASCADE``, every message it ever
+    posted in any channel and its whole activity log.  Tasks assigned to it are
+    unassigned (``SET NULL``), not deleted.
+
+    The cascade is irreversible, so the row counts about to go are written to
+    the event log first, in the same transaction as the delete.
+    """
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
 
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    n_messages = (await db.execute(
+        select(func.count()).select_from(Message).where(Message.agent_id == agent_id))).scalar_one()
+    n_activity = (await db.execute(
+        select(func.count()).select_from(ActivityLog).where(ActivityLog.agent_id == agent_id))).scalar_one()
+    await append_event(
+        db, event_type="agent.deleted", actor_type="internal",
+        project_id=agent.project_id, subject_id=agent_id,
+        payload={"name": agent.name, "role": agent.role,
+                 "messages": n_messages, "activity_log": n_activity},
+    )
     await db.delete(agent)
 
 

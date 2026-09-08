@@ -419,3 +419,39 @@ def test_full_agent_workflow(client):
 
     data_eng = client.get(f"/api/messages/channel/{channels['engineering']}").json()
     assert any(m["content"] == "Starting work on login page." for m in data_eng["messages"])
+
+
+def test_create_task_with_unknown_assignee_is_a_404(client):
+    """``tasks.assigned_to`` is a foreign key and enforcement is on, so an
+    unknown agent id used to surface as an IntegrityError at commit (500).
+    The internal ``/api/tasks`` router already answers 404; so does this."""
+    project = _create_project(client)
+    pid = project["project_id"]
+
+    resp = client.post(f"/api/external/projects/{pid}/tasks", json={
+        "title": "Orphan", "assigned_to": "no-such-agent",
+    })
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Agent not found in this project"
+
+
+def test_update_task_with_unknown_assignee_is_a_404(client):
+    pid, aid, _ = _create_project_with_agent(client)
+    tid = client.post(f"/api/external/projects/{pid}/tasks", json={
+        "title": "Reassign me", "assigned_to": aid,
+    }).json()["task_id"]
+
+    resp = client.patch(f"/api/external/projects/{pid}/tasks/{tid}", json={
+        "assigned_to": "no-such-agent",
+    })
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Agent not found in this project"
+
+    # An agent of ANOTHER project is not "in this project" either.
+    other_pid, other_aid, _ = _create_project_with_agent(client)
+    resp = client.patch(f"/api/external/projects/{pid}/tasks/{tid}", json={
+        "assigned_to": other_aid,
+    })
+    assert resp.status_code == 404
+    # The task is unchanged.
+    assert client.get(f"/api/tasks/{tid}").json()["assigned_to"] == aid

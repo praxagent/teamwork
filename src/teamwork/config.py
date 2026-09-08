@@ -56,6 +56,15 @@ if not _env_file.exists():
     _env_file = Path(".env")
 
 
+# Capability that lets a credential DECIDE approval requests. Defined here rather
+# than in agent_auth's vocabulary because it is a different kind of authority:
+# an agent's capability set says what the agent may do, and "rule on whether an
+# agent may do something" must never be part of that set. It is checked as an
+# EXPLICIT grant — the ``*`` wildcard does not confer it, or every gated agent
+# (typically ``allow: ["*"], gated: [...]``) could approve its own requests.
+CAP_APPROVAL_DECIDE = "approval.decide"
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
