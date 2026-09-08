@@ -766,9 +766,16 @@ async def create_external_task(
     db: AsyncSession = Depends(get_db),
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, Any]:
-    """Create a task on the board."""
+    """Create a task on the board.
+
+    An assignee must be an agent of this project: ``tasks.assigned_to`` is a
+    foreign key, and with enforcement on (models/base.py) an unknown id is
+    refused by the database at commit — so it is refused here first, with the
+    same 404 the internal ``/api/tasks`` router returns, instead of a 500.
+    """
     require_capability(api_key, CAP_TASK_WRITE)
     await _get_external_project(project_id, db)
+    await _require_project_agent(project_id, request.assigned_to, db)
 
     task = Task(
         project_id=project_id,
@@ -808,7 +815,11 @@ async def update_external_task(
     db: AsyncSession = Depends(get_db),
     api_key: AgentClient = Depends(_verify_api_key),
 ) -> dict[str, str]:
-    """Update a task on the board."""
+    """Update a task on the board.
+
+    A new assignee is validated the same way as on create (404, not a
+    foreign-key failure at commit).
+    """
     require_capability(api_key, CAP_TASK_WRITE)
     await _get_external_project(project_id, db)
 
@@ -819,6 +830,7 @@ async def update_external_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    await _require_project_agent(project_id, request.assigned_to, db)
     if request.status is not None:
         task.status = request.status
     if request.assigned_to is not None:
@@ -843,6 +855,21 @@ async def update_external_task(
         ),
     )
     return {"status": "updated"}
+
+
+async def _require_project_agent(project_id: str, agent_id: str | None, db: AsyncSession) -> None:
+    """404 unless *agent_id* is None or names an agent of *project_id*.
+
+    Used for body-supplied assignee ids.  An empty string is not "unassigned":
+    it is a value the foreign key would reject, so it gets the 404 too.
+    """
+    if agent_id is None:
+        return
+    agent = (await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.project_id == project_id)
+    )).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found in this project")
 
 
 async def _get_external_project(project_id: str, db: AsyncSession) -> Project:
@@ -880,13 +907,26 @@ async def create_activity_log(
     db: AsyncSession = Depends(get_db),
     api_key: AgentClient = Depends(_verify_api_key),
 ):
-    """Create an activity log entry for an agent."""
+    """Create an activity log entry for an agent.
+
+    The agent must exist in this project: ``activity_log.agent_id`` is a
+    foreign key, and with enforcement on (models/base.py) a phantom agent id
+    is refused by the database — so it is refused here first, with a 404
+    instead of a 500.  As for messages, whose activity this is comes from the
+    credential, not the body.
+    """
     require_capability(api_key, CAP_ACTIVITY_WRITE)
     await _get_external_project(project_id, db)
+    acting_agent_id = require_agent(api_key, request.agent_id)
+    agent = (await db.execute(
+        select(Agent).where(Agent.id == acting_agent_id, Agent.project_id == project_id)
+    )).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found in this project")
 
     from teamwork.models import ActivityLog
     log = ActivityLog(
-        agent_id=request.agent_id,
+        agent_id=acting_agent_id,
         activity_type=request.activity_type,
         description=request.description,
         extra_data=request.extra_data,
@@ -955,9 +995,14 @@ async def verify_event_chain(
 
 
 class ApprovalDecision(BaseModel):
-    """A human's decision on a proposed action."""
+    """A human's decision on a proposed action.
+
+    ``decided_by`` is a display hint only: the recorded decider is the name of
+    the credential that made the call.  A body field is an assertion; the
+    token is what was authenticated.
+    """
     approve: bool
-    decided_by: str
+    decided_by: str | None = None
     note: str | None = None
 
 
@@ -999,14 +1044,37 @@ async def decide_approval(
     The decision only *unlocks* the action — the agent still has to retry it,
     presenting this approval. Nothing is executed on the agent's behalf here, so
     there is no queue of half-run intentions to reconcile.
-    """
-    from teamwork.services.approvals import decide
 
+    Who may decide is a separate authority from who may act: the caller needs
+    an explicit ``approval.decide`` grant (the ``*`` wildcard does not confer
+    it), must not itself be gated, and must not be the client or agent that
+    requested the action.  The decider recorded is the credential's name — the
+    body's ``decided_by`` is kept only as a note.  Before this, any valid
+    credential could approve, and the approver's name came from the body, so a
+    gated agent could grant and consume its own approval and the log would
+    show whatever name it chose.
+    """
+    from teamwork.services.approvals import can_decide, decide
+
+    ok, why = can_decide(api_key)
+    if not ok:
+        logger.warning("client %r may not decide approvals: %s", api_key.name, why)
+        raise HTTPException(status_code=403, detail=why)
+
+    note = request.note
+    if request.decided_by and request.decided_by != api_key.name:
+        note = f"{note + ' ' if note else ''}[entered as: {request.decided_by}]"
     try:
         req = await decide(db, approval_id=approval_id, approve=request.approve,
-                           decided_by=request.decided_by, note=request.note)
+                           decided_by=api_key.name, note=note,
+                           decider_client=api_key.name,
+                           decider_agent_id=api_key.agent_id)
     except LookupError:
         raise HTTPException(status_code=404, detail="No such approval request.") from None
+    except PermissionError as exc:
+        logger.warning("client %r refused deciding approval %s: %s",
+                       api_key.name, approval_id, exc)
+        raise HTTPException(status_code=403, detail=str(exc)) from None
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     await db.commit()

@@ -640,6 +640,20 @@ async def create_message(
         if not thread_result.scalar_one_or_none():
             raise HTTPException(status_code=404, detail="Thread not found")
 
+    # Same membership rule as /external: an agent posting through the internal
+    # API into a channel it was never put in is still an agent posting where it
+    # may not.  Human messages (agent_id None) are not scoped.
+    from teamwork.services.event_log import append_event
+    from teamwork.services.membership import may_post
+
+    ok, why = await may_post(
+        db, channel_id=message.channel_id, agent_id=message.agent_id,
+        enforce=getattr(settings, "enforce_channel_membership", False))
+    if not ok:
+        logger.warning("internal API refused agent %s posting to channel %s: %s",
+                       message.agent_id, message.channel_id, why)
+        raise HTTPException(status_code=403, detail=why)
+
     # Persist
     db_message = Message(
         channel_id=message.channel_id,
@@ -652,6 +666,16 @@ async def create_message(
     db.add(db_message)
     await db.flush()
     await db.refresh(db_message)
+    # The internal API writes the same table the external API does; a message
+    # that reaches the store without a log entry is a hole in the audit trail
+    # whichever door it came through.  Same transaction as the row.
+    await append_event(
+        db, event_type="message.posted", actor_type="internal",
+        actor_id=message.agent_id, actor_name=agent_name,
+        project_id=channel.project_id, subject_id=db_message.id,
+        payload={"channel_id": message.channel_id, "message_type": message.message_type,
+                 "content_length": len(message.content or "")},
+    )
     await db.commit()
 
     response = await message_to_response(db_message, db)
@@ -774,11 +798,20 @@ async def delete_message(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete a message."""
+    from teamwork.services.event_log import append_event
+
     result = await db.execute(select(Message).where(Message.id == message_id))
     message = result.scalar_one_or_none()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
+    channel = (await db.execute(
+        select(Channel).where(Channel.id == message.channel_id))).scalar_one_or_none()
     await db.delete(message)
+    await append_event(
+        db, event_type="message.deleted", actor_type="internal",
+        project_id=channel.project_id if channel else None, subject_id=message_id,
+        payload={"channel_id": message.channel_id, "agent_id": message.agent_id},
+    )
     await db.commit()
 
 

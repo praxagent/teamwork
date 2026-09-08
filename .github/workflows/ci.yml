@@ -3,10 +3,29 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  # main itself was never tested: the required `test` check only ran on the PR
+  # head, while release-please tags releases from the squash commit that lands
+  # on main. Run the same jobs there so a release is only cut from a tree CI saw.
+  push:
+    branches: [main]
+
+# Least privilege: these jobs only read the checkout (release.yml declares its
+# own write scopes). Without this block the default GITHUB_TOKEN carries write
+# scopes into jobs that run third-party code (uv sync, npm ci) on every PR.
+permissions:
+  contents: read
+
+# One live run per ref: a new push to a PR supersedes the run in flight; runs
+# on main are never cancelled (each is a release candidate's verdict).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Recent runs finish in ~30 s; the default job timeout is 6 hours.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -22,3 +41,45 @@ jobs:
 
       - name: Test
         run: uv run pytest tests/ -x -q
+
+  # The React/TypeScript frontend had no CI at all: `npm run lint`, `tsc` and
+  # `vitest` all existed in frontend/package.json but nothing ran them on a PR
+  # (the React #310 hooks-order crash that reached a user in 2026-08 is what
+  # that costs). This is the pre-PR sequence a developer runs locally; the
+  # production bundle itself is built on the deploy host, not here.
+  #
+  # NOTE: this job only gates merges once it is added to the branch-protection
+  # required checks next to `test` — a red `frontend` job is otherwise advisory.
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"  # Vite 5 needs Node 18+; 20 matches the fresh-install workflow
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install (npm ci)
+        run: npm ci
+
+      - name: Type-check (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Unit tests (vitest run)
+        run: npx vitest run
+
+      # `npm run lint` = eslint . --ext ts,tsx --report-unused-disable-directives.
+      # Any ERROR fails the job: react-hooks/rules-of-hooks (the #310 class) and
+      # unused eslint-disable directives. Warnings are printed but not yet
+      # blocking — 19 pre-existing react-hooks/exhaustive-deps + no-unused-vars
+      # warnings live in panel code at the time of writing; `npm run lint:strict`
+      # (--max-warnings 0) is the next ratchet once those are cleared. Rules are
+      # not lowered here: the config in .eslintrc.cjs is the single source.
+      - name: Lint (eslint — errors block)
+        run: npm run lint

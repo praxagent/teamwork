@@ -23,10 +23,12 @@ class Message(Base):
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
     channel_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("channels.id"), nullable=False
+        String(36), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
     )
+    # CASCADE, not SET NULL: a null agent_id means "posted by the human", so
+    # SET NULL would re-attribute a deleted agent's messages to the user.
     agent_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("agents.id"), nullable=True
+        String(36), ForeignKey("agents.id", ondelete="CASCADE"), nullable=True
     )  # null if from user (CEO)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     message_type: Mapped[str] = mapped_column(
@@ -35,7 +37,7 @@ class Message(Base):
     extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     # Thread support
     thread_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("messages.id"), nullable=True
+        String(36), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
