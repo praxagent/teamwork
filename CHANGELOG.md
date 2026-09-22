@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.3](https://github.com/praxagent/teamwork/compare/v0.22.2...v0.22.3) (2026-09-22)
+
+
+### Bug Fixes
+
+* **gitignore:** glob the .env namespace instead of enumerating suffixes ([#70](https://github.com/praxagent/teamwork/issues/70)) ([b722706](https://github.com/praxagent/teamwork/commit/b722706ba61f8f13a7aa8fa8f1a807ab12733457))
+
 ## [0.22.2](https://github.com/praxagent/teamwork/compare/v0.22.1...v0.22.2) (2026-09-08)
 
 
