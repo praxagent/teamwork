@@ -2,17 +2,19 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teamwork.models.approval import (
+    GRANT_WINDOWS,
     STATUS_APPROVED,
     STATUS_CONSUMED,
     STATUS_PENDING,
     STATUS_REJECTED,
+    ApprovalGrant,
     ApprovalRequest,
     fingerprint_action,
 )
@@ -85,7 +87,7 @@ def can_decide(client) -> tuple[bool, str]:
 async def decide(
     db: AsyncSession, *, approval_id: str, approve: bool, decided_by: str,
     note: str | None = None, decider_client: str | None = None,
-    decider_agent_id: str | None = None,
+    decider_agent_id: str | None = None, scope: str = "once",
 ) -> ApprovalRequest:
     """Approve or reject. A decision is final — decided requests are not reopened.
 
@@ -119,8 +121,92 @@ async def decide(
         db, event_type="approval.approved" if approve else "approval.rejected",
         actor_type="human", actor_name=decided_by, project_id=req.project_id,
         subject_id=req.id,
-        payload={"capability": req.capability, "note": note})
+        payload={"capability": req.capability, "note": note, "scope": scope})
+    if approve and scope != "once":
+        if scope not in GRANT_WINDOWS:
+            raise ValueError(f"unknown approval scope {scope!r}")
+        grant = ApprovalGrant(
+            client_name=req.requested_by_client, capability=req.capability,
+            project_id=req.project_id, scope=scope, source_approval_id=req.id,
+            granted_by=decided_by,
+            expires_at=_now() + timedelta(seconds=GRANT_WINDOWS[scope]),
+        )
+        db.add(grant)
+        await db.flush()
+        await append_event(
+            db, event_type="approval.grant_created", actor_type="human",
+            actor_name=decided_by, project_id=req.project_id, subject_id=grant.id,
+            payload={"capability": req.capability, "client": req.requested_by_client,
+                     "scope": scope, "expires_at": grant.expires_at.isoformat()})
     return req
+
+
+async def active_grant(db: AsyncSession, *, client_name: str, capability: str,
+                       project_id: str | None) -> ApprovalGrant | None:
+    """An unexpired, unrevoked window grant covering this request, if any."""
+    rows = (await db.execute(
+        select(ApprovalGrant).where(
+            ApprovalGrant.client_name == client_name,
+            ApprovalGrant.capability == capability,
+            ApprovalGrant.project_id == project_id,
+            ApprovalGrant.revoked.is_(False),
+        ).order_by(ApprovalGrant.expires_at.desc())
+    )).scalars().all()
+    return next((g for g in rows if g.is_active()), None)
+
+
+async def request_for_client(
+    db: AsyncSession, *, capability: str, client_name: str,
+    agent_id: str | None = None, project_id: str | None = None,
+    payload: dict[str, Any] | None = None, reason: str | None = None,
+) -> ApprovalRequest:
+    """An agent asking for approval of its own next action.
+
+    Under an active window grant the request is approved on arrival, but it is
+    still a recorded, fingerprint-bound, single-use approval: the grant widens
+    who has to be asked, not what gets logged.
+    """
+    req = await request_approval(
+        db, capability=capability, client_name=client_name, agent_id=agent_id,
+        project_id=project_id, payload=payload, reason=reason)
+    if req.status != STATUS_PENDING:
+        return req
+    grant = await active_grant(db, client_name=client_name, capability=capability,
+                               project_id=project_id)
+    if grant is not None:
+        req.status = STATUS_APPROVED
+        req.decided_by = f"grant:{grant.id}"
+        req.decided_at = _now()
+        req.decision_note = f"covered by a {grant.scope} grant from {grant.granted_by}"
+        await db.flush()
+        await append_event(
+            db, event_type="approval.auto_granted", actor_type="system",
+            actor_name="approval-grant", project_id=project_id, subject_id=req.id,
+            payload={"capability": capability, "grant_id": grant.id})
+    return req
+
+
+async def revoke_grant(db: AsyncSession, *, grant_id: str, revoked_by: str) -> ApprovalGrant:
+    grant = (await db.execute(
+        select(ApprovalGrant).where(ApprovalGrant.id == grant_id)
+    )).scalar_one_or_none()
+    if grant is None:
+        raise LookupError("no such grant")
+    grant.revoked = True
+    await db.flush()
+    await append_event(
+        db, event_type="approval.grant_revoked", actor_type="human",
+        actor_name=revoked_by, project_id=grant.project_id, subject_id=grant.id,
+        payload={"capability": grant.capability, "client": grant.client_name})
+    return grant
+
+
+async def list_active_grants(db: AsyncSession) -> list[ApprovalGrant]:
+    rows = (await db.execute(
+        select(ApprovalGrant).where(ApprovalGrant.revoked.is_(False))
+        .order_by(ApprovalGrant.created_at.desc()).limit(200)
+    )).scalars().all()
+    return [g for g in rows if g.is_active()]
 
 
 async def consume(

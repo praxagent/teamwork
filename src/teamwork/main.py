@@ -173,6 +173,11 @@ app.include_router(terminal_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
+
+# The human side of approval gates: the UI's approval dialog decides here.
+from teamwork.routers.approvals import router as approvals_router  # noqa: E402
+
+app.include_router(approvals_router, prefix="/api")
 app.include_router(prax_router, prefix="/api")
 # Login/logout/status for the internal UI key. Mounted always so the UI can ask
 # whether a key is required; with no key configured, /login answers 400 and

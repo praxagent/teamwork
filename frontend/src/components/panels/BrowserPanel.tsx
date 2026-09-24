@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { Globe, X, RefreshCw, ChevronLeft, ChevronRight, Lock, Unlock, MessageSquare, Radio } from 'lucide-react';
+import { Globe, X, RefreshCw, ChevronLeft, ChevronRight, Lock, Unlock, MessageSquare, Radio, Hand } from 'lucide-react';
 import { useUIStore } from '@/stores';
 import { BrowserChatSidebar } from './BrowserChatSidebar';
 
@@ -30,6 +30,31 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [controlHeld, setControlHeld] = useState(false);
+
+  // Mirror the server's hold so the button is right after a reload.
+  useEffect(() => {
+    if (!isVisible) return;
+    let cancelled = false;
+    const poll = () =>
+      fetch('/api/browser/control')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (!cancelled && d) setControlHeld(Boolean(d.held)); })
+        .catch(() => {});
+    poll();
+    const id = window.setInterval(poll, 5000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [isVisible]);
+
+  const toggleControl = useCallback(() => {
+    const next = !controlHeld;
+    setControlHeld(next);
+    fetch('/api/browser/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ held: next }),
+    }).catch(() => setControlHeld(!next));
+  }, [controlHeld]);
   const takeover = !locked; // Unlocked = interactive, locked = view-only
   const [urlInput, setUrlInput] = useState('');
   const [, setCurrentUrl] = useState('');
@@ -456,6 +481,22 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
             Go
           </button>
         </div>
+
+        {/* Take control: while held (or while you are clicking/typing here),
+            the agent's browser tools refuse to act, so you and it never drive
+            the page at the same time. */}
+        <button
+          onClick={toggleControl}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+            controlHeld
+              ? 'bg-amber-500 text-white hover:bg-amber-600'
+              : darkMode ? 'text-gray-300 hover:bg-slate-700' : 'text-gray-600 hover:bg-gray-200'
+          }`}
+          title={controlHeld ? 'Hand the browser back to the agent' : 'Take control — the agent pauses its browser actions until you hand back'}
+        >
+          <Hand className="w-3.5 h-3.5" />
+          {controlHeld ? 'Hand back' : 'Take control'}
+        </button>
 
         {/* Lock toggle */}
         <button
