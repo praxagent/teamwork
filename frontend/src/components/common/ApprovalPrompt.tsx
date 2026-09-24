@@ -77,8 +77,9 @@ export function ApprovalPrompt() {
     }
   };
 
-  const action = current.capability.replace(/^prax\.(tool|egress)\./, '');
-  const kind = current.capability.startsWith('prax.egress.') ? 'network access' : 'action';
+  const isNetwork = /^(prax\.egress\.|egress\.)/.test(current.capability);
+  const action = current.capability.replace(/^prax\.(tool|egress)\./, '').replace(/^egress\.[^.]+\./, '');
+  const kind = isNetwork ? 'network access' : 'action';
   const panel = darkMode ? 'bg-slate-800 text-gray-100 border-slate-600' : 'bg-white text-gray-900 border-gray-200';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
   const code = darkMode ? 'bg-slate-900 text-gray-200' : 'bg-gray-50 text-gray-800';

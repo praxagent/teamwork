@@ -192,6 +192,10 @@ class Settings(BaseSettings):
     # dialog, so decisions are refused. Set true ONLY where nothing but you can
     # reach TeamWork (and accept that a local process could approve).
     approvals_allow_unauthenticated: bool = False
+    # Egress gates whose "ask" questions TeamWork relays to a person:
+    # "name=url|admin_token;name=url|admin_token". TeamWork holds the admin
+    # tokens precisely so the agent being judged does not.
+    egress_gates: str = ""
 
     # CORS
     cors_origins: list[str] = [

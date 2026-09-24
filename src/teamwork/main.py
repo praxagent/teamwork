@@ -82,7 +82,20 @@ async def lifespan(app: FastAPI):
     # Ensure workspace directory exists
     settings.workspace_path.mkdir(parents=True, exist_ok=True)
 
+    # Relay egress-gate questions to a person (EGRESS_GATES; off when empty).
+    relay_task = None
+    from teamwork.services.gate_relay import Relay, parse_gates
+    gates = parse_gates(settings.egress_gates)
+    if gates:
+        import asyncio as _asyncio
+
+        from teamwork.models.base import AsyncSessionLocal
+        relay_task = _asyncio.create_task(Relay(gates, AsyncSessionLocal).run())
+
     yield
+
+    if relay_task is not None:
+        relay_task.cancel()
 
     print(">>> Application shutting down, cleanup complete.", flush=True)
 
