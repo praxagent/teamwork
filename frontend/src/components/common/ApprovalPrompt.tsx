@@ -58,11 +58,20 @@ export function ApprovalPrompt() {
         body: JSON.stringify({ approve, scope }),
       });
       if (!resp.ok && resp.status !== 409) {
-        setError(`Could not record the decision (${resp.status}).`);
+        // Say why (e.g. "log in to approve") — never let a person believe a
+        // decision was recorded when it was not.
+        let detail = '';
+        try {
+          const body = await resp.json();
+          detail = typeof body.detail === 'string' ? body.detail : '';
+        } catch { /* not JSON */ }
+        setError(detail || `Could not record the decision (${resp.status}).`);
         return;
       }
       setPending((p) => p.filter((x) => x.approval_id !== current.approval_id));
       refresh();
+    } catch {
+      setError('Could not reach TeamWork — the decision was NOT recorded. Try again.');
     } finally {
       setBusy(false);
     }

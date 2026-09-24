@@ -46,15 +46,29 @@ export function BrowserPanel({ projectId, isVisible, onClose }: BrowserPanelProp
     return () => { cancelled = true; window.clearInterval(id); };
   }, [isVisible]);
 
-  const toggleControl = useCallback(() => {
-    const next = !controlHeld;
-    setControlHeld(next);
+  const postControl = useCallback((held: boolean) =>
     fetch('/api/browser/control', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ held: next }),
-    }).catch(() => setControlHeld(!next));
-  }, [controlHeld]);
+      body: JSON.stringify({ held }),
+    }).then((r) => r.ok), []);
+
+  const toggleControl = useCallback(() => {
+    const next = !controlHeld;
+    setControlHeld(next);
+    // Revert unless the server actually recorded it (network error OR an HTTP
+    // error such as an expired session).
+    postControl(next).then((ok) => { if (!ok) setControlHeld(!next); })
+      .catch(() => setControlHeld(!next));
+  }, [controlHeld, postControl]);
+
+  // The server lets an unrenewed hold lapse (a closed tab must not lock the
+  // agent out forever), so renew it while this panel is open and holding.
+  useEffect(() => {
+    if (!controlHeld || !isVisible) return;
+    const id = window.setInterval(() => { postControl(true).catch(() => {}); }, 30000);
+    return () => window.clearInterval(id);
+  }, [controlHeld, isVisible, postControl]);
   const takeover = !locked; // Unlocked = interactive, locked = view-only
   const [urlInput, setUrlInput] = useState('');
   const [, setCurrentUrl] = useState('');

@@ -74,7 +74,7 @@ def enable_sqlite_foreign_keys(target_engine: AsyncEngine) -> None:
         cursor.execute("PRAGMA foreign_keys=ON")
         # Per connection, now that there is more than one: wait for a lock
         # instead of failing with "database is locked".
-        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA busy_timeout=30000")  # matches the connect timeout
         cursor.close()
 
 

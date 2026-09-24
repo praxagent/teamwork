@@ -186,6 +186,12 @@ class Settings(BaseSettings):
     # requests (503) rather than accepting anyone as anyone — set this only for
     # local development, never for a reachable deployment.
     allow_unauthenticated_agents: bool = False
+    # Approval decisions must come from an authenticated person: a browser
+    # session (INTERNAL_API_KEY login) or the authenticating proxy. Without
+    # either, anything that can reach the port could pose as the approval
+    # dialog, so decisions are refused. Set true ONLY where nothing but you can
+    # reach TeamWork (and accept that a local process could approve).
+    approvals_allow_unauthenticated: bool = False
 
     # CORS
     cors_origins: list[str] = [

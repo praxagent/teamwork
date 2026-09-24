@@ -264,8 +264,16 @@ whenever something is pending, and is backed by the human route
 **refuses any request carrying an agent credential** (`X-API-Key`,
 `Authorization`, `X-Agent-Signature`), so a credential issued to an agent
 cannot approve anything there, whatever it was granted on the external API.
-It sits behind the same access control as the rest of the UI
-(`INTERNAL_API_KEY` or the authenticating proxy).
+
+**Deciding requires an authenticated person.** Leaving off agent headers is
+not enough, because they can simply be omitted:
+- **With `INTERNAL_API_KEY`:** the request needs a valid browser **session
+  cookie** from the UI login. The `X-Internal-Key` header alone is refused,
+  since that is the scripts path.
+- **With the authenticating proxy:** its verified assertion counts.
+- **With neither:** decisions are **refused**. An unauthenticated route cannot
+  tell a person's browser from any program that can reach the port. Set
+  `APPROVALS_ALLOW_UNAUTHENTICATED=true` only if you accept exactly that.
 
 A person may answer with a **scope**:
 - `once` — the default: this exact action, one time;

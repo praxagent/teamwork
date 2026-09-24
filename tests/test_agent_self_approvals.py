@@ -7,8 +7,19 @@ one recorded, fingerprint-bound and single-use.
 """
 from __future__ import annotations
 
+import pytest
+
 from teamwork.agent_auth import AgentClient
+from teamwork.config import settings
 from teamwork.routers import external
+
+
+@pytest.fixture(autouse=True)
+def _decisions_allowed_without_ui_auth(monkeypatch):
+    # The flow tests below are about approvals, not UI login; the auth rule
+    # itself is tested at the bottom of this file.
+    monkeypatch.setattr(settings, "approvals_allow_unauthenticated", True)
+    monkeypatch.setattr(settings, "internal_api_key", "")
 
 ASK = {"capability": "prax.tool.send_email",
        "payload": {"tool": "send_email", "args_sha256": "abc"},
@@ -116,3 +127,34 @@ def test_a_revoked_grant_stops_approving(client, monkeypatch):
 def test_unknown_scope_is_refused(client, monkeypatch):
     aid = _ask(client, monkeypatch)["approval_id"]
     assert _human_decide(client, aid, scope="forever").status_code == 422
+
+
+def test_another_agent_asking_the_same_action_gets_its_own_request(client, monkeypatch):
+    mine = _ask(client, monkeypatch)["approval_id"]
+    _as(monkeypatch, name="other-agent")
+    theirs = client.post("/api/external/approvals", json=ASK).json()["approval_id"]
+    assert theirs != mine
+
+
+# --- a person, not merely a request without agent headers --------------------
+
+def test_decisions_are_refused_without_ui_authentication(client, monkeypatch):
+    aid = _ask(client, monkeypatch)["approval_id"]
+    monkeypatch.setattr(settings, "approvals_allow_unauthenticated", False)
+    resp = _human_decide(client, aid)
+    assert resp.status_code == 403 and "INTERNAL_API_KEY" in resp.json()["detail"]
+    assert client.get(f"/api/external/approvals/{aid}").json()["status"] == "pending"
+
+
+def test_with_a_ui_key_only_a_logged_in_session_decides(client, monkeypatch):
+    from teamwork.internal_auth import COOKIE, issue_session_token
+
+    aid = _ask(client, monkeypatch)["approval_id"]
+    monkeypatch.setattr(settings, "approvals_allow_unauthenticated", False)
+    monkeypatch.setattr(settings, "internal_api_key", "ui-key")
+    # The key header is the scripts path — exactly what must not decide.
+    assert client.post(f"/api/approvals/{aid}/decide", json={"approve": True},
+                       headers={"X-Internal-Key": "ui-key"}).status_code == 403
+    token, _ = issue_session_token("ui-key")
+    client.cookies.set(COOKIE, token)
+    assert _human_decide(client, aid).status_code == 200

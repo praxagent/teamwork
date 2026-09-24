@@ -8,9 +8,11 @@ keeps the answer; the agent asks before each browser action.
 
 Two signals, either is enough:
 
-* an explicit hold — the panel's "Take control" toggle, until handed back;
-* recent input — any mouse, key, scroll, navigation or paste through the panel
-  in the last ``ACTIVE_SECONDS``, so taking over needs no extra click.
+* an explicit hold — the panel's "Take control" toggle. The open panel renews
+  it; a hold nobody renews within ``HOLD_SECONDS`` (the tab was closed, the
+  laptop slept) lapses, so the agent is never locked out indefinitely;
+* recent input — a click, key, navigation or paste through the panel in the
+  last ``ACTIVE_SECONDS`` (not pointer movement or scrolling).
 
 One process, one sandbox browser: the state is module-level on purpose.
 """
@@ -20,9 +22,10 @@ import threading
 import time
 
 ACTIVE_SECONDS = 30.0
+HOLD_SECONDS = 90.0
 
 _lock = threading.Lock()
-_held = False
+_held_until: float | None = None
 _held_since: float | None = None
 _last_input: float | None = None
 
@@ -34,11 +37,16 @@ def mark_input() -> None:
 
 
 def set_held(held: bool) -> None:
-    global _held, _held_since, _last_input
+    """Take (or renew) the hold, or hand the browser back."""
+    global _held_until, _held_since, _last_input
     with _lock:
-        _held = held
-        _held_since = time.monotonic() if held else None
-        if not held:
+        now = time.monotonic()
+        if held:
+            if _held_until is None or now >= _held_until:
+                _held_since = now
+            _held_until = now + HOLD_SECONDS
+        else:
+            _held_until, _held_since = None, None
             _last_input = None  # handing back ends the implicit hold too
 
 
@@ -47,10 +55,11 @@ def status() -> dict:
         now = time.monotonic()
         age = None if _last_input is None else round(now - _last_input, 1)
         recent = age is not None and age < ACTIVE_SECONDS
+        held = _held_until is not None and now < _held_until
         return {
-            "user_in_control": _held or recent,
-            "held": _held,
-            "held_for_seconds": None if _held_since is None else round(now - _held_since, 1),
+            "user_in_control": held or recent,
+            "held": held,
+            "held_for_seconds": None if not held or _held_since is None else round(now - _held_since, 1),
             "seconds_since_user_input": age,
             "active_window_seconds": ACTIVE_SECONDS,
         }
@@ -58,6 +67,6 @@ def status() -> dict:
 
 def reset() -> None:
     """Tests only."""
-    global _held, _held_since, _last_input
+    global _held_until, _held_since, _last_input
     with _lock:
-        _held, _held_since, _last_input = False, None, None
+        _held_until, _held_since, _last_input = None, None, None

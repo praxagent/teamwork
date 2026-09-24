@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teamwork.models.approval import (
@@ -42,6 +42,9 @@ async def request_approval(
         select(ApprovalRequest).where(
             ApprovalRequest.action_fingerprint == fingerprint,
             ApprovalRequest.status == STATUS_PENDING,
+            # Per requester: another agent asking for the same action must not
+            # be handed (or a grant of its own applied to) this one's request.
+            ApprovalRequest.requested_by_client == client_name,
         ).order_by(ApprovalRequest.created_at.desc()).limit(1)
     )).scalar_one_or_none()
     if existing is not None and not existing.is_expired():
@@ -230,7 +233,14 @@ async def consume(
                        approval_id, client_name, why)
         return False, why
 
-    req.status = STATUS_CONSUMED
+    # Conditional on still being approved: two concurrent spends of one
+    # approval must not both succeed.
+    spent = await db.execute(
+        update(ApprovalRequest)
+        .where(ApprovalRequest.id == approval_id, ApprovalRequest.status == STATUS_APPROVED)
+        .values(status=STATUS_CONSUMED))
+    if spent.rowcount != 1:
+        return False, "this approval has already been used"
     await db.flush()
     await append_event(
         db, event_type="approval.consumed", actor_type="agent",

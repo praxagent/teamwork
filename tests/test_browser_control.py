@@ -50,3 +50,18 @@ def test_an_agent_credential_cannot_take_or_release_control(client):
     resp = client.post("/api/browser/control", json={"held": False},
                        headers={"X-API-Key": "agent"})
     assert resp.status_code == 403
+
+
+def test_an_unrenewed_hold_lapses(monkeypatch):
+    browser_control.set_held(True)
+    assert browser_control.status()["user_in_control"] is True
+    monkeypatch.setattr(browser_control, "HOLD_SECONDS", 0.0)
+    browser_control.set_held(True)  # renewed with a zero window = already lapsed
+    assert browser_control.status()["held"] is False
+
+
+def test_pointer_movement_is_not_taking_control():
+    from teamwork.routers import browser as browser_router
+    assert "mouse" not in browser_router._USER_INPUT_TYPES
+    assert "scroll" not in browser_router._USER_INPUT_TYPES
+    assert browser_router._USER_MOUSE_EVENTS == {"mousePressed", "mouseReleased"}

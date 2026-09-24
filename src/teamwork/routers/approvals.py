@@ -5,13 +5,12 @@ comes from here: the TeamWork UI's approval dialog, which a person clicks. That
 separation is the point — an approval that travels back through the agent's own
 conversation is a suggestion the agent can talk itself past, not a decision.
 
-These routes sit behind the same access control as the rest of the UI
-(``INTERNAL_API_KEY`` session, or the authenticating proxy when configured). On
-top of that they refuse any request that presents an **agent** credential, so a
-credential issued to an agent cannot be used to approve anything here, whatever
-it was granted on the external API. With neither UI protection configured,
-whoever can reach TeamWork's port can decide — exactly as they can already read
-every channel and drive the terminal; see ``docs/security/``.
+Deciding requires an authenticated person (``_require_person``): a browser
+session from the ``INTERNAL_API_KEY`` login, or the authenticating proxy. With
+neither configured, decisions are refused — an unauthenticated route cannot
+tell a person's browser from any program that can reach the port — unless the
+operator opts in with ``APPROVALS_ALLOW_UNAUTHENTICATED``. Requests presenting
+an agent credential are refused regardless.
 """
 from __future__ import annotations
 
@@ -34,12 +33,46 @@ HUMAN_DECIDER = "human:teamwork-ui"
 
 
 def _human_only(request: Request) -> None:
+    """Refuse anything presenting an agent credential."""
     present = [h for h in _AGENT_HEADERS if request.headers.get(h)]
     if present:
-        logger.warning("refused an approval decision carrying agent credentials (%s)", present)
+        logger.warning("refused an approval request carrying agent credentials (%s)", present)
         raise HTTPException(
             status_code=403,
             detail="Agent credentials cannot decide approvals; a person decides in the TeamWork UI.")
+
+
+def _require_person(request: Request) -> None:
+    """A decision must come from an authenticated person, not merely a request
+    without agent headers — headers can simply be left off.
+
+    * ``INTERNAL_API_KEY`` set: a valid browser **session cookie** (the UI
+      login). The ``X-Internal-Key`` header alone is not enough: it is the
+      scripts path, and scripts are what this check keeps out.
+    * the authenticating proxy enabled: its middleware already verified the
+      person's signed assertion on this request.
+    * neither: refused, unless ``APPROVALS_ALLOW_UNAUTHENTICATED`` says the
+      operator accepts that anything reaching the port could approve.
+    """
+    from teamwork.config import settings
+    from teamwork.internal_auth import COOKIE, verify_session_token
+
+    _human_only(request)
+    if settings.internal_api_key:
+        if verify_session_token(settings.internal_api_key, request.cookies.get(COOKIE)):
+            return
+        raise HTTPException(status_code=403, detail=(
+            "Approvals need a logged-in TeamWork session. Reload the page and log in."))
+    if settings.proxy_auth_enabled:
+        return
+    if settings.approvals_allow_unauthenticated:
+        logger.warning("approval decided without UI authentication "
+                       "(APPROVALS_ALLOW_UNAUTHENTICATED=true)")
+        return
+    raise HTTPException(status_code=403, detail=(
+        "Approvals are disabled until TeamWork's UI is authenticated: set "
+        "INTERNAL_API_KEY (or the authenticating proxy). Without it, any program "
+        "that can reach TeamWork could approve on your behalf."))
 
 
 class HumanDecision(BaseModel):
@@ -77,7 +110,7 @@ async def decide(
     approval_id: str, body: HumanDecision, request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    _human_only(request)
+    _require_person(request)
     from teamwork.models.approval import GRANT_WINDOWS
     from teamwork.services.approvals import decide as do_decide
 
@@ -111,7 +144,7 @@ async def grants(request: Request, db: AsyncSession = Depends(get_db)) -> dict[s
 @router.post("/grants/{grant_id}/revoke")
 async def revoke(grant_id: str, request: Request,
                  db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
-    _human_only(request)
+    _require_person(request)
     from teamwork.services.approvals import revoke_grant
 
     try:

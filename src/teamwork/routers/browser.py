@@ -14,8 +14,12 @@ from teamwork.services import browser_control
 
 router = APIRouter(prefix="/browser", tags=["browser"])
 
-# Panel messages that mean "a person is driving the browser right now".
-_USER_INPUT_TYPES = frozenset({"mouse", "key", "scroll", "navigate", "clipboard_paste"})
+# Panel input that means "a person is driving the browser right now". Pointer
+# movement and scrolling are watching, not driving — the panel streams hover
+# events continuously, and counting them would lock the agent out whenever the
+# cursor crossed the view.
+_USER_INPUT_TYPES = frozenset({"key", "navigate", "clipboard_paste"})
+_USER_MOUSE_EVENTS = frozenset({"mousePressed", "mouseReleased"})
 
 
 class ControlRequest(BaseModel):
@@ -225,7 +229,7 @@ async def browser_websocket(
                 msg = json.loads(raw)
                 t = msg.get("type")
                 logger.debug("Client msg: %s", t)
-                if t in _USER_INPUT_TYPES:
+                if t in _USER_INPUT_TYPES or (t == "mouse" and msg.get("event") in _USER_MOUSE_EVENTS):
                     browser_control.mark_input()
 
                 if t == "mouse":

@@ -77,3 +77,24 @@ describe('ApprovalPrompt', () => {
     expect(JSON.parse(deny![1].body)).toEqual({ approve: false, scope: 'once' });
   });
 });
+
+describe('ApprovalPrompt errors', () => {
+  it('shows the server reason and keeps the request when a decision is refused', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      url === '/api/approvals/pending'
+        ? respond({ pending: [PENDING] })
+        : respond({ detail: 'Approvals need a logged-in TeamWork session.' }, false, 403));
+    render(<ApprovalPrompt />);
+    fireEvent.click(await screen.findByRole('button', { name: /allow once/i }));
+    expect(await screen.findByText(/logged-in TeamWork session/)).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('says the decision was not recorded when TeamWork is unreachable', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      url === '/api/approvals/pending' ? respond({ pending: [PENDING] }) : Promise.reject(new Error('offline')));
+    render(<ApprovalPrompt />);
+    fireEvent.click(await screen.findByRole('button', { name: /deny/i }));
+    expect(await screen.findByText(/NOT recorded/)).toBeInTheDocument();
+  });
+});
