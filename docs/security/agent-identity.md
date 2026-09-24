@@ -230,8 +230,9 @@ human says so, and unable to do it on its own initiative.
 Each refusal is a **403** whose detail names the rule. What this does *not*
 establish is that the decider is a person: the server verifies a distinct,
 explicitly-trusted credential, and it is the operator's job to hand that
-`console` token to a human. There is no approvals UI in the frontend and no
-CLI verb for it yet; deciding is an HTTP call with the console credential.
+`console` token to a human. A person can also decide in the UI's approval
+dialog, which uses the human route described in §5b and refuses agent
+credentials.
 
 **Approvals are bound to the exact action and are single-use.** An approval is
 keyed by `sha256(capability, project_id, canonical_payload)`, so one granted for
