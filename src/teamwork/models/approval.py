@@ -33,7 +33,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from teamwork.models.base import Base
@@ -123,3 +123,38 @@ class ApprovalRequest(Base):
 
     def __repr__(self) -> str:
         return f"<ApprovalRequest(id={self.id}, {self.capability}, {self.status})>"
+
+
+# Scopes a human may grant beyond "this exact action, once". Each is a window
+# on ONE capability for ONE requesting credential — never "anything, forever".
+GRANT_WINDOWS: dict[str, int] = {"hour": 3600, "day": 86400}
+
+
+class ApprovalGrant(Base):
+    """A time-bounded standing approval: capability X for client Y until T.
+
+    Created only when a human approves a request with a window scope. While it
+    is active, a new request for the same capability by the same credential is
+    approved on arrival — still recorded, still fingerprint-bound, still
+    single-use — so the audit trail shows every action, not just the first.
+    """
+
+    __tablename__ = "approval_grants"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    client_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    capability: Mapped[str] = mapped_column(String(64), nullable=False)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    scope: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_approval_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    granted_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    def is_active(self, now: datetime | None = None) -> bool:
+        now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+        return not self.revoked and now <= self.expires_at
