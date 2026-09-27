@@ -260,10 +260,17 @@ async def download_workspace_file(
         content_type = "application/octet-stream"
 
     from fastapi.responses import FileResponse
+
+    from teamwork.routers.uploads import content_disposition_type
+
+    # Inline, so an image a link points at opens in the tab instead of
+    # downloading; active content (HTML, SVG, XML) still downloads, since an
+    # agent wrote it and it would otherwise run under TeamWork's origin.
     return FileResponse(
         path=str(file_path),
         media_type=content_type,
         filename=file_path.name,
+        content_disposition_type=content_disposition_type(content_type),
     )
 
 
