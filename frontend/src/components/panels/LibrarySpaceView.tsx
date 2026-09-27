@@ -11,7 +11,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   Star, Target, Pause, CheckCircle2, Archive as ArchiveIcon, Trash2,
   Plus, Calendar, User, Sparkles, X, Bell, BellOff, MessageSquare,
-  Clock, Save, Edit2, Circle, CheckCircle, AlertTriangle,
+  Clock, Save, Edit2, AlertTriangle,
   Image as ImageIcon, Upload, Wand2, Loader2,
 } from 'lucide-react';
 import {
@@ -37,6 +37,7 @@ import type {
   LibraryTask, LibraryTaskColumn, TaskActivity,
 } from '@/hooks/useApi';
 import { MarkdownContent } from '@/components/common';
+import { setTaskChecked } from '@/utils/taskList';
 
 interface Props {
   project: string;
@@ -705,7 +706,7 @@ function TaskCard({
 }
 
 // ────────────────────────────────────────────────────────────
-// Task side panel (expandable task detail)
+// Task detail dialog (centered, like an issue tracker's)
 // ────────────────────────────────────────────────────────────
 
 function TaskSidePanel({
@@ -730,8 +731,19 @@ function TaskSidePanel({
     assignees: string;
   } | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
+  // A ticked box shows at once; this holds the edited description until the
+  // saved one comes back from the server.
+  const [pendingDescription, setPendingDescription] = useState<string | null>(null);
 
   const task = taskQuery.data;
+
+  useEffect(() => { setPendingDescription(null); }, [task?.description]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !editing) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editing, onClose]);
 
   useEffect(() => {
     if (task && !editing) {
@@ -782,15 +794,43 @@ function TaskSidePanel({
     });
   };
 
+  const description = pendingDescription ?? task.description;
+
+  const toggleDescriptionTask = (ordinal: number, checked: boolean) => {
+    const next = setTaskChecked(description, ordinal, checked);
+    if (next === description) return;
+    setPendingDescription(next);  // tick shows now; the save follows
+    updateTask.mutate(
+      { project, task_id: taskId, description: next, editor: 'human' },
+      { onError: () => setPendingDescription(null) },
+    );
+  };
+
+  const toggleChecklistItem = (index: number) => {
+    const checklist = task.checklist.map((item, i) => (i === index ? { ...item, done: !item.done } : item));
+    updateTask.mutate({ project, task_id: taskId, checklist, editor: 'human' });
+  };
+
+  const section = (label: string) => (
+    <div className={clsx('text-xs font-semibold mb-1.5 tracking-wide', t3)}>{label}</div>
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className={clsx(
-        'w-[480px] h-full flex flex-col border-l shadow-xl',
-        dark ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200',
-      )}>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={task.title}
+        className={clsx(
+          'w-full max-w-5xl my-auto flex flex-col rounded-xl border shadow-2xl max-h-[calc(100svh-2rem)] sm:max-h-[calc(100svh-4rem)]',
+          dark ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200',
+        )}
+      >
         {/* Header */}
-        <div className={clsx('px-4 py-3 border-b flex items-center gap-2', border)}>
+        <div className={clsx('px-5 py-3 border-b flex items-center gap-2 shrink-0', border)}>
           <span className={clsx('text-xs px-1.5 py-0.5 rounded', dark ? 'bg-slate-700 text-slate-300' : 'bg-gray-200 text-slate-700')}>
             {task.column}
           </span>
@@ -802,190 +842,203 @@ function TaskSidePanel({
               <button onClick={() => setEditing(false)} className={btnGhost}>Cancel</button>
             </>
           ) : (
-            <button onClick={() => setEditing(true)} className={btnGhost}><Edit2 className="w-3 h-3" /></button>
+            <button onClick={() => setEditing(true)} className={btnGhost} title="Edit"><Edit2 className="w-3.5 h-3.5" /></button>
           )}
-          <button onClick={onDelete} className={btnGhost}><Trash2 className="w-3 h-3 text-red-400" /></button>
-          <button onClick={onClose} className={btnGhost}><X className="w-3.5 h-3.5" /></button>
+          <button onClick={onDelete} className={btnGhost} title="Delete"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+          <button onClick={onClose} className={btnGhost} title="Close (Esc)"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Title */}
-          {editing ? (
-            <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className={clsx(inputBase, 'text-lg font-semibold')} />
-          ) : (
-            <h2 className={clsx('text-lg font-semibold', t1)}>{task.title}</h2>
-          )}
-
-          {/* Author + source + confidence */}
-          <div className={clsx('text-xs flex items-center gap-2 flex-wrap', t2)}>
-            <span>Created by: <AuthorBadge author={task.author} dark={dark} /></span>
-            {task.source && (
-              <span className="flex items-center gap-1">
-                · Source: <SourceBadge source={task.source} dark={dark} />
-              </span>
-            )}
-            {task.confidence && (
-              <span className="flex items-center gap-1" title={confidenceLabel(task.confidence)}>
-                · Confidence:
-                <span className={clsx('w-1.5 h-1.5 rounded-full inline-block', confidenceDotClass(task.confidence))} />
-                <span>{task.confidence}</span>
-              </span>
-            )}
-          </div>
-          {task.source === 'tool_output' && task.source_justification && (
-            <div
-              className={clsx(
-                'text-xs rounded border px-2 py-1.5 flex items-start gap-2',
-                dark ? 'border-amber-700 bg-amber-950/40 text-amber-200' : 'border-amber-300 bg-amber-50 text-amber-800',
-              )}
-            >
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <div>
-                <div className="font-semibold">Tool-originated task</div>
-                <div>{task.source_justification}</div>
-                <div className="italic mt-0.5 opacity-80">Review before trusting — tool outputs can carry prompt-injection attempts.</div>
-              </div>
-            </div>
-          )}
-
-          {/* Assignees */}
-          <div>
-            <div className={clsx('text-xs font-semibold mb-1', t3)}>ASSIGNEES</div>
+        <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden md:flex">
+          {/* Main column: what the task is */}
+          <div className="md:flex-1 md:min-w-0 md:overflow-y-auto p-5 space-y-5">
             {editing ? (
-              <input
-                placeholder="prax, human, sam"
-                value={draft.assignees}
-                onChange={(e) => setDraft({ ...draft, assignees: e.target.value })}
-                className={inputBase}
-              />
-            ) : task.assignees.length > 0 ? (
-              <div className="flex gap-1 flex-wrap">
-                {task.assignees.map((a) => (
-                  <span key={a} className={clsx('text-xs px-2 py-0.5 rounded flex items-center gap-1', dark ? 'bg-slate-800 text-slate-200' : 'bg-gray-100 text-slate-700')}>
-                    {a === 'prax' ? <Sparkles className="w-3 h-3 text-indigo-500" /> : <User className="w-3 h-3 text-emerald-500" />}
-                    {a}
-                  </span>
+              <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className={clsx(inputBase, 'text-xl font-semibold')} />
+            ) : (
+              <h2 className={clsx('text-xl font-semibold', t1)}>{task.title}</h2>
+            )}
+
+            {task.source === 'tool_output' && task.source_justification && (
+              <div
+                className={clsx(
+                  'text-xs rounded border px-2 py-1.5 flex items-start gap-2',
+                  dark ? 'border-amber-700 bg-amber-950/40 text-amber-200' : 'border-amber-300 bg-amber-50 text-amber-800',
+                )}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold">Tool-originated task</div>
+                  <div>{task.source_justification}</div>
+                  <div className="italic mt-0.5 opacity-80">Review before trusting — tool outputs can carry prompt-injection attempts.</div>
+                </div>
+              </div>
+            )}
+
+            <div>
+              {section('DESCRIPTION')}
+              {editing ? (
+                <textarea
+                  value={draft.description}
+                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  rows={12}
+                  className={clsx(inputBase, 'font-mono text-xs')}
+                />
+              ) : description ? (
+                <div className={clsx('prose prose-sm max-w-none', dark && 'prose-invert')}>
+                  <MarkdownContent content={description} darkMode={dark} onToggleTask={toggleDescriptionTask} />
+                </div>
+              ) : (
+                <span className={clsx('text-xs italic', t3)}>No description</span>
+              )}
+            </div>
+
+            {task.checklist.length > 0 && (
+              <div>
+                {section('CHECKLIST')}
+                <div className="space-y-1">
+                  {task.checklist.map((item, i) => (
+                    <label key={i} className={clsx('text-sm flex items-center gap-2 cursor-pointer', t1)}>
+                      <input
+                        type="checkbox"
+                        checked={item.done}
+                        onChange={() => toggleChecklistItem(i)}
+                        className="accent-indigo-600 cursor-pointer"
+                      />
+                      <span className={item.done ? 'line-through opacity-60' : ''}>{item.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              {section('COMMENTS')}
+              <div className="space-y-2 mb-2">
+                {task.comments.map((c, i) => (
+                  <div key={i} className={clsx('rounded p-2 text-sm', dark ? 'bg-slate-800' : 'bg-gray-50')}>
+                    <div className={clsx('flex items-center gap-1 mb-1 text-xs', t3)}>
+                      <AuthorBadge author={c.actor} dark={dark} />
+                      <span>{new Date(c.at).toLocaleString()}</span>
+                    </div>
+                    <div className={t1}>{c.text}</div>
+                  </div>
                 ))}
               </div>
-            ) : (
-              <span className={clsx('text-xs italic', t3)}>No assignees</span>
-            )}
-          </div>
-
-          {/* Due date + reminder */}
-          <div>
-            <div className={clsx('text-xs font-semibold mb-1', t3)}>DUE DATE</div>
-            {editing ? (
-              <div className="flex items-center gap-2">
+              <div className="flex gap-1">
                 <input
-                  type="datetime-local"
-                  value={draft.due_date}
-                  onChange={(e) => setDraft({ ...draft, due_date: e.target.value })}
+                  placeholder="Add a comment…"
+                  value={commentDraft}
+                  onChange={(e) => setCommentDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleComment()}
                   className={clsx(inputBase, 'flex-1')}
                 />
-                <button
-                  onClick={() => setDraft({ ...draft, reminder_enabled: !draft.reminder_enabled })}
-                  className={btnGhost}
-                  title={draft.reminder_enabled ? 'Reminder enabled' : 'Reminder disabled'}
-                >
-                  {draft.reminder_enabled ? <Bell className="w-4 h-4 text-amber-400" /> : <BellOff className="w-4 h-4" />}
-                </button>
+                <button onClick={handleComment} disabled={!commentDraft.trim()} className={btnPrimary}>Post</button>
               </div>
-            ) : task.due_date ? (
-              <div className={clsx('text-xs flex items-center gap-2', t2)}>
-                <Clock className="w-3 h-3" />
-                {new Date(task.due_date).toLocaleString()}
-                {task.reminder_id ? (
-                  <span className="text-amber-400 flex items-center gap-1"><Bell className="w-3 h-3" /> scheduled</span>
-                ) : task.reminder_enabled ? (
-                  <span className={t3}>(no reminder)</span>
-                ) : (
-                  <span className={t3}><BellOff className="w-3 h-3 inline" /> off</span>
-                )}
-              </div>
-            ) : (
-              <span className={clsx('text-xs italic', t3)}>No due date</span>
-            )}
-          </div>
+            </div>
 
-          {/* Description */}
-          <div>
-            <div className={clsx('text-xs font-semibold mb-1', t3)}>DESCRIPTION</div>
-            {editing ? (
-              <textarea
-                value={draft.description}
-                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                rows={6}
-                className={inputBase}
-              />
-            ) : task.description ? (
-              <div className={clsx('prose prose-sm max-w-none', dark && 'prose-invert')}>
-                <MarkdownContent content={task.description} darkMode={dark} />
-              </div>
-            ) : (
-              <span className={clsx('text-xs italic', t3)}>No description</span>
-            )}
-          </div>
-
-          {/* Checklist */}
-          {task.checklist.length > 0 && (
             <div>
-              <div className={clsx('text-xs font-semibold mb-1', t3)}>CHECKLIST</div>
+              {section('ACTIVITY')}
               <div className="space-y-1">
-                {task.checklist.map((item, i) => (
-                  <div key={i} className={clsx('text-xs flex items-center gap-1.5', t1)}>
-                    {item.done ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> : <Circle className="w-3.5 h-3.5" />}
-                    <span className={item.done ? 'line-through opacity-60' : ''}>{item.text}</span>
+                {task.activity.map((a: TaskActivity, i) => (
+                  <div key={i} className={clsx('text-xs flex items-center gap-1 flex-wrap', t2)}>
+                    <AuthorBadge author={a.actor} dark={dark} />
+                    <span>
+                      {a.action}
+                      {a.action === 'moved' && a.from && a.to && <span className={t3}> {a.from} → {a.to}</span>}
+                      {a.action === 'updated' && a.fields && <span className={t3}> ({a.fields.join(', ')})</span>}
+                      {a.action === 'commented' && a.text && <span className={t3}>: "{a.text.slice(0, 40)}…"</span>}
+                    </span>
+                    <span className={t3}>· {new Date(a.at).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Comments */}
-          <div>
-            <div className={clsx('text-xs font-semibold mb-1', t3)}>COMMENTS</div>
-            <div className="space-y-2 mb-2">
-              {task.comments.map((c, i) => (
-                <div key={i} className={clsx('rounded p-2 text-xs', dark ? 'bg-slate-800' : 'bg-gray-50')}>
-                  <div className={clsx('flex items-center gap-1 mb-1', t3)}>
-                    <AuthorBadge author={c.actor} dark={dark} />
-                    <span>{new Date(c.at).toLocaleString()}</span>
-                  </div>
-                  <div className={t1}>{c.text}</div>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-1">
-              <input
-                placeholder="Add a comment…"
-                value={commentDraft}
-                onChange={(e) => setCommentDraft(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleComment()}
-                className={clsx(inputBase, 'flex-1')}
-              />
-              <button onClick={handleComment} disabled={!commentDraft.trim()} className={btnPrimary}>Post</button>
-            </div>
           </div>
 
-          {/* Activity log */}
-          <div>
-            <div className={clsx('text-xs font-semibold mb-1', t3)}>ACTIVITY</div>
-            <div className="space-y-1">
-              {task.activity.map((a: TaskActivity, i) => (
-                <div key={i} className={clsx('text-xs flex items-center gap-1', t2)}>
-                  <AuthorBadge author={a.actor} dark={dark} />
-                  <span>
-                    {a.action}
-                    {a.action === 'moved' && a.from && a.to && <span className={t3}> {a.from} → {a.to}</span>}
-                    {a.action === 'updated' && a.fields && <span className={t3}> ({a.fields.join(', ')})</span>}
-                    {a.action === 'commented' && a.text && <span className={t3}>: "{a.text.slice(0, 40)}…"</span>}
-                  </span>
-                  <span className={t3}>· {new Date(a.at).toLocaleString()}</span>
+          {/* Details column: who, when, where from */}
+          <aside className={clsx(
+            'md:w-72 md:shrink-0 md:overflow-y-auto p-5 space-y-5 border-t md:border-t-0 md:border-l',
+            border, dark ? 'md:bg-slate-900/60' : 'md:bg-gray-50/60',
+          )}>
+            <div>
+              {section('ASSIGNEES')}
+              {editing ? (
+                <input
+                  placeholder="prax, human, sam"
+                  value={draft.assignees}
+                  onChange={(e) => setDraft({ ...draft, assignees: e.target.value })}
+                  className={inputBase}
+                />
+              ) : task.assignees.length > 0 ? (
+                <div className="flex gap-1 flex-wrap">
+                  {task.assignees.map((a) => (
+                    <span key={a} className={clsx('text-xs px-2 py-0.5 rounded flex items-center gap-1', dark ? 'bg-slate-800 text-slate-200' : 'bg-gray-100 text-slate-700')}>
+                      {a === 'prax' ? <Sparkles className="w-3 h-3 text-indigo-500" /> : <User className="w-3 h-3 text-emerald-500" />}
+                      {a}
+                    </span>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <span className={clsx('text-xs italic', t3)}>No assignees</span>
+              )}
             </div>
-          </div>
+
+            <div>
+              {section('DUE DATE')}
+              {editing ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="datetime-local"
+                    value={draft.due_date}
+                    onChange={(e) => setDraft({ ...draft, due_date: e.target.value })}
+                    className={clsx(inputBase, 'flex-1')}
+                  />
+                  <button
+                    onClick={() => setDraft({ ...draft, reminder_enabled: !draft.reminder_enabled })}
+                    className={btnGhost}
+                    title={draft.reminder_enabled ? 'Reminder enabled' : 'Reminder disabled'}
+                  >
+                    {draft.reminder_enabled ? <Bell className="w-4 h-4 text-amber-400" /> : <BellOff className="w-4 h-4" />}
+                  </button>
+                </div>
+              ) : task.due_date ? (
+                <div className={clsx('text-xs flex items-center gap-2 flex-wrap', t2)}>
+                  <Clock className="w-3 h-3" />
+                  {new Date(task.due_date).toLocaleString()}
+                  {task.reminder_id ? (
+                    <span className="text-amber-400 flex items-center gap-1"><Bell className="w-3 h-3" /> scheduled</span>
+                  ) : task.reminder_enabled ? (
+                    <span className={t3}>(no reminder)</span>
+                  ) : (
+                    <span className={t3}><BellOff className="w-3 h-3 inline" /> off</span>
+                  )}
+                </div>
+              ) : (
+                <span className={clsx('text-xs italic', t3)}>No due date</span>
+              )}
+            </div>
+
+            <div>
+              {section('CREATED BY')}
+              <AuthorBadge author={task.author} dark={dark} />
+            </div>
+
+            {task.source && (
+              <div>
+                {section('SOURCE')}
+                <SourceBadge source={task.source} dark={dark} />
+              </div>
+            )}
+
+            {task.confidence && (
+              <div title={confidenceLabel(task.confidence)}>
+                {section('CONFIDENCE')}
+                <span className={clsx('text-xs flex items-center gap-1.5', t2)}>
+                  <span className={clsx('w-1.5 h-1.5 rounded-full inline-block', confidenceDotClass(task.confidence))} />
+                  {task.confidence}
+                </span>
+              </div>
+            )}
+          </aside>
         </div>
       </div>
     </div>
