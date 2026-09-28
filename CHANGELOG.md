@@ -6,6 +6,7 @@
 ### Features
 
 * people approve agents' risky actions in the UI, and can take the browser ([#72](https://github.com/praxagent/teamwork/issues/72)) ([5fc9188](https://github.com/praxagent/teamwork/commit/5fc91886a7ff50cd8d6797be32bb9be156fe42cf))
+* task details open in a centered dialog, and their checkboxes tick ([#74](https://github.com/praxagent/teamwork/issues/74)) ([208ae7f](https://github.com/praxagent/teamwork/commit/208ae7fd1a201f74297950b1380d7a54e33984d4))
 
 ## [0.22.3](https://github.com/praxagent/teamwork/compare/v0.22.2...v0.22.3) (2026-09-22)
 
