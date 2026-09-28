@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/praxagent/teamwork/compare/v0.23.0...v0.23.1) (2026-09-28)
+
+
+### Documentation
+
+* **security:** exposing TeamWork — Tailscale vs public tunnels, and who can open your files ([#76](https://github.com/praxagent/teamwork/issues/76)) ([737947a](https://github.com/praxagent/teamwork/commit/737947a8a01b47c169eb03d3ee7d37693b810ce6))
+
 ## [0.23.0](https://github.com/praxagent/teamwork/compare/v0.22.3...v0.23.0) (2026-09-28)
 
 
