@@ -23,6 +23,7 @@ import { MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
 import { useHistoryState } from '@/hooks/useHistoryState';
 import { GraphVisualView } from './GraphVisualView';
+import { traceReport } from '@/utils/traceReport';
 
 interface GraphPanelProps {
   projectId: string;
@@ -71,12 +72,14 @@ function CopyTraceButton({ graph, darkMode, size = 'sm' }: { graph: ExecutionGra
   const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const handleCopy = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const ok = await copyTextToClipboard(JSON.stringify(graph, null, 2));
+    // A readable, time-ordered report — what you hand someone to diagnose.
+    // Download keeps the raw JSON.
+    const ok = await copyTextToClipboard(traceReport([graph], graph.session_id));
     setStatus(ok ? 'copied' : 'failed');
     setTimeout(() => setStatus('idle'), 2000);
   }, [graph]);
   const iconSize = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
-  const title = status === 'copied' ? 'Copied!' : status === 'failed' ? 'Copy blocked by browser — use Download' : 'Copy trace to clipboard';
+  const title = status === 'copied' ? 'Copied!' : status === 'failed' ? 'Copy blocked by browser — use Download' : 'Copy trace report (time-ordered, readable) — Download gives the raw JSON';
   return (
     <button
       onClick={handleCopy}
@@ -714,8 +717,7 @@ function SessionActions({ sessionGraphs, sessionId, darkMode }: {
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const payload = { session_id: sessionId, traces: sessionGraphs };
-    const ok = await copyTextToClipboard(JSON.stringify(payload, null, 2));
+    const ok = await copyTextToClipboard(traceReport(sessionGraphs, sessionId));
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -727,7 +729,7 @@ function SessionActions({ sessionGraphs, sessionId, darkMode }: {
       <button
         onClick={handleCopy}
         className={`p-1 rounded transition-colors ${darkMode ? 'hover:bg-slate-600 text-gray-500 hover:text-gray-300' : 'hover:bg-gray-200 text-gray-400 hover:text-gray-600'}`}
-        title="Copy all session traces to clipboard"
+        title="Copy a time-ordered report of all session traces — Download gives the raw JSON"
       >
         {copied ? <Check className="w-3 h-3 text-green-500" /> : <Clipboard className="w-3 h-3" />}
       </button>

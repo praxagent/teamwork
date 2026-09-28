@@ -90,3 +90,20 @@ def test_library_space_file_proxy_downloads_active_content(client, monkeypatch):
 
     png = client.get("/api/library/spaces/s/files/pic.png")
     assert png.headers["content-disposition"].startswith("inline")
+
+
+def test_workspace_download_shows_images_inline_and_downloads_active_content(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "workspace_path", tmp_path / "ws")
+    project = client.post("/api/external/projects", json={
+        "name": "W", "webhook_url": "http://agent:9000/webhook", "workspace_dir": "u1"}).json()["project_id"]
+    ws = settings.workspace_path / "u1" / "active"
+    ws.mkdir(parents=True)
+    (ws / "m.png").write_bytes(b"\x89PNG\r\n")
+    (ws / "p.html").write_text("<script>1</script>")
+    png = client.get(f"/api/workspace/{project}/download", params={"path": "active/m.png"})
+    assert png.status_code == 200 and png.headers["content-type"] == "image/png"
+    # Was always "attachment": opening an image the agent linked downloaded it.
+    assert png.headers["content-disposition"].startswith("inline")
+    html = client.get(f"/api/workspace/{project}/download", params={"path": "active/p.html"})
+    assert html.headers["content-disposition"].startswith("attachment")
+    assert html.headers["x-content-type-options"] == "nosniff"

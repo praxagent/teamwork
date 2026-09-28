@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import { clsx } from 'clsx';
-import { ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { ReactNode, createContext, useContext, useEffect, useId, useRef, useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import mermaid from 'mermaid';
@@ -8,14 +8,35 @@ import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import { useUIStore } from '@/stores';
+import { taskOrdinalAtLine } from '@/utils/taskList';
 import 'katex/dist/katex.min.css';
 
 mermaid.initialize({ startOnLoad: false, theme: 'default', fontFamily: 'inherit' });
+
+// Which task (0-based) the enclosing list item is, or -1. The checkbox itself
+// carries no source position — remark-gfm synthesises it — but its <li> does.
+const TaskOrdinal = createContext(-1);
+
+function TaskCheckbox({ checked, onToggle }: { checked: boolean; onToggle?: (ordinal: number, checked: boolean) => void }) {
+  const ordinal = useContext(TaskOrdinal);
+  const live = !!onToggle && ordinal >= 0;
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      disabled={!live}
+      onChange={live ? (e) => onToggle!(ordinal, e.target.checked) : undefined}
+      className={clsx('mr-1.5 align-middle accent-indigo-600', live && 'cursor-pointer')}
+    />
+  );
+}
 
 interface MarkdownContentProps {
   content: string;
   className?: string;
   darkMode?: boolean;
+  /** When set, task-list checkboxes are live; called with the task's index. */
+  onToggleTask?: (ordinal: number, checked: boolean) => void;
 }
 
 /**
@@ -192,7 +213,7 @@ function preprocessContent(content: string): string {
  * - @mentions
  * - All standard markdown formatting
  */
-export function MarkdownContent({ content, className, darkMode: darkModeProp }: MarkdownContentProps) {
+export function MarkdownContent({ content, className, darkMode: darkModeProp, onToggleTask }: MarkdownContentProps) {
   const storeDarkMode = useUIStore((s) => s.darkMode);
   const darkMode = darkModeProp ?? storeDarkMode;
   const processedContent = preprocessContent(content);
@@ -235,9 +256,27 @@ export function MarkdownContent({ content, className, darkMode: darkModeProp }: 
         ol: ({ children }) => (
           <ol className="list-decimal list-outside ml-5 mb-2 space-y-1 text-gray-900 dark:text-gray-100">{children}</ol>
         ),
-        li: ({ children }) => (
-          <li className="pl-1 text-gray-900 dark:text-gray-100">{processChildren(children)}</li>
-        ),
+        li: ({ node, children, className: liClass }) => {
+          const isTask = !!liClass?.includes('task-list-item');
+          const ordinal = isTask && onToggleTask && node?.position
+            ? taskOrdinalAtLine(processedContent, node.position.start.line)
+            : -1;
+          return (
+            <li className={clsx(
+              'pl-1 text-gray-900 dark:text-gray-100',
+              // A task item's checkbox is its marker; a bullet beside it is noise.
+              isTask && 'list-none -ml-5',
+            )}>
+              <TaskOrdinal.Provider value={ordinal}>{processChildren(children)}</TaskOrdinal.Provider>
+            </li>
+          );
+        },
+
+        // GFM task-list checkboxes: read-only unless the caller can save a tick.
+        input: ({ type, checked }) =>
+          type === 'checkbox'
+            ? <TaskCheckbox checked={!!checked} onToggle={onToggleTask} />
+            : <input type={type} />,
         
         // Inline formatting - with @mention highlighting
         strong: ({ children }) => (
