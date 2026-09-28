@@ -6,11 +6,40 @@ import logging
 
 import httpx
 import websockets
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Query, Request, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from teamwork.config import settings
+from teamwork.services import browser_control
 
 router = APIRouter(prefix="/browser", tags=["browser"])
+
+# Panel input that means "a person is driving the browser right now". Pointer
+# movement and scrolling are watching, not driving — the panel streams hover
+# events continuously, and counting them would lock the agent out whenever the
+# cursor crossed the view.
+_USER_INPUT_TYPES = frozenset({"key", "navigate", "clipboard_paste"})
+_USER_MOUSE_EVENTS = frozenset({"mousePressed", "mouseReleased"})
+
+
+class ControlRequest(BaseModel):
+    held: bool
+
+
+@router.get("/control")
+async def get_control() -> dict:
+    """Is the person or the agent driving the shared browser?"""
+    return browser_control.status()
+
+
+@router.post("/control")
+async def set_control(body: ControlRequest, request: Request) -> dict:
+    """The panel's Take control / Hand back toggle. People only."""
+    from teamwork.routers.approvals import _human_only
+
+    _human_only(request)
+    browser_control.set_held(body.held)
+    return browser_control.status()
 logger = logging.getLogger(__name__)
 
 # The only expressions the frontend ever sends (BrowserPanel back/forward/
@@ -200,6 +229,8 @@ async def browser_websocket(
                 msg = json.loads(raw)
                 t = msg.get("type")
                 logger.debug("Client msg: %s", t)
+                if t in _USER_INPUT_TYPES or (t == "mouse" and msg.get("event") in _USER_MOUSE_EVENTS):
+                    browser_control.mark_input()
 
                 if t == "mouse":
                     await send_cdp("Input.dispatchMouseEvent", {

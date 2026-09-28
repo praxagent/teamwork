@@ -230,8 +230,9 @@ human says so, and unable to do it on its own initiative.
 Each refusal is a **403** whose detail names the rule. What this does *not*
 establish is that the decider is a person: the server verifies a distinct,
 explicitly-trusted credential, and it is the operator's job to hand that
-`console` token to a human. There is no approvals UI in the frontend and no
-CLI verb for it yet; deciding is an HTTP call with the console credential.
+`console` token to a human. A person can also decide in the UI's approval
+dialog, which uses the human route described in §5b and refuses agent
+credentials.
 
 **Approvals are bound to the exact action and are single-use.** An approval is
 keyed by `sha256(capability, project_id, canonical_payload)`, so one granted for
@@ -242,6 +243,54 @@ default), a decision is final, and the full lifecycle (`approval.requested` /
 
 The server never queues an action for later execution: the decision only
 *unlocks* the retry. There is no half-run intention to reconcile.
+
+### 5b. An agent asking a person about its *own* action (2026-09-24)
+
+The gate above protects TeamWork's own actions. An agent can also put one of
+its **own** next actions — a risky tool call in its harness, a network
+destination its sandbox wants — in front of a person:
+
+1. `POST /api/external/approvals {capability, payload, reason}` creates the
+   request. It is fingerprinted like any other, and a repeat of the same
+   pending action returns the same request.
+2. `GET /api/external/approvals/{id}` checks it. `POST .../consume` spends it
+   once, on exactly that action.
+3. A credential can see and spend **only its own** requests. Anyone else's
+   answers 404.
+
+The person answers in the UI's **approval dialog**. It appears on every page
+whenever something is pending, and is backed by the human route
+`/api/approvals/pending` and `POST /api/approvals/{id}/decide`. That route
+**refuses any request carrying an agent credential** (`X-API-Key`,
+`Authorization`, `X-Agent-Signature`), so a credential issued to an agent
+cannot approve anything there, whatever it was granted on the external API.
+
+**Deciding requires an authenticated person.** Leaving off agent headers is
+not enough, because they can simply be omitted:
+- **With `INTERNAL_API_KEY`:** the request needs a valid browser **session
+  cookie** from the UI login. The `X-Internal-Key` header alone is refused,
+  since that is the scripts path.
+- **With the authenticating proxy:** its verified assertion counts.
+- **With neither:** decisions are **refused**. An unauthenticated route cannot
+  tell a person's browser from any program that can reach the port. Set
+  `APPROVALS_ALLOW_UNAUTHENTICATED=true` only if you accept exactly that.
+
+A person may answer with a **scope**:
+- `once` — the default: this exact action, one time;
+- `hour` or `day` — this capability, for this requesting credential, for that
+  window.
+
+While a window grant is active, later requests are approved on arrival
+(`approval.auto_granted`) but are still individual, fingerprinted, single-use
+records. `GET /api/approvals/grants` lists active grants, and
+`POST /api/approvals/grants/{id}/revoke` revokes one. Events:
+`approval.grant_created`, `approval.auto_granted`, `approval.grant_revoked`.
+
+**Browser control.** When a person takes over the shared browser, agents
+should stand down. `GET /api/external/browser/control` reports
+`user_in_control`. That is true after the browser panel's **Take control**
+toggle, until the person hands back, and for 30 s after any input through the
+panel.
 
 ## 6. Channel membership — where an agent may speak
 

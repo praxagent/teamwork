@@ -25,14 +25,32 @@ class Base(DeclarativeBase):
     pass
 
 
-# Configure engine with SQLite-specific settings for better concurrency
+def engine_options(database_url: str) -> dict:
+    """Pool settings for *database_url*.
+
+    A file-backed SQLite database gets a connection per session. It used to
+    share ONE connection across every concurrent session (``StaticPool``),
+    and a session closing resets that shared connection with a ROLLBACK —
+    which silently discarded another request's flushed-but-not-yet-committed
+    writes. That request still answered 200. WAL mode (set in ``init_db``,
+    persistent in the file) lets separate connections read while one writes;
+    ``busy_timeout`` on each connection makes a second writer wait instead of
+    failing.
+
+    An in-memory database exists only on its one connection, so it keeps
+    ``StaticPool`` (tests).
+    """
+    if database_url.startswith("sqlite") and ":memory:" in database_url:
+        return {"poolclass": StaticPool, "connect_args": {"check_same_thread": False}}
+    if database_url.startswith("sqlite"):
+        return {"connect_args": {"check_same_thread": False, "timeout": 30}}
+    return {}
+
+
 engine = create_async_engine(
     settings.database_url,
     echo=settings.sqlalchemy_echo,
-    # Use StaticPool for SQLite to share connection across threads
-    poolclass=StaticPool,
-    # Required for aiosqlite
-    connect_args={"check_same_thread": False},
+    **engine_options(settings.database_url),
 )
 
 
@@ -54,6 +72,9 @@ def enable_sqlite_foreign_keys(target_engine: AsyncEngine) -> None:
     def _on_connect(dbapi_connection, _record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        # Per connection, now that there is more than one: wait for a lock
+        # instead of failing with "database is locked".
+        cursor.execute("PRAGMA busy_timeout=30000")  # matches the connect timeout
         cursor.close()
 
 

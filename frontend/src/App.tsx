@@ -4,6 +4,7 @@ import { Home, ProjectWorkspace, Projects } from '@/pages';
 import { OnboardingWizard } from '@/components/onboarding';
 import { ToastContainer } from '@/components/common';
 import { InternalKeyGate } from '@/components/common/InternalKeyGate';
+import { ApprovalPrompt } from '@/components/common/ApprovalPrompt';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { useUIStore } from '@/stores';
 
@@ -116,6 +117,7 @@ function App() {
         </Routes>
       </ErrorBoundary>
       <ToastContainer />
+      <ApprovalPrompt />
       {/* Renders nothing unless the backend has refused a request for want of
           an internal-key session (hooks/useInternalKey.ts). */}
       <InternalKeyGate />

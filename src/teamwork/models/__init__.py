@@ -9,7 +9,7 @@ from teamwork.models.task import Task
 from teamwork.models.activity import ActivityLog
 from teamwork.models.memory import Memory
 from teamwork.models.event import Event
-from teamwork.models.approval import ApprovalRequest
+from teamwork.models.approval import ApprovalGrant, ApprovalRequest
 from teamwork.models.channel_member import ChannelMember
 
 __all__ = [

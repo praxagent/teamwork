@@ -1081,6 +1081,111 @@ async def decide_approval(
     return {"approval_id": req.id, "status": req.status, "decided_by": req.decided_by}
 
 
+# --- An agent asking a human about its OWN next action ------------------------
+#
+# The gate above protects TeamWork's own actions from gated agents. These three
+# routes let an agent put an action of its own — something it is about to do
+# elsewhere, e.g. a HIGH-risk tool call in its harness — in front of a human:
+# create a request, wait for the decision, then spend it. The agent can never
+# decide: deciding happens on the human route (routers/approvals.py), which
+# refuses agent credentials, or here only with an explicit approval.decide grant
+# and never for the credential's own request.
+
+class ApprovalAsk(BaseModel):
+    capability: str
+    project_id: str | None = None
+    payload: dict[str, Any] | None = None
+    reason: str | None = None
+
+
+class ApprovalSpend(BaseModel):
+    capability: str
+    project_id: str | None = None
+    payload: dict[str, Any] | None = None
+
+
+def _status_body(req) -> dict[str, Any]:
+    return {
+        "approval_id": req.id,
+        "status": req.status,
+        "decided_by": req.decided_by,
+        "note": req.decision_note,
+        "expired": req.is_expired(),
+        "expires_at": req.expires_at.isoformat() if req.expires_at else None,
+    }
+
+
+async def _own_request(db: AsyncSession, approval_id: str, client: AgentClient):
+    from teamwork.models.approval import ApprovalRequest
+
+    req = (await db.execute(
+        select(ApprovalRequest).where(ApprovalRequest.id == approval_id)
+    )).scalar_one_or_none()
+    # Someone else's request is indistinguishable from a missing one.
+    if req is None or req.requested_by_client != client.name:
+        raise HTTPException(status_code=404, detail="No such approval request.")
+    return req
+
+
+@router.post("/approvals")
+async def ask_approval(
+    body: ApprovalAsk,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Put one of this agent's own actions in front of a human."""
+    from teamwork.services.approvals import request_for_client
+
+    if not body.capability or len(body.capability) > 64:
+        raise HTTPException(status_code=422, detail="capability must be 1-64 characters")
+    req = await request_for_client(
+        db, capability=body.capability, client_name=api_key.name,
+        agent_id=api_key.agent_id, project_id=body.project_id,
+        payload=body.payload, reason=body.reason)
+    await db.commit()
+    return _status_body(req)
+
+
+@router.get("/approvals/{approval_id}")
+async def approval_status(
+    approval_id: str,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Where one of this agent's own requests stands."""
+    return _status_body(await _own_request(db, approval_id, api_key))
+
+
+@router.post("/approvals/{approval_id}/consume")
+async def spend_approval(
+    approval_id: str,
+    body: ApprovalSpend,
+    db: AsyncSession = Depends(get_db),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Spend an approval on exactly the action it was granted for — once."""
+    from teamwork.services.approvals import consume
+
+    await _own_request(db, approval_id, api_key)
+    ok, why = await consume(db, approval_id=approval_id, capability=body.capability,
+                            project_id=body.project_id, payload=body.payload,
+                            client_name=api_key.name)
+    if not ok:
+        raise HTTPException(status_code=409, detail={"error": "approval_unusable", "reason": why})
+    await db.commit()
+    return {"approval_id": approval_id, "status": "consumed"}
+
+
+@router.get("/browser/control")
+async def browser_control_status(
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, Any]:
+    """Agents ask before acting in the shared browser: is a person driving it?"""
+    from teamwork.services import browser_control
+
+    return browser_control.status()
+
+
 class MembershipChange(BaseModel):
     """Add or remove a channel occupant."""
     channel_id: str

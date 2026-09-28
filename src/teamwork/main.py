@@ -82,7 +82,20 @@ async def lifespan(app: FastAPI):
     # Ensure workspace directory exists
     settings.workspace_path.mkdir(parents=True, exist_ok=True)
 
+    # Relay egress-gate questions to a person (EGRESS_GATES; off when empty).
+    relay_task = None
+    from teamwork.services.gate_relay import Relay, parse_gates
+    gates = parse_gates(settings.egress_gates)
+    if gates:
+        import asyncio as _asyncio
+
+        from teamwork.models.base import AsyncSessionLocal
+        relay_task = _asyncio.create_task(Relay(gates, AsyncSessionLocal).run())
+
     yield
+
+    if relay_task is not None:
+        relay_task.cancel()
 
     print(">>> Application shutting down, cleanup complete.", flush=True)
 
@@ -173,6 +186,11 @@ app.include_router(terminal_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
+
+# The human side of approval gates: the UI's approval dialog decides here.
+from teamwork.routers.approvals import router as approvals_router  # noqa: E402
+
+app.include_router(approvals_router, prefix="/api")
 app.include_router(prax_router, prefix="/api")
 # Login/logout/status for the internal UI key. Mounted always so the UI can ask
 # whether a key is required; with no key configured, /login answers 400 and
