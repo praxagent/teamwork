@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/praxagent/teamwork/compare/v0.22.3...v0.23.0) (2026-09-28)
+
+
+### Features
+
+* people approve agents' risky actions in the UI, and can take the browser ([#72](https://github.com/praxagent/teamwork/issues/72)) ([5fc9188](https://github.com/praxagent/teamwork/commit/5fc91886a7ff50cd8d6797be32bb9be156fe42cf))
+
 ## [0.22.3](https://github.com/praxagent/teamwork/compare/v0.22.2...v0.22.3) (2026-09-22)
 
 
