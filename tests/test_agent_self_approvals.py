@@ -158,3 +158,30 @@ def test_with_a_ui_key_only_a_logged_in_session_decides(client, monkeypatch):
     token, _ = issue_session_token("ui-key")
     client.cookies.set(COOKIE, token)
     assert _human_decide(client, aid).status_code == 200
+
+
+def _hours_left(body) -> float:
+    from datetime import datetime
+    exp = datetime.fromisoformat(body["expires_at"])
+    return (exp - datetime.utcnow()).total_seconds() / 3600
+
+
+def test_a_request_can_ask_to_stay_answerable_longer(client, monkeypatch):
+    # An unattended task that asks at 3am must still be answerable at 8am.
+    body = _ask(client, monkeypatch, expires_in_seconds=12 * 3600)
+    assert 11.9 < _hours_left(body) <= 12.0
+    # Asking again for the same action keeps one request and never shortens it.
+    again = _ask(client, monkeypatch, expires_in_seconds=3600)
+    assert again["approval_id"] == body["approval_id"]
+    assert _hours_left(again) > 11.9
+
+
+def test_default_lifetime_is_unchanged(client, monkeypatch):
+    assert 0.9 < _hours_left(_ask(client, monkeypatch)) <= 1.0
+
+
+def test_lifetime_is_bounded(client, monkeypatch):
+    _as(monkeypatch)
+    for bad in (5, 8 * 24 * 3600):
+        resp = client.post("/api/external/approvals", json={**ASK, "expires_in_seconds": bad})
+        assert resp.status_code == 422

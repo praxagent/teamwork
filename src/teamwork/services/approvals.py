@@ -31,6 +31,7 @@ async def request_approval(
     db: AsyncSession, *, capability: str, client_name: str,
     agent_id: str | None = None, project_id: str | None = None,
     payload: dict[str, Any] | None = None, reason: str | None = None,
+    expires_in_seconds: int | None = None,
 ) -> ApprovalRequest:
     """Record a proposed action awaiting a decision.
 
@@ -47,7 +48,11 @@ async def request_approval(
             ApprovalRequest.requested_by_client == client_name,
         ).order_by(ApprovalRequest.created_at.desc()).limit(1)
     )).scalar_one_or_none()
+    wanted = (_now() + timedelta(seconds=expires_in_seconds)) if expires_in_seconds else None
     if existing is not None and not existing.is_expired():
+        if wanted is not None and wanted > existing.expires_at:
+            existing.expires_at = wanted
+            await db.flush()
         return existing
 
     req = ApprovalRequest(
@@ -55,6 +60,8 @@ async def request_approval(
         requested_by_client=client_name, capability=capability,
         action_fingerprint=fingerprint, payload_preview=payload, reason=reason,
     )
+    if wanted is not None:
+        req.expires_at = wanted
     db.add(req)
     await db.flush()
     await append_event(
@@ -162,6 +169,7 @@ async def request_for_client(
     db: AsyncSession, *, capability: str, client_name: str,
     agent_id: str | None = None, project_id: str | None = None,
     payload: dict[str, Any] | None = None, reason: str | None = None,
+    expires_in_seconds: int | None = None,
 ) -> ApprovalRequest:
     """An agent asking for approval of its own next action.
 
@@ -171,7 +179,8 @@ async def request_for_client(
     """
     req = await request_approval(
         db, capability=capability, client_name=client_name, agent_id=agent_id,
-        project_id=project_id, payload=payload, reason=reason)
+        project_id=project_id, payload=payload, reason=reason,
+        expires_in_seconds=expires_in_seconds)
     if req.status != STATUS_PENDING:
         return req
     grant = await active_grant(db, client_name=client_name, capability=capability,

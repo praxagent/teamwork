@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1096,6 +1096,10 @@ class ApprovalAsk(BaseModel):
     project_id: str | None = None
     payload: dict[str, Any] | None = None
     reason: str | None = None
+    # How long the request stays answerable. Default is the model's one hour;
+    # an agent parking an unattended task (asked at 3am, answered at 8) asks
+    # for longer. Capped at a week.
+    expires_in_seconds: int | None = Field(default=None, ge=60, le=7 * 24 * 3600)
 
 
 class ApprovalSpend(BaseModel):
@@ -1141,7 +1145,8 @@ async def ask_approval(
     req = await request_for_client(
         db, capability=body.capability, client_name=api_key.name,
         agent_id=api_key.agent_id, project_id=body.project_id,
-        payload=body.payload, reason=body.reason)
+        payload=body.payload, reason=body.reason,
+        expires_in_seconds=body.expires_in_seconds)
     await db.commit()
     return _status_body(req)
 
