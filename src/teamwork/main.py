@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 from teamwork.models import init_db, AsyncSessionLocal
 from teamwork.routers import (
     agent_plan_router,
+    artifacts_router,
     agents_router,
     browser_router,
     claude_code_router,
@@ -170,6 +171,7 @@ app.add_middleware(NoSniffMiddleware)
 
 # Include routers
 app.include_router(agent_plan_router, prefix="/api")
+app.include_router(artifacts_router, prefix="/api")
 app.include_router(observability_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(claude_code_router, prefix="/api")

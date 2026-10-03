@@ -2699,6 +2699,54 @@ export function useAgentPlan(enabled: boolean = true) {
 }
 
 
+// Artifacts — pages the agent makes and keeps updating (see utils/artifacts.ts)
+
+export interface ArtifactMeta {
+  id: string;
+  title: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  size: number;
+  space?: string;
+}
+
+export interface Artifact extends ArtifactMeta {
+  html: string;
+}
+
+/** The artifact's manifest, polled so a new version shows up on its own. */
+export function useArtifactMeta(id: string, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['artifact-meta', id],
+    queryFn: () => fetchJson<ArtifactMeta>(`/artifacts/${encodeURIComponent(id)}?meta=1`),
+    enabled: enabled && !!id,
+    refetchInterval: 5_000,
+    retry: false,
+  });
+}
+
+/** The full page for one version; refetched only when the version changes. */
+export function useArtifact(id: string, version: number | undefined) {
+  return useQuery({
+    queryKey: ['artifact', id, version],
+    queryFn: () => fetchJson<Artifact>(`/artifacts/${encodeURIComponent(id)}`),
+    enabled: !!id && version !== undefined,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+export function useArtifactList(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['artifacts'],
+    queryFn: () => fetchJson<{ artifacts: ArtifactMeta[] }>('/artifacts'),
+    enabled,
+    refetchInterval: 15_000,
+    retry: false,
+  });
+}
+
 // Claude Code Sessions
 
 export interface ClaudeCodeSession {

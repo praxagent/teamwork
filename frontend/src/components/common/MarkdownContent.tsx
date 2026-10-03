@@ -1,3 +1,5 @@
+import { ArtifactCard } from './ArtifactCard';
+import { splitArtifactMarkers } from '@/utils/artifacts';
 import ReactMarkdown from 'react-markdown';
 import { clsx } from 'clsx';
 import { ReactNode, createContext, useContext, useEffect, useId, useRef, useState } from 'react';
@@ -213,7 +215,23 @@ function preprocessContent(content: string): string {
  * - @mentions
  * - All standard markdown formatting
  */
-export function MarkdownContent({ content, className, darkMode: darkModeProp, onToggleTask }: MarkdownContentProps) {
+/**
+ * Markdown, plus the artifacts the agent shows with a line that is exactly
+ * `[artifact:<id>]` (rendered live, sandboxed — see ArtifactCard).
+ */
+export function MarkdownContent(props: MarkdownContentProps) {
+  const segments = splitArtifactMarkers(props.content);
+  if (!segments.some((s) => s.kind === 'artifact')) return <MarkdownBody {...props} />;
+  return (
+    <div className={props.className}>
+      {segments.map((s, i) => s.kind === 'artifact'
+        ? <ArtifactCard key={`a${i}-${s.id}`} id={s.id} />
+        : <MarkdownBody key={`m${i}`} {...props} className={undefined} content={s.text} />)}
+    </div>
+  );
+}
+
+function MarkdownBody({ content, className, darkMode: darkModeProp, onToggleTask }: MarkdownContentProps) {
   const storeDarkMode = useUIStore((s) => s.darkMode);
   const darkMode = darkModeProp ?? storeDarkMode;
   const processedContent = preprocessContent(content);
