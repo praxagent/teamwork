@@ -33,6 +33,18 @@ those ideas live with the agent (e.g. Prax's own backlog).
   agent output*, not real-time human co-authoring.
 - **Status**: not started — documented in the Loop comparison as the single
   adopt-candidate; tracked here so it isn't lost.
+- **Second sighting (2026-10-03): [Television](comparisons/television.md)**
+  adds the *interactive* half. The agent writes self-contained HTML artifacts
+  (task lists, tables, calendars, small apps), pins them to channels, and keeps
+  updating them.
+  - **How to render them safely:** in `srcdoc` iframes with
+    `sandbox="allow-scripts"` and **no** `allow-same-origin` (an opaque origin
+    that can't reach TeamWork's session, DOM or `/api/*`), with a restrictive
+    CSP and no network unless the artifact needs it. Never on TeamWork's origin,
+    and never by relaxing the download rule that serves HTML as an attachment.
+  - **Where the artifacts live:** as files in the agent's workspace, versioned by
+    its git, with the reference shape agreed with the agent side (Prax
+    `docs/IDEAS_BACKLOG.md` #21).
 
 ---
 
@@ -83,3 +95,25 @@ those ideas live with the agent (e.g. Prax's own backlog).
 - **Status**: not started — small adopt-candidate from the Buzz comparison,
   mostly agent-side. The TeamWork half is nearly free (`ensure-channels` already
   exists); the git orchestration belongs to the agent.
+
+---
+
+### 4. An install guide the agent runs
+
+- **Source**: [`comparisons/television.md`](comparisons/television.md).
+  Television installs by pasting one prompt into your agent. The agent fetches an
+  admin guide written *for agents* and sets everything up: service, network
+  path (Tailscale preferred over LAN, never public), and a link it checks
+  character by character, and with a real authenticated request, before
+  handing it over.
+- **Why it matters**: the Prax suite is several services that have to be wired
+  together (TeamWork, Prax, sandbox, secrets proxy). Its `TEAMWORK_URL` /
+  `PRAX_URL` traps fail *silently*. An agent following a guide with explicit
+  verification steps catches exactly those.
+- **Mapping**: a versioned `docs/install-for-agents.md` (TeamWork's part:
+  service, exposure, first login, `PRAX_URL`) that the agent runs, with checks
+  after each stage. The cross-cutting suite guide lives with Prax.
+- **Guardrails**: **pinned**, not fetched live (a file in the repo at a tag, or
+  pinned by hash). A guide agents execute is a supply-chain surface. No
+  credentials in URLs, unlike Television's token-in-query connect link.
+- **Status**: idea; not started.

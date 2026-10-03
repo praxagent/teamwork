@@ -14,6 +14,11 @@ How TeamWork works, and how it's positioned — for anyone running TeamWork, wit
   peer: same "humans + agents in one self-hosted workspace" thesis, opposite
   architecture (Nostr signed-event relay vs. display shell). Where each wins, and
   the one idea worth borrowing (signed per-agent identity).
+- [**Television (telepath-computer/television) — comparison**](comparisons/television.md)
+  — "the missing GUI for personal agents": an artifact canvas next to any
+  harness, where TeamWork is a workspace you watch the agent work in. Borrow
+  sandboxed interactive artifacts (backlog #1) and an agent-run install guide
+  (backlog #4).
 - [**Microsoft Loop — comparison**](comparisons/microsoft-loop.md) — how TeamWork
   differs from Microsoft Loop (human co-creation vs. human↔agent collaboration),
   and the one idea worth borrowing.
