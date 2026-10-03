@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.0](https://github.com/praxagent/teamwork/compare/v0.24.0...v0.25.0) (2026-10-03)
+
+
+### Features
+
+* show the agent's artifacts — live, sandboxed, never on TeamWork's origin ([#81](https://github.com/praxagent/teamwork/issues/81)) ([8291054](https://github.com/praxagent/teamwork/commit/82910540df44cac6bb435717377afcab40620d00))
+
+
+### Documentation
+
+* compare TeamWork with Television; extend backlog [#1](https://github.com/praxagent/teamwork/issues/1), add an agent-run install guide ([#4](https://github.com/praxagent/teamwork/issues/4)) ([#80](https://github.com/praxagent/teamwork/issues/80)) ([9721bcc](https://github.com/praxagent/teamwork/commit/9721bcc67e8a64556f2e1121ccb4d84ebccdf0bb))
+
 ## [0.24.0](https://github.com/praxagent/teamwork/compare/v0.23.1...v0.24.0) (2026-10-03)
 
 
