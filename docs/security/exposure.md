@@ -20,6 +20,24 @@ guess is obscurity, not access control: URLs leak through browser history,
 screenshots, shared links, logs and referrer headers, and tunnel hostnames are
 scanned.
 
+## Agents treat TeamWork as private — so it has to be
+
+An agent connected to TeamWork shows you its work here without asking: files,
+notes, pages it made, its terminal and browser. That is the right default only
+because TeamWork is meant to be private. Prax, for one, enforces exactly this
+split: anything in TeamWork is fine, but putting something on a public link
+needs a person's explicit decision every time
+([Prax: public exposure](https://github.com/praxagent/prax/blob/main/docs/security/public-exposure.md)).
+
+That trust is something **you** provide when you deploy TeamWork. No agent can
+check it from the inside. If TeamWork is reachable by people you don't trust,
+everything an agent shows you here is reachable by them too. So:
+
+- keep the login on (`INTERNAL_API_KEY`, below);
+- reach TeamWork privately (loopback, `tailscale serve`, an SSH tunnel);
+- if you do put it behind a public tunnel, follow the checklist at the end
+  first.
+
 ## What is open without a login
 
 Out of the box, TeamWork has **no login** (`INTERNAL_API_KEY` is empty and

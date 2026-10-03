@@ -26,7 +26,8 @@ them (writing, storing, versioning). **TeamWork only shows them.**
   `SecurityError`, `self.origin` is `"null"`, and `fetch` is refused by
   `connect-src 'none'`.
 - **Public links are the agent's business**, and need a person's decision.
-  TeamWork is never put behind a public tunnel (see
+  Inside TeamWork an artifact is private only as long as TeamWork is: keep its
+  login on and reach it privately (see
   [security/exposure.md](security/exposure.md)).
 
 Idea credit: Telepath's Television
