@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/praxagent/teamwork/compare/v0.23.1...v0.24.0) (2026-10-03)
+
+
+### Features
+
+* **approvals:** a request can ask to stay answerable longer ([#78](https://github.com/praxagent/teamwork/issues/78)) ([6aaeb97](https://github.com/praxagent/teamwork/commit/6aaeb975717a5e4186a19b24257cb8629dab3803))
+
 ## [0.23.1](https://github.com/praxagent/teamwork/compare/v0.23.0...v0.23.1) (2026-09-28)
 
 
