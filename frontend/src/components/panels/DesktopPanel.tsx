@@ -23,6 +23,7 @@ import {
   ClipboardPaste,
   ExternalLink,
   Keyboard,
+  Maximize2,
   MessageSquare,
   Monitor,
   RotateCcw,
@@ -81,6 +82,13 @@ function desktopShortcutFromEvent(e: KeyboardEvent): DesktopShortcutKey[] | null
   return null;
 }
 
+type KeyboardLock = { lock?: (keyCodes?: string[]) => Promise<void>; unlock?: () => void };
+
+/** The Keyboard Lock API (Chromium only), if this browser has it. */
+function keyboardLockApi(): KeyboardLock | undefined {
+  return (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard;
+}
+
 function isTeamWorkShortcut(e: KeyboardEvent): boolean {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') return true;
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'd') return true;
@@ -98,12 +106,13 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const desktopAreaRef = useRef<HTMLDivElement>(null);
 
   // Brief non-intrusive toast
-  const showToast = useCallback((msg: string) => {
+  const showToast = useCallback((msg: string, ms = 1500) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 1500);
+    toastTimer.current = setTimeout(() => setToast(null), ms);
   }, []);
 
   const postDesktopMessage = useCallback((message: Record<string, unknown>) => {
@@ -122,6 +131,47 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
     postDesktopMessage({ type: 'teamwork-vnc:sendShortcut', keys });
     iframeRef.current?.focus();
   }, [postDesktopMessage]);
+
+  // --- Full screen, with the browser's own shortcuts passed to the desktop ---
+  // Browsers act on some shortcuts before any page sees them (Ctrl+W, Ctrl+T,
+  // Ctrl+N, Ctrl+Tab, and assistant shortcuts like Chrome's Ctrl+G), so in a
+  // normal tab they never reach the desktop. The Keyboard Lock API hands them
+  // to the page, but only in full screen and only from the top-level page
+  // (this one, not the noVNC iframe). Chrome and Edge have it; holding Esc
+  // leaves full screen.
+  const enterFullscreen = useCallback(async () => {
+    const area = desktopAreaRef.current;
+    if (!area?.requestFullscreen) {
+      showToast('Full screen is not available in this browser', 3000);
+      return;
+    }
+    try {
+      await area.requestFullscreen();
+    } catch {
+      showToast('The browser refused full screen', 3000);
+      return;
+    }
+    const keyboard = keyboardLockApi();
+    if (keyboard?.lock) {
+      try {
+        await keyboard.lock();
+        showToast('Browser shortcuts now go to the desktop. Hold Esc to leave full screen.', 4000);
+      } catch {
+        showToast('Full screen, but the browser kept its own shortcuts', 4000);
+      }
+    } else {
+      showToast('Full screen. This browser keeps Ctrl+W, Ctrl+T and Ctrl+N; Chrome or Edge pass them through.', 5000);
+    }
+    focusDesktop();
+  }, [focusDesktop, showToast]);
+
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) keyboardLockApi()?.unlock?.();
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
 
   // --- Clipboard WebSocket connection ---
   useEffect(() => {
@@ -302,6 +352,13 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
           <Keyboard className="w-3.5 h-3.5" />
         </button>
         <button
+          onClick={enterFullscreen}
+          className={iconButton()}
+          title="Full screen: browser shortcuts (Ctrl+W, Ctrl+T, Ctrl+G…) go to the desktop. Hold Esc to leave."
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+        </button>
+        <button
           onClick={() => sendDesktopShortcut(['ControlLeft', 'Minus'])}
           className={iconButton()}
           title="Send Ctrl+-"
@@ -390,7 +447,7 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
           more than chat (toggle chat off for the full desktop). Wide viewport
           (md+): side-by-side, chat keeps its resizable width. */}
       <div className="flex-1 flex flex-col md:flex-row min-h-0 relative">
-        <div className="flex-1 bg-black relative min-h-0">
+        <div ref={desktopAreaRef} className="flex-1 bg-black relative min-h-0">
           <iframe
             ref={iframeRef}
             src={novncUrl}
@@ -401,6 +458,15 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
             onFocus={() => setKeyboardCaptured(true)}
             onLoad={focusDesktop}
           />
+          {/* Toast notification */}
+          {toast && (
+            <div className={clsx(
+              'absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-md text-xs font-medium shadow-lg transition-opacity z-50',
+              dark ? 'bg-slate-700 text-gray-200' : 'bg-gray-800 text-white',
+            )}>
+              {toast}
+            </div>
+          )}
         </div>
 
         {showChat && projectId && (
@@ -416,15 +482,6 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
           </div>
         )}
 
-        {/* Toast notification */}
-        {toast && (
-          <div className={clsx(
-            'absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-md text-xs font-medium shadow-lg transition-opacity z-50',
-            dark ? 'bg-slate-700 text-gray-200' : 'bg-gray-800 text-white',
-          )}>
-            {toast}
-          </div>
-        )}
       </div>
     </div>
   );

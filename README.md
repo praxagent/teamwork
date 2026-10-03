@@ -523,6 +523,23 @@ TeamWork reverse-proxies `GET /api/desktop/*` to that URL and bridges the noVNC
 WebSocket at `/api/desktop/websockify` to `<DESKTOP_VNC_URL>/websockify`. Unset →
 the desktop panel returns **503** (no upstream).
 
+**Keyboard and clipboard in the desktop.**
+
+- *Paste what you copied on your computer.* The desktop's clipboard is kept
+  in step with yours: when you click into the desktop, return to the window,
+  or press Ctrl, your clipboard is sent to the desktop over the clipboard
+  bridge (`CLIPBOARD_PORT`). A paste key pressed before it arrives is held
+  until it does. This needs clipboard permission for the site (Chrome and
+  Edge ask once). Firefox and Safari prompt on every read, so there the
+  toolbar's push button sends it. Code: `src/teamwork/desktop_clipboard.js`.
+- *Browser shortcuts.* Browsers keep some shortcuts for themselves (Ctrl+W,
+  Ctrl+T, Ctrl+N, Ctrl+Tab, assistant keys like Chrome's Ctrl+G), so they
+  never reach a page. The toolbar's full-screen button uses the Keyboard Lock
+  API to pass them to the desktop (Chrome and Edge; hold Esc to leave).
+- *The terminal.* With prax-sandbox's image, the desktop's xterm copies with
+  Ctrl+Shift+C and pastes with Ctrl+V, Ctrl+Shift+V or Shift+Insert. Ctrl+C
+  still interrupts.
+
 > **⚠ Where does TeamWork run? (native vs. Docker)**
 >
 > The three panels above (terminal, browser, desktop) connect to the **sandbox
@@ -905,7 +922,7 @@ Create a `.env` file (copy from `.env.example`):
 | `CHROME_CDP_HOST` | `sandbox` | CDP host for browser screencast |
 | `CHROME_CDP_PORT` | `9223` | CDP port for browser screencast |
 | `DESKTOP_VNC_URL` | — | noVNC HTTP endpoint the Desktop tab is proxied from (`http://sandbox:6080` in Docker, `http://127.0.0.1:6080` natively). Unset ⇒ desktop panel 503 and the clipboard socket is refused |
-| `CLIPBOARD_PORT` | `6090` | Declared, but as of 2026-09 the clipboard proxy (`main.py`, `/api/desktop/clipboard`) hard-codes port 6090 on `DESKTOP_VNC_URL`'s host and does not read this setting |
+| `CLIPBOARD_PORT` | `6090` | Port of the sandbox's clipboard bridge, on `DESKTOP_VNC_URL`'s host. Set it when the sandbox publishes the bridge elsewhere (a second checkout on the same machine), or the desktop clipboard syncs with the other sandbox |
 | `PROXY_AUTH_ENABLED` | `false` | Require a signed JWT assertion from a fronting proxy (Google IAP / Cloudflare Access) on every HTTP request except exempt paths; refuses to start if misconfigured. **Known gap (2026-09):** implemented as a Starlette `BaseHTTPMiddleware` (`src/teamwork/proxy_auth.py`), which never runs for WebSocket connections — `/ws`, the terminal, browser, desktop and clipboard sockets are not covered by it |
 | `PROXY_AUTH_PROVIDER` | — | Preset: `iap` or `cloudflare_access`; empty = supply the fields below yourself |
 | `PROXY_AUTH_AUDIENCE` | — | Required when enabled (IAP backend audience / Cloudflare AUD tag) |

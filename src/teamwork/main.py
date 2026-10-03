@@ -246,6 +246,18 @@ async def desktop_vnc_client():
     )
 
 
+@app.get("/api/desktop/teamwork-clipboard.js")
+async def desktop_clipboard_module():
+    """Serve the clipboard-sync module the wrapper page imports (registered
+    before the /api/desktop/* proxy, like the page itself)."""
+    from fastapi.responses import FileResponse
+
+    return FileResponse(
+        Path(__file__).parent / "desktop_clipboard.js",
+        media_type="text/javascript; charset=utf-8",
+    )
+
+
 # Desktop VNC proxy — forwards /api/desktop/* to the sandbox's noVNC server
 @app.api_route("/api/desktop/{path:path}", methods=["GET", "POST"])
 async def desktop_vnc_proxy(path: str):
@@ -379,11 +391,14 @@ async def desktop_clipboard_ws_proxy(websocket: WebSocket):
         await websocket.close(code=1008, reason="DESKTOP_VNC_URL not configured")
         return
 
-    # Derive clipboard bridge URL from the VNC URL (same host, port 6090)
-    # e.g. http://sandbox:6080 → ws://sandbox:6090
+    # The clipboard bridge is on the VNC URL's host, at CLIPBOARD_PORT
+    # (default 6090): http://sandbox:6080 → ws://sandbox:6090. The port used to
+    # be fixed here and the setting ignored, so a second checkout whose sandbox
+    # publishes its bridge elsewhere (a dev tree beside production: 6091)
+    # synced its desktop clipboard with the OTHER sandbox's.
     from urllib.parse import urlparse
     parsed = urlparse(desktop_url)
-    ws_target = f"ws://{parsed.hostname}:6090"
+    ws_target = f"ws://{parsed.hostname}:{settings.clipboard_port}"
 
     await websocket.accept()
 
