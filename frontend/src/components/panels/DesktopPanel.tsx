@@ -26,12 +26,14 @@ import {
   Maximize2,
   MessageSquare,
   Monitor,
+  Power,
   RotateCcw,
   X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import { useUIStore } from '@/stores';
+import { useRestartSandbox } from '@/hooks/useApi';
 import { BrowserChatSidebar } from './BrowserChatSidebar';
 
 interface Props {
@@ -106,6 +108,7 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const restartSandbox = useRestartSandbox();
   const desktopAreaRef = useRef<HTMLDivElement>(null);
 
   // Brief non-intrusive toast
@@ -408,6 +411,26 @@ export function DesktopPanel({ projectId, isVisible, onClose }: Props) {
           title="Push clipboard to desktop"
         >
           <ClipboardCopy className="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          onClick={() => {
+            if (restartSandbox.isPending) return;
+            if (!window.confirm('Restart the sandbox? Programs running in it (desktop apps, terminals, the agent\'s browser) stop. Files and installed packages stay.')) return;
+            showToast('Restarting the sandbox…', 60000);
+            restartSandbox.mutate(undefined, {
+              onSuccess: () => {
+                showToast('Sandbox restarted — the desktop reconnects in a moment', 4000);
+                window.setTimeout(() => iframeRef.current?.contentWindow?.location.reload(), 3000);
+              },
+              onError: (e) => showToast(`Restart failed: ${(e as Error).message}`, 6000),
+            });
+          }}
+          disabled={restartSandbox.isPending}
+          className={iconButton(restartSandbox.isPending)}
+          title="Restart the sandbox (if the desktop or terminal is stuck). Files and installed packages stay."
+        >
+          <Power className={clsx('w-3.5 h-3.5', restartSandbox.isPending && 'animate-pulse')} />
         </button>
 
         {projectId && (

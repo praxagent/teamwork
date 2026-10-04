@@ -43,6 +43,7 @@ from teamwork.routers import (
     plugins_router,
     prax_router,
     projects_router,
+    sandbox_router,
     scheduler_router,
     tasks_router,
     terminal_router,
@@ -185,6 +186,7 @@ app.include_router(channels_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(terminal_router, prefix="/api")
+app.include_router(sandbox_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
