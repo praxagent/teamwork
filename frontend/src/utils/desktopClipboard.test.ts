@@ -4,7 +4,9 @@
  * must paste what was copied on this computer.
  */
 // @ts-expect-error — plain JS module served as-is by the backend, no types
-import { ClipboardSync, canReadSilently, pasteKey, pasteKeystrokes } from '../../../src/teamwork/desktop_clipboard.js';
+import {
+  ClipboardSync, allModifierReleases, canReadSilently, pasteKey, pasteKeystrokes, staleModifiers,
+} from '../../../src/teamwork/desktop_clipboard.js';
 
 type Msg = { type: string; text?: string };
 
@@ -76,6 +78,41 @@ describe('pasteKeystrokes', () => {
 
   it('is empty for anything that is not a paste', () => {
     expect(pasteKeystrokes(chord({ ctrlKey: true, code: 'KeyC' }), new Set())).toEqual([]);
+  });
+});
+
+describe('staleModifiers — a modifier whose release never arrived', () => {
+  const ev = (init: KeyboardEventInit) => new KeyboardEvent('keydown', init);
+  const codes = (out: Array<[number, string]>) => [...new Set(out.map(([, code]) => code))];
+
+  it('releases Alt when a key arrives without it (the á-for-a bug)', () => {
+    const out = staleModifiers(ev({ key: 'a', code: 'KeyA' }), new Set(['AltLeft']));
+    expect(codes(out)).toEqual(['AltLeft']);
+    expect(out.map(([k]) => k)).toContain(0xffe9);              // Alt_L
+  });
+
+  it('leaves a modifier that is really held', () => {
+    expect(staleModifiers(ev({ key: 'a', code: 'KeyA', altKey: true }), new Set(['AltLeft']))).toEqual([]);
+    expect(staleModifiers(ev({ key: 'C', code: 'KeyC', ctrlKey: true, shiftKey: true }),
+      new Set(['ControlLeft', 'ShiftLeft']))).toEqual([]);
+  });
+
+  it('only releases what the page saw go down', () => {
+    expect(staleModifiers(ev({ key: 'a', code: 'KeyA' }), new Set())).toEqual([]);
+    expect(codes(staleModifiers(ev({ key: 'a', code: 'KeyA' }), new Set(['ShiftLeft', 'KeyQ']))))
+      .toEqual(['ShiftLeft']);
+  });
+
+  it('counts AltGraph as AltRight being down', () => {
+    const e = ev({ key: '@', code: 'KeyQ', modifierAltGraph: true } as KeyboardEventInit);
+    expect(staleModifiers(e, new Set(['AltRight']))).toEqual([]);
+  });
+
+  it('releases every modifier on connect and focus', () => {
+    const all = codes(allModifierReleases());
+    for (const code of ['ShiftLeft', 'ControlLeft', 'AltLeft', 'AltRight', 'MetaLeft']) {
+      expect(all).toContain(code);
+    }
   });
 });
 

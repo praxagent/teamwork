@@ -42,7 +42,9 @@
   </style>
   <script type="module">
     import RFB from './core/rfb.js';
-    import { ClipboardSync, canReadSilently, pasteKey, pasteKeystrokes } from './teamwork-clipboard.js';
+    import {
+      ClipboardSync, allModifierReleases, canReadSilently, pasteKey, pasteKeystrokes, staleModifiers,
+    } from './teamwork-clipboard.js';
 
     const keyTable = {
       AltLeft: { keysym: 0xffe9, code: 'AltLeft' },
@@ -138,6 +140,7 @@
 
       rfb.addEventListener('connect', () => {
         showStatus(`Connected to ${desktopName}`);
+        releaseAllModifiers();
         focusRemote();
         parentNotify('connected');
       });
@@ -211,9 +214,27 @@
     }
 
     const held = new Set();   // key codes currently down (noVNC sent them)
-    window.addEventListener('keydown', (event) => held.add(event.code), true);
+    window.addEventListener('keydown', (event) => {
+      // A modifier this event says is up, but whose release never arrived,
+      // is still held on the desktop: release it before this key goes in.
+      if (rfb) {
+        for (const [keysym, code] of staleModifiers(event, held)) {
+          rfb.sendKey(keysym, code, false);
+          held.delete(code);
+        }
+      }
+      held.add(event.code);
+    }, true);
     window.addEventListener('keyup', (event) => held.delete(event.code), true);
     window.addEventListener('blur', () => held.clear());
+
+    // Start every visit with no modifier held on the desktop: whatever was
+    // pressed when the last connection dropped, or focus left, is released.
+    function releaseAllModifiers() {
+      if (!rfb) return;
+      for (const [keysym, code] of allModifierReleases()) rfb.sendKey(keysym, code, false);
+    }
+    window.addEventListener('focus', releaseAllModifiers);
 
     canReadSilently().then((ok) => {
       if (!ok) return;
