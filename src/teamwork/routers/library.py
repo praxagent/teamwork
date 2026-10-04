@@ -552,16 +552,29 @@ async def get_space_cover(space: str):
 
 
 @router.post("/spaces/{space}/cover")
-async def upload_space_cover(space: str):
-    """Upload a cover image (multipart)."""
-    from fastapi import Request
-    # Pass through the raw request body to Prax
-    from starlette.requests import Request as StarletteRequest
-    # For multipart, we need to forward the raw body
-    result = await _proxy("POST", f"/spaces/{space}/cover")
-    if result is None:
-        raise HTTPException(status_code=502, detail="Prax backend unavailable")
-    return result
+async def upload_space_cover(space: str, file: UploadFile = File(...)):
+    """Upload a cover image (multipart) and re-send it to Prax.
+
+    It used to forward an empty POST: the image never left TeamWork, and Prax
+    answered "No file uploaded" every time."""
+    from fastapi.responses import JSONResponse
+
+    prax_url = settings.prax_url
+    if not prax_url:
+        return JSONResponse({"error": "Prax backend unavailable"}, status_code=502)
+    content = await file.read()
+    try:
+        async with prax_client(timeout=60.0) as client:
+            resp = await client.post(
+                f"{prax_url.rstrip('/')}{_PRAX_BASE}/spaces/{space}/cover",
+                files={"file": (file.filename or "cover.png", content,
+                                file.content_type or "application/octet-stream")},
+            )
+    except httpx.HTTPError as exc:
+        _logger.debug("Failed to proxy cover upload: %s", exc)
+        return JSONResponse({"error": "Prax backend unavailable"}, status_code=502)
+    body = resp.json() if resp.content else {}
+    return JSONResponse(body, status_code=resp.status_code)
 
 
 @router.delete("/spaces/{space}/cover")
