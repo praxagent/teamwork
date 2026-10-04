@@ -25,7 +25,7 @@ import {
   Trash2, Save, Pencil, User, Sparkles, Lock, Unlock, ArrowRightCircle,
   Settings, FileCode, Archive, Inbox, Network, Stethoscope, Play,
   Link as LinkIcon, AlertTriangle, CheckCircle, Circle, Clock,
-  RefreshCw, MessageSquare, StickyNote, Home, ChevronLeft,
+  RefreshCw, MessageSquare, StickyNote, Home, ChevronLeft, History,
 } from 'lucide-react';
 import {
   useLibrary,
@@ -64,6 +64,9 @@ import {
   useReorderNotebook,
 } from '@/hooks/useApi';
 import { LibrarySpaceView } from './LibrarySpaceView';
+import { LibraryTrash } from './LibraryTrash';
+import { NoteConflictBanner, NoteHistoryPanel } from '@/components/common/NoteSafety';
+import { NoteConflictError } from '@/hooks/useApi';
 import type {
   LibraryNote, LibraryNotebook, LibrarySpace, LibraryBacklink,
   RawItem, OutputItem, HealthCheckReport, ArchiveItem,
@@ -98,7 +101,8 @@ type MainView =
   | { kind: 'archive'; slug: string }
   | { kind: 'output'; slug: string }
   | { kind: 'graph' }
-  | { kind: 'health' };
+  | { kind: 'health' }
+  | { kind: 'trash' };
 
 export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFocusProjectConsumed }: Props) {
   const dark = useUIStore((s) => s.darkMode);
@@ -121,6 +125,10 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
   const [mainView, setMainView] = useState<MainView>({ kind: 'empty' });
   const [editMode, setEditMode] = useState(false);
   const [editBody, setEditBody] = useState('');
+  // Safe editing — see components/common/NoteSafety.
+  const [editBase, setEditBase] = useState<string | undefined>(undefined);
+  const [editConflict, setEditConflict] = useState<NoteConflictError | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Inline create states
   const [creatingProject, setCreatingProject] = useState(false);
@@ -349,11 +357,14 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
     );
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = (base: string | undefined = editBase) => {
     if (!selection) return;
     updateNote.mutate(
-      { ...selection, content: editBody, editor: 'human' },
-      { onSuccess: () => setEditMode(false) },
+      { ...selection, content: editBody, editor: 'human', expected_updated_at: base },
+      {
+        onSuccess: () => { setEditMode(false); setEditConflict(null); },
+        onError: (e) => { if (e instanceof NoteConflictError) setEditConflict(e); },
+      },
     );
   };
 
@@ -611,6 +622,13 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
                 label="Health check"
                 active={mainView.kind === 'health'}
                 onClick={() => setMainView({ kind: 'health' })}
+                dark={dark}
+              />
+              <SidebarButton
+                icon={Trash2}
+                label="Trash"
+                active={mainView.kind === 'trash'}
+                onClick={() => setMainView({ kind: 'trash' })}
                 dark={dark}
               />
             </div>
@@ -1169,6 +1187,10 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
           <LibraryGraphView projects={projects} dark={dark} onSelectNote={(p, n, s) => setMainView({ kind: 'note', project: p, notebook: n, slug: s })} onClose={() => setMainView({ kind: 'empty' })} />
         )}
 
+        {mainView.kind === 'trash' && (
+          <div className="flex-1 overflow-y-auto"><LibraryTrash dark={dark} /></div>
+        )}
+
         {/* Health check */}
         {mainView.kind === 'health' && (
           <HealthCheckView
@@ -1251,15 +1273,23 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
               </div>
               <div className="flex gap-1">
                 {!editMode && (
-                  <button onClick={() => { setEditBody(noteContent); setEditMode(true); }} className={btnGhost} title="Edit">
+                  <button onClick={() => {
+                    setEditBody(noteContent);
+                    setEditBase(String(noteMeta?.updated_at ?? '') || undefined);
+                    setEditConflict(null);
+                    setEditMode(true);
+                  }} className={btnGhost} title="Edit">
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                 )}
                 {editMode && (
-                  <button onClick={handleSaveEdit} className={btnPrimary} title="Save">
+                  <button onClick={() => handleSaveEdit()} className={btnPrimary} title="Save">
                     <Save className="w-3.5 h-3.5" />
                   </button>
                 )}
+                <button onClick={() => setShowHistory((v) => !v)} className={btnGhost} title="History">
+                  <History className="w-3.5 h-3.5" />
+                </button>
                 <button
                   onClick={() => setMovingNote({ to_project: noteMeta.project, to_notebook: noteMeta.notebook })}
                   className={btnGhost}
@@ -1339,6 +1369,27 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
             )}
 
             <div className="flex-1 overflow-y-auto p-4">
+              {showHistory && selection && (
+                <NoteHistoryPanel
+                  project={selection.project}
+                  notebook={selection.notebook}
+                  slug={selection.slug}
+                  dark={dark}
+                  onClose={() => setShowHistory(false)}
+                />
+              )}
+              {editMode && editConflict && (
+                <NoteConflictBanner
+                  conflict={editConflict}
+                  dark={dark}
+                  onKeepMine={() => {
+                    const base = String(editConflict.current.meta.updated_at ?? '') || undefined;
+                    setEditBase(base);
+                    handleSaveEdit(base);
+                  }}
+                  onTakeTheirs={() => { setEditMode(false); setEditConflict(null); }}
+                />
+              )}
               {editMode ? (
                 <textarea
                   value={editBody}

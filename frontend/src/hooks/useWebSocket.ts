@@ -285,6 +285,16 @@ export function useWebSocket() {
             queryClient.invalidateQueries({ queryKey: ['library-tasks', space] });
             queryClient.invalidateQueries({ queryKey: ['library-task-columns', space] });
           }
+          // A note someone has open: refetch it and its history. An edit in
+          // progress is untouched (it lives in the editor's own state); its
+          // save will meet the change as a conflict, not overwrite it.
+          const notebook = event.data.notebook as string | undefined;
+          const slug = event.data.slug as string | undefined;
+          if (space && notebook && slug) {
+            queryClient.invalidateQueries({ queryKey: ['library-note', space, notebook, slug] });
+            queryClient.invalidateQueries({ queryKey: ['library-note-history', space, notebook, slug] });
+          }
+          queryClient.invalidateQueries({ queryKey: ['library-trash'] });
           // The tree carries notebooks and notes and is not keyed by space.
           queryClient.invalidateQueries({ queryKey: ['library'] });
           break;

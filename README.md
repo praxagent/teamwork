@@ -87,6 +87,7 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 
 **Knowledge & content**
 - [x] Library / Spaces — notebooks, notes, wiki, flashcards, tags, backlinks, per-space tasks/files
+- [x] Library history and trash — a note's versions with diffs and restore, deleted items restorable from Trash, a stale save offered as "keep mine / take theirs" instead of silently overwriting, and open notes refreshing when the agent edits them (Prax keeps the history: every library write is a commit)
 - [x] Public rendering for courses / notes / news at root URLs
 
 **Integration & platform**

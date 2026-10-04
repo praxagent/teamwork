@@ -57,6 +57,8 @@ import { MarkdownContent } from '@/components/common';
 import { useUIStore } from '@/stores';
 import { getSpaceTheme, THEME_PRESETS, accentColor, progressColor } from '@/utils/spaceTheme';
 import { LibrarySpaceView } from './LibrarySpaceView';
+import { NoteConflictBanner, NoteHistoryPanel } from '@/components/common/NoteSafety';
+import { NoteConflictError } from '@/hooks/useApi';
 
 interface Props {
   spaceSlug: string;
@@ -91,6 +93,31 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
     viewingNote?.slug ?? null,
   );
   const updateNote = useUpdateLibraryNote();
+  // The version an edit started from, a save that met a newer one, and the
+  // history panel — see components/common/NoteSafety.
+  const [editingBase, setEditingBase] = useState<string | undefined>(undefined);
+  const [noteConflict, setNoteConflict] = useState<NoteConflictError | null>(null);
+  const [showNoteHistory, setShowNoteHistory] = useState(false);
+  const saveNoteEdit = (note: { notebook: string; slug: string }, base: string | undefined) => {
+    if (editingNoteBody === null) return;
+    updateNote.mutate({
+      project: spaceSlug,
+      notebook: note.notebook,
+      slug: note.slug,
+      content: editingNoteBody,
+      editor: 'human',
+      expected_updated_at: base,
+    }, {
+      onSuccess: () => {
+        setEditingNoteBody(null);
+        setNoteConflict(null);
+        queryClient.invalidateQueries({ queryKey: ['library-space', spaceSlug] });
+      },
+      onError: (e) => {
+        if (e instanceof NoteConflictError) setNoteConflict(e);
+      },
+    });
+  };
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -369,9 +396,23 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
                             <Sparkles className="mr-1 inline h-3 w-3 -translate-y-px" />
                             {showingSpaceChat ? 'Hide chat' : 'Discuss'}
                           </button>
+                          <button
+                            onClick={() => setShowNoteHistory((v) => !v)}
+                            className={clsx(
+                              'rounded px-2.5 py-1.5 text-xs font-medium',
+                              dark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-gray-100',
+                            )}
+                            title="Versions of this note"
+                          >
+                            History
+                          </button>
                           {editingNoteBody === null ? (
                             <button
-                              onClick={() => setEditingNoteBody(noteQuery.data?.content ?? '')}
+                              onClick={() => {
+                                setEditingNoteBody(noteQuery.data?.content ?? '');
+                                setEditingBase(String(noteQuery.data?.meta?.updated_at ?? '') || undefined);
+                                setNoteConflict(null);
+                              }}
                               disabled={noteQuery.isLoading}
                               className={clsx(
                                 'rounded px-2.5 py-1.5 text-xs font-medium disabled:opacity-40',
@@ -383,20 +424,7 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
                           ) : (
                             <div className="flex gap-1">
                               <button
-                                onClick={() => {
-                                  updateNote.mutate({
-                                    project: spaceSlug,
-                                    notebook: viewingNote.notebook,
-                                    slug: viewingNote.slug,
-                                    content: editingNoteBody,
-                                    editor: 'human',
-                                  }, {
-                                    onSuccess: () => {
-                                      setEditingNoteBody(null);
-                                      queryClient.invalidateQueries({ queryKey: ['library-space', spaceSlug] });
-                                    },
-                                  });
-                                }}
+                                onClick={() => saveNoteEdit(viewingNote, editingBase)}
                                 className="rounded px-2.5 py-1.5 text-xs font-medium text-white"
                                 style={{ backgroundColor: accentColor(space.theme_hue, dark) }}
                               >
@@ -413,6 +441,32 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
                         </div>
                       </div>
                       <div className="px-5 py-6 sm:px-7 sm:py-8">
+                        {showNoteHistory && (
+                          <NoteHistoryPanel
+                            project={spaceSlug}
+                            notebook={viewingNote.notebook}
+                            slug={viewingNote.slug}
+                            dark={dark}
+                            onClose={() => setShowNoteHistory(false)}
+                          />
+                        )}
+                        {noteConflict && editingNoteBody !== null && (
+                          <NoteConflictBanner
+                            conflict={noteConflict}
+                            dark={dark}
+                            onKeepMine={() => {
+                              // Save again on top of the newer version, on purpose.
+                              const base = String(noteConflict.current.meta.updated_at ?? '') || undefined;
+                              setEditingBase(base);
+                              saveNoteEdit(viewingNote, base);
+                            }}
+                            onTakeTheirs={() => {
+                              setEditingNoteBody(null);
+                              setNoteConflict(null);
+                              queryClient.invalidateQueries({ queryKey: ['library-note', spaceSlug, viewingNote.notebook, viewingNote.slug] });
+                            }}
+                          />
+                        )}
                         {noteQuery.isLoading ? (
                           <p className={clsx('text-sm', t3)}>Loading…</p>
                         ) : editingNoteBody !== null ? (

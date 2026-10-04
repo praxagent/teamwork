@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Body, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
 
 from teamwork.config import settings
 from teamwork.routers.prax import prax_client
@@ -42,6 +43,24 @@ async def _proxy(method: str, path: str, **kwargs) -> Any:
     except Exception as exc:
         _logger.debug("Failed to proxy %s %s to Prax: %s", method, path, exc)
         return None
+
+
+async def _relay(method: str, path: str, **kwargs) -> Any:
+    """Like :func:`_proxy`, but Prax's own refusal comes through with its
+    status and body: a 409 on a stale save carries the current note, which
+    the editor needs to offer "keep mine / take theirs"."""
+    if not settings.prax_url:
+        raise HTTPException(status_code=503, detail="Prax is not configured (PRAX_URL)")
+    try:
+        async with prax_client(timeout=15.0) as client:
+            resp = await client.request(
+                method, f"{settings.prax_url.rstrip('/')}{_PRAX_BASE}{path}", **kwargs)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Prax is unreachable: {exc}") from None
+    body = resp.json() if resp.content else {}
+    if resp.status_code >= 400:
+        return JSONResponse(status_code=resp.status_code, content=body)
+    return body
 
 
 # ---------------------------------------------------------------------------
@@ -125,11 +144,44 @@ async def get_note(project: str, notebook: str, slug: str):
 
 @router.patch("/notes/{project}/{notebook}/{slug}")
 async def update_note(project: str, notebook: str, slug: str, data: dict = Body(...)):
-    """Update a note's content, title, or tags."""
-    result = await _proxy("PATCH", f"/notes/{project}/{notebook}/{slug}", json=data)
-    if result is None:
-        raise HTTPException(status_code=502, detail="Prax backend unavailable")
-    return result
+    """Update a note's content, title, or tags. With ``expected_updated_at``
+    a stale save gets Prax's 409 and the current note."""
+    return await _relay("PATCH", f"/notes/{project}/{notebook}/{slug}", json=data)
+
+
+@router.get("/notes/{project}/{notebook}/{slug}/history")
+async def note_history(project: str, notebook: str, slug: str):
+    """Versions of a note (a commit per save), newest first."""
+    return await _relay("GET", f"/notes/{project}/{notebook}/{slug}/history")
+
+
+@router.get("/notes/{project}/{notebook}/{slug}/history/{commit}")
+async def note_version(project: str, notebook: str, slug: str, commit: str):
+    """One version, with a diff against now."""
+    return await _relay("GET", f"/notes/{project}/{notebook}/{slug}/history/{commit}")
+
+
+@router.post("/notes/{project}/{notebook}/{slug}/history/{commit}/restore")
+async def restore_note_version(project: str, notebook: str, slug: str, commit: str):
+    """Bring a version back as a new edit."""
+    return await _relay("POST", f"/notes/{project}/{notebook}/{slug}/history/{commit}/restore")
+
+
+@router.get("/trash")
+async def list_trash():
+    """Deleted notes, notebooks, spaces and space files."""
+    return await _relay("GET", "/trash")
+
+
+@router.post("/trash/{trash_id}/restore")
+async def restore_from_trash(trash_id: str):
+    return await _relay("POST", f"/trash/{trash_id}/restore")
+
+
+@router.delete("/trash/{trash_id}")
+async def purge_from_trash(trash_id: str):
+    """Delete one trashed item for good."""
+    return await _relay("DELETE", f"/trash/{trash_id}")
 
 
 @router.delete("/notes/{project}/{notebook}/{slug}")
