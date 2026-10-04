@@ -1917,6 +1917,83 @@ export function useRestoreNoteVersion() {
   });
 }
 
+export interface NoteCommentReply {
+  id: string;
+  author: string;
+  text: string;
+  created_at: string;
+}
+
+export interface NoteComment extends NoteCommentReply {
+  /** The passage commented on ("" for the whole note), and a little text
+   *  either side of it so it can be found again. */
+  quote: string;
+  prefix: string;
+  suffix: string;
+  resolved: boolean;
+  replies: NoteCommentReply[];
+  /** Prax was asked (@prax) and his reply hasn't arrived yet. */
+  prax_replying?: boolean;
+}
+
+type NoteRef = { project: string; notebook: string; slug: string };
+
+const commentsKey = (v: NoteRef) => ['library-note-comments', v.project, v.notebook, v.slug];
+
+/** Comments on a note. While Prax is replying it polls, in case the live
+ *  nudge that normally brings his reply is missed. */
+export function useNoteComments(project: string, notebook: string, slug: string, enabled = true) {
+  return useQuery({
+    queryKey: commentsKey({ project, notebook, slug }),
+    queryFn: () => fetchJson<{ comments: NoteComment[] }>(`${notePath(project, notebook, slug)}/comments`),
+    enabled: enabled && !!slug,
+    refetchInterval: (query) =>
+      query.state.data?.comments?.some((c) => c.prax_replying) ? 4000 : false,
+  });
+}
+
+function useCommentMutation<V extends NoteRef>(request: (v: V) => Promise<unknown>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: request,
+    onSuccess: (_, v) => queryClient.invalidateQueries({ queryKey: commentsKey(v) }),
+  });
+}
+
+export function useAddNoteComment() {
+  return useCommentMutation((v: NoteRef & { text: string; quote?: string; prefix?: string; suffix?: string }) =>
+    fetchJson(`${notePath(v.project, v.notebook, v.slug)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: v.text, quote: v.quote ?? '', prefix: v.prefix ?? '', suffix: v.suffix ?? '' }),
+    }));
+}
+
+export function useReplyNoteComment() {
+  return useCommentMutation((v: NoteRef & { commentId: string; text: string }) =>
+    fetchJson(`${notePath(v.project, v.notebook, v.slug)}/comments/${encodeURIComponent(v.commentId)}/replies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: v.text }),
+    }));
+}
+
+export function useResolveNoteComment() {
+  return useCommentMutation((v: NoteRef & { commentId: string; resolved: boolean }) =>
+    fetchJson(`${notePath(v.project, v.notebook, v.slug)}/comments/${encodeURIComponent(v.commentId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolved: v.resolved }),
+    }));
+}
+
+export function useDeleteNoteComment() {
+  return useCommentMutation((v: NoteRef & { commentId: string }) =>
+    fetchJson(`${notePath(v.project, v.notebook, v.slug)}/comments/${encodeURIComponent(v.commentId)}`, {
+      method: 'DELETE',
+    }));
+}
+
 export interface TrashItem {
   id: string;
   kind: 'note' | 'notebook' | 'space' | 'file';

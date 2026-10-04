@@ -58,6 +58,7 @@ import { useUIStore } from '@/stores';
 import { getSpaceTheme, THEME_PRESETS, accentColor, progressColor } from '@/utils/spaceTheme';
 import { LibrarySpaceView } from './LibrarySpaceView';
 import { NoteConflictBanner, NoteHistoryPanel } from '@/components/common/NoteSafety';
+import { CommentableNote } from '@/components/common/NoteComments';
 import { NoteConflictError } from '@/hooks/useApi';
 
 interface Props {
@@ -488,11 +489,19 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
                             )}
                           />
                         ) : (
-                          <MarkdownContent
+                          <CommentableNote
+                            project={spaceSlug}
+                            notebook={viewingNote.notebook}
+                            slug={viewingNote.slug}
+                            dark={dark}
                             content={noteQuery.data?.content ?? ''}
-                            darkMode={dark}
-                            className="mx-auto max-w-none"
-                          />
+                          >
+                            <MarkdownContent
+                              content={noteQuery.data?.content ?? ''}
+                              darkMode={dark}
+                              className="mx-auto max-w-none"
+                            />
+                          </CommentableNote>
                         )}
                       </div>
                     </article>

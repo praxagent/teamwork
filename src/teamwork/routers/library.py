@@ -167,6 +167,38 @@ async def restore_note_version(project: str, notebook: str, slug: str, commit: s
     return await _relay("POST", f"/notes/{project}/{notebook}/{slug}/history/{commit}/restore")
 
 
+@router.get("/notes/{project}/{notebook}/{slug}/comments")
+async def note_comments(project: str, notebook: str, slug: str):
+    """Comments on a note, each with its passage and replies."""
+    return await _relay("GET", f"/notes/{project}/{notebook}/{slug}/comments")
+
+
+@router.post("/notes/{project}/{notebook}/{slug}/comments")
+async def add_note_comment(project: str, notebook: str, slug: str, data: dict = Body(...)):
+    """Comment on a note or a passage of it. ``@prax`` in the text asks Prax,
+    whose answer arrives later as a reply."""
+    return await _relay("POST", f"/notes/{project}/{notebook}/{slug}/comments", json=data)
+
+
+@router.post("/notes/{project}/{notebook}/{slug}/comments/{comment_id}/replies")
+async def reply_note_comment(project: str, notebook: str, slug: str, comment_id: str,
+                             data: dict = Body(...)):
+    return await _relay("POST", f"/notes/{project}/{notebook}/{slug}/comments/{comment_id}/replies",
+                        json=data)
+
+
+@router.patch("/notes/{project}/{notebook}/{slug}/comments/{comment_id}")
+async def resolve_note_comment(project: str, notebook: str, slug: str, comment_id: str,
+                               data: dict = Body(...)):
+    """Resolve (``{"resolved": true}``) or reopen a comment."""
+    return await _relay("PATCH", f"/notes/{project}/{notebook}/{slug}/comments/{comment_id}", json=data)
+
+
+@router.delete("/notes/{project}/{notebook}/{slug}/comments/{comment_id}")
+async def delete_note_comment(project: str, notebook: str, slug: str, comment_id: str):
+    return await _relay("DELETE", f"/notes/{project}/{notebook}/{slug}/comments/{comment_id}")
+
+
 @router.get("/trash")
 async def list_trash():
     """Deleted notes, notebooks, spaces and space files."""
