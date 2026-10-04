@@ -71,6 +71,48 @@ export function pasteKeystrokes(chord, held) {
   ];
 }
 
+// ── Stuck modifiers ─────────────────────────────────────────────────────────
+// noVNC presses a modifier on the desktop when it sees the key go down, and
+// releases it when it sees the key come up. If the release never reaches the
+// page — the browser or the OS took the shortcut (Alt+Tab, a browser key), or
+// a prompt took focus mid-press — the desktop keeps it held, and everything
+// typed afterwards arrives as Alt+key: xterm shows á for a, ÿ for Backspace,
+// and the window manager grabs Alt+Space. Every key event carries the
+// browser's own view of which modifiers are down, so that view decides.
+
+/** Modifier key codes → the event flag that says whether it is down, and the
+ *  X keysyms noVNC may have pressed for it (all are released, to be safe). */
+const MODIFIERS = {
+  ShiftLeft: ['shiftKey', [0xffe1]],
+  ShiftRight: ['shiftKey', [0xffe2]],
+  ControlLeft: ['ctrlKey', [0xffe3]],
+  ControlRight: ['ctrlKey', [0xffe4]],
+  AltLeft: ['altKey', [0xffe9, 0xffe7]],
+  AltRight: ['altKey', [0xffea, 0xfe03]],
+  MetaLeft: ['metaKey', [0xffeb, 0xffe7]],
+  MetaRight: ['metaKey', [0xffec, 0xffe8]],
+};
+
+/** Every modifier, as [keysym, code] pairs to release. */
+export function allModifierReleases() {
+  return Object.entries(MODIFIERS).flatMap(([code, [, keysyms]]) => keysyms.map((k) => [k, code]));
+}
+
+/**
+ * The modifiers the page saw go down (*held*: codes down) that this event
+ * says are up: the desktop still holds them. Returns [keysym, code] releases.
+ * AltGraph counts as Alt being down (on some layouts AltRight reports only it).
+ */
+export function staleModifiers(event, held) {
+  const out = [];
+  for (const [code, [flag, keysyms]] of Object.entries(MODIFIERS)) {
+    if (!held.has(code) || code === event.code) continue;
+    const down = event[flag] || (code === 'AltRight' && event.getModifierState?.('AltGraph'));
+    if (!down) for (const k of keysyms) out.push([k, code]);
+  }
+  return out;
+}
+
 /** True when the clipboard can be read without a prompt on every read. */
 export async function canReadSilently(nav = globalThis.navigator) {
   if (!nav?.clipboard?.readText || !nav.permissions?.query) return false;
