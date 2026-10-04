@@ -293,6 +293,7 @@ export function useWebSocket() {
           if (space && notebook && slug) {
             queryClient.invalidateQueries({ queryKey: ['library-note', space, notebook, slug] });
             queryClient.invalidateQueries({ queryKey: ['library-note-history', space, notebook, slug] });
+            queryClient.invalidateQueries({ queryKey: ['library-note-comments', space, notebook, slug] });
           }
           queryClient.invalidateQueries({ queryKey: ['library-trash'] });
           // The tree carries notebooks and notes and is not keyed by space.

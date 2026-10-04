@@ -1,8 +1,8 @@
 import { ArtifactCard } from './ArtifactCard';
 import { splitArtifactMarkers } from '@/utils/artifacts';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import { clsx } from 'clsx';
-import { ReactNode, createContext, useContext, useEffect, useId, useRef, useState } from 'react';
+import { ReactNode, createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import mermaid from 'mermaid';
@@ -235,13 +235,13 @@ function MarkdownBody({ content, className, darkMode: darkModeProp, onToggleTask
   const storeDarkMode = useUIStore((s) => s.darkMode);
   const darkMode = darkModeProp ?? storeDarkMode;
   const processedContent = preprocessContent(content);
-  
-  return (
-    <ReactMarkdown
-      className={clsx('markdown-content', className)}
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{
+
+  // Memoised: a new components object every render gives react-markdown new
+  // component types, so React rebuilt the whole rendered DOM on any parent
+  // re-render. That dropped a text selection in progress and the ranges that
+  // highlight commented passages (NoteComments), and re-mounted every
+  // message for nothing.
+  const components = useMemo<Components>(() => ({
         // Headings
         h1: ({ children }) => (
           <h1 className="text-xl font-bold mt-4 mb-2 text-gray-900 dark:text-gray-100">{children}</h1>
@@ -412,7 +412,14 @@ function MarkdownBody({ content, className, darkMode: darkModeProp, onToggleTask
             {children}
           </td>
         ),
-      }}
+  }), [darkMode, onToggleTask, processedContent]);
+
+  return (
+    <ReactMarkdown
+      className={clsx('markdown-content', className)}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={components}
     >
       {processedContent}
     </ReactMarkdown>

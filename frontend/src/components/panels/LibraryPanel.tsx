@@ -67,6 +67,7 @@ import { LibrarySpaceView } from './LibrarySpaceView';
 import { LibraryTrash } from './LibraryTrash';
 import { LibrarySearch } from './LibrarySearch';
 import { NoteConflictBanner, NoteHistoryPanel } from '@/components/common/NoteSafety';
+import { CommentableNote } from '@/components/common/NoteComments';
 import { NoteConflictError } from '@/hooks/useApi';
 import type {
   LibraryNote, LibraryNotebook, LibrarySpace, LibraryBacklink,
@@ -1419,13 +1420,21 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
                 />
               ) : (
                 <>
-                  <WikilinkMarkdown
-                    content={noteContent}
+                  <CommentableNote
+                    project={selection.project}
+                    notebook={selection.notebook}
+                    slug={selection.slug}
                     dark={dark}
-                    currentProject={noteMeta.project}
-                    currentNotebook={noteMeta.notebook}
-                    onLinkClick={(p, n, s) => setMainView({ kind: 'note', project: p, notebook: n, slug: s })}
-                  />
+                    content={noteContent}
+                  >
+                    <WikilinkMarkdown
+                      content={noteContent}
+                      dark={dark}
+                      currentProject={noteMeta.project}
+                      currentNotebook={noteMeta.notebook}
+                      onLinkClick={(p, n, s) => setMainView({ kind: 'note', project: p, notebook: n, slug: s })}
+                    />
+                  </CommentableNote>
                   {(backlinks.data?.backlinks?.length ?? 0) > 0 && (
                     <div className={clsx('mt-6 pt-4 border-t', border)}>
                       <div className={clsx('text-xs font-semibold mb-2 flex items-center gap-1', t3)}>

@@ -497,3 +497,11 @@ html:not(.dark) .chat-message-text {
     max-width: 600px;
   }
 }
+
+/* Passages with comments on them (components/common/NoteComments.tsx). */
+::highlight(note-comments) {
+  background-color: rgb(250 204 21 / 0.3);
+}
+::highlight(note-comment-active) {
+  background-color: rgb(250 204 21 / 0.65);
+}
