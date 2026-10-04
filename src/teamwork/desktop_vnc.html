@@ -42,6 +42,7 @@
   </style>
   <script type="module">
     import RFB from './core/rfb.js';
+    import { ClipboardSync, canReadSilently, pasteKey, pasteKeystrokes } from './teamwork-clipboard.js';
 
     const keyTable = {
       AltLeft: { keysym: 0xffe9, code: 'AltLeft' },
@@ -181,6 +182,62 @@
 
     screen.addEventListener('pointerdown', focusRemote);
     screen.addEventListener('focusin', focusRemote);
+
+    // ── This computer's clipboard → the desktop's (teamwork-clipboard.js) ──
+    // So Ctrl+V / Ctrl+Shift+V / Shift+Insert inside the desktop paste what
+    // you copied here, instead of whatever the desktop's clipboard held.
+    let clipSocket = null;
+    const clip = new ClipboardSync({
+      readText: () => navigator.clipboard.readText(),
+      send: (msg) => {
+        if (!clipSocket || clipSocket.readyState !== WebSocket.OPEN) return false;
+        clipSocket.send(JSON.stringify(msg));
+        return true;
+      },
+      onBlocked: () => showStatus('Clipboard access is blocked: allow it for this site to paste into the desktop'),
+    });
+
+    function connectClipboard(delay = 2000) {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      clipSocket = new WebSocket(`${proto}//${window.location.host}/api/desktop/clipboard`);
+      clipSocket.onopen = () => { delay = 2000; };
+      clipSocket.onmessage = (event) => {
+        try { clip.handleMessage(JSON.parse(event.data)); } catch { /* not JSON */ }
+      };
+      clipSocket.onclose = () => {
+        clipSocket = null;
+        window.setTimeout(() => connectClipboard(Math.min(delay * 2, 30000)), delay);
+      };
+    }
+
+    const held = new Set();   // key codes currently down (noVNC sent them)
+    window.addEventListener('keydown', (event) => held.add(event.code), true);
+    window.addEventListener('keyup', (event) => held.delete(event.code), true);
+    window.addEventListener('blur', () => held.clear());
+
+    canReadSilently().then((ok) => {
+      if (!ok) return;
+      connectClipboard();
+      screen.addEventListener('pointerdown', () => clip.sync());
+      screen.addEventListener('focusin', () => clip.sync());
+      window.addEventListener('focus', () => clip.sync());
+      window.addEventListener('keydown', (event) => {
+        if ((event.key === 'Control' || event.key === 'Meta') && !event.repeat) {
+          clip.sync();   // the paste key usually follows; start now
+          return;
+        }
+        if (!pasteKey(event) || !clip.pending || !rfb) return;
+        // The desktop doesn't have the text yet: hold the paste until it
+        // does, then replay it (re-pressing any modifier let go meanwhile).
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const chord = { ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey,
+                        altKey: event.altKey, code: event.code };
+        clip.pending.then(() => {
+          for (const [keysym, code, down] of pasteKeystrokes(chord, held)) rfb.sendKey(keysym, code, down);
+        });
+      }, true);
+    });
     window.addEventListener('beforeunload', () => {
       intentionalDisconnect = true;
       if (rfb) rfb.disconnect();
