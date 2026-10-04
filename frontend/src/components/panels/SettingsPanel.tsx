@@ -26,6 +26,8 @@ import {
   useSetUserTimezone,
   useCurrentModel,
   useSetModel,
+  useRuntimeSettings,
+  useSetRuntimeSetting,
 } from '@/hooks/useApi';
 import { PluginsSection } from './PluginsSection';
 import { TimezonePicker } from '@/components/common/TimezonePicker';
@@ -633,6 +635,9 @@ export function SettingsPanel({ project: projectProp }: SettingsPanelProps) {
 
           {/* Timezone */}
           <TimezoneSection darkMode={darkMode} heading={heading} subtext={subtext} />
+
+          {/* Prax settings an admin may change without a restart */}
+          <PraxSettingsSection darkMode={darkMode} heading={heading} subtext={subtext} />
         </div>
       </div>
 
@@ -1066,6 +1071,81 @@ function TimezoneSection({ darkMode, heading, subtext }: { darkMode: boolean; he
         {setTimezone.isPending && (
           <span className={`text-xs ${subtext}`}>Saving...</span>
         )}
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * Prax settings that can change while Prax runs. Prax lists them (an
+ * allowlist in its runtime_settings.py; nothing that loosens protection is on
+ * it) and stores changes in .env-teamwork-override, which wins over its .env.
+ * Today whoever is logged in to TeamWork may change them; with per-person
+ * accounts this becomes admin-only.
+ */
+export function PraxSettingsSection({ darkMode, heading, subtext }: { darkMode: boolean; heading: string; subtext: string }) {
+  const { data, isError } = useRuntimeSettings();
+  const setSetting = useSetRuntimeSetting();
+  const [error, setError] = useState<string | null>(null);
+  if (isError) return null;
+  const items = data?.settings ?? [];
+  if (items.length === 0) return null;
+
+  const change = (key: string, value: boolean | null) => {
+    setError(null);
+    setSetting.mutate({ key, value }, { onError: (e) => setError((e as Error).message) });
+  };
+  const categories = [...new Set(items.map((s) => s.category))];
+
+  return (
+    <div>
+      <p className={`text-sm font-medium mb-1 ${heading}`}>Prax settings</p>
+      <p className={`text-xs mb-3 ${subtext}`}>
+        Take effect at once, no restart. A changed setting overrides Prax&apos;s .env until you reset it.
+      </p>
+      {error && <p className="text-xs mb-2 text-red-500">{error}</p>}
+      <div className="space-y-4">
+        {categories.map((category) => (
+          <div key={category}>
+            <p className={`text-[11px] font-semibold uppercase tracking-wide mb-1.5 ${subtext}`}>{category}</p>
+            <div className="space-y-3">
+              {items.filter((s) => s.category === category).map((s) => (
+                <div key={s.key} className="flex items-start gap-3">
+                  <button
+                    role="switch"
+                    aria-checked={s.value}
+                    aria-label={s.label}
+                    disabled={setSetting.isPending}
+                    onClick={() => change(s.key, !s.value)}
+                    className={`mt-0.5 relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+                      s.value ? 'bg-indigo-600' : darkMode ? 'bg-slate-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transform transition-transform ${
+                      s.value ? 'translate-x-4' : 'translate-x-0.5'
+                    }`} />
+                  </button>
+                  <div className="min-w-0">
+                    <p className={`text-sm ${heading}`}>
+                      {s.label}
+                      {s.source === 'teamwork' && (
+                        <button
+                          onClick={() => change(s.key, null)}
+                          className={`ml-2 text-xs underline ${subtext}`}
+                          title={`Go back to Prax's .env value (${s.env_value ? 'on' : 'off'})`}
+                        >
+                          reset
+                        </button>
+                      )}
+                    </p>
+                    <p className={`text-xs ${subtext}`}>{s.help}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

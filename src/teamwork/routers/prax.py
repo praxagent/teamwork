@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -114,6 +115,52 @@ async def set_model(data: dict = Body(...)):
     if result is None:
         raise HTTPException(status_code=502, detail="Prax backend unavailable")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Prax settings an admin may change here (Prax: runtime_settings.py)
+# ---------------------------------------------------------------------------
+#
+# Prax decides which settings are on the list; this only relays. Prax's own
+# answer is passed through (404 for a setting that isn't changeable, 400 for a
+# bad value) instead of becoming a bare 502. When TeamWork has per-person
+# accounts, changing these is for admins; today whoever is logged in is one.
+
+_SETTING_KEY = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
+
+
+async def _settings_call(method: str, path: str, **kwargs: Any) -> Any:
+    if not settings.prax_url:
+        raise HTTPException(status_code=503, detail="Prax is not configured (PRAX_URL)")
+    try:
+        async with prax_client(timeout=15.0) as client:
+            resp = await client.request(
+                method, f"{settings.prax_url.rstrip('/')}{_PRAX_BASE}{path}", **kwargs)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Prax is unreachable: {exc}") from None
+    body = resp.json() if resp.content else {}
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=body.get("error") or "Prax refused")
+    return body
+
+
+@router.get("/runtime-settings")
+async def list_runtime_settings():
+    return await _settings_call("GET", "/runtime-settings")
+
+
+@router.put("/runtime-settings/{key}")
+async def set_runtime_setting(key: str, data: dict = Body(...)):
+    if not _SETTING_KEY.match(key):
+        raise HTTPException(status_code=404, detail="no such setting")
+    return await _settings_call("PUT", f"/runtime-settings/{key}", json=data)
+
+
+@router.delete("/runtime-settings/{key}")
+async def reset_runtime_setting(key: str):
+    if not _SETTING_KEY.match(key):
+        raise HTTPException(status_code=404, detail="no such setting")
+    return await _settings_call("DELETE", f"/runtime-settings/{key}")
 
 
 # ---------------------------------------------------------------------------
