@@ -16,6 +16,7 @@ from teamwork.routers.projects import router as projects_router
 from teamwork.routers.scheduler import router as scheduler_router
 from teamwork.routers.tasks import router as tasks_router
 from teamwork.routers.external import router as external_router
+from teamwork.routers.sandbox import router as sandbox_router
 from teamwork.routers.terminal import router as terminal_router
 from teamwork.routers.uploads import router as uploads_router
 from teamwork.routers.prax import router as prax_router
@@ -39,6 +40,7 @@ __all__ = [
     "projects_router",
     "scheduler_router",
     "tasks_router",
+    "sandbox_router",
     "terminal_router",
     "uploads_router",
     "workspace_router",

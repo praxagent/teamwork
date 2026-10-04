@@ -2344,6 +2344,14 @@ export function useLibrarySpace(project: string | null) {
   });
 }
 
+/** Restart the sandbox container (desktop, terminal, browser). Files and
+ *  installed packages stay; running programs stop. */
+export function useRestartSandbox() {
+  return useMutation({
+    mutationFn: () => fetchJson<{ status: string; container: string }>('/sandbox/restart', { method: 'POST' }),
+  });
+}
+
 export function useUpdateLibrarySpace() {
   const queryClient = useQueryClient();
   return useMutation({
