@@ -474,8 +474,10 @@ async def _dispatch_library(tool: str, arguments: dict[str, Any],
     if tool == "update_note":
         space, notebook, note, content = _require(
             arguments, "space", "notebook", "note", "content")
+        # Its own name as editor: a person's note stays theirs (Prax's gate
+        # applies to any agent), and the commit says who changed it.
         return await _prax("PATCH", f"/notes/{space}/{notebook}/{note}",
-                           json={"content": content})
+                           json={"content": content, "editor": client.display_name})
 
     raise McpError(f"unknown tool: {tool}", code=-32601)
 

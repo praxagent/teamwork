@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -704,6 +704,23 @@ async def send_typing_indicator(
     # Broadcast to both channel AND project subscribers.
     await manager.broadcast_to_channel(request.channel_id, typing_event)
     await manager.broadcast_to_project(project_id, typing_event)
+    return {"status": "sent"}
+
+
+@router.post("/projects/{project_id}/library-changed")
+async def library_changed(
+    project_id: str,
+    data: dict = Body(...),
+    api_key: AgentClient = Depends(_verify_api_key),
+) -> dict[str, str]:
+    """An agent changed a Library item: tell every open browser, so a note or
+    board someone has open refreshes. Names only, never content."""
+    require_capability(api_key, CAP_PRESENCE)
+    keep = ("space", "notebook", "slug", "action", "actor")
+    payload = {k: str(data.get(k) or "")[:200] for k in keep}
+    await manager.broadcast_all(WebSocketEvent(
+        type=EventType.LIBRARY_UPDATE, data={**payload, "source": "agent"},
+    ))
     return {"status": "sent"}
 
 

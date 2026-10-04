@@ -29,7 +29,8 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || `Request failed: ${response.status}`);
+    // FastAPI says {detail}; Prax's refusals relayed as-is say {error}.
+    throw new Error(error.detail || error.error || `Request failed: ${response.status}`);
   }
 
   return response.json();
@@ -1832,19 +1833,123 @@ export function useUpdateLibraryNote() {
       tags?: string[];
       editor?: 'human' | 'prax';
       override_permission?: boolean;
-    }) =>
-      fetchJson(
-        `/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
-          notebook,
-        )}/${encodeURIComponent(slug)}`,
-        { method: 'PATCH', body: JSON.stringify(data) },
-      ),
+      /** The note's updated_at when editing began. If it changed since, the
+       *  save is refused with a NoteConflictError instead of overwriting. */
+      expected_updated_at?: string;
+    }) => saveNote(`/library/notes/${encodeURIComponent(project)}/${encodeURIComponent(
+      notebook,
+    )}/${encodeURIComponent(slug)}`, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['library'] });
       queryClient.invalidateQueries({
         queryKey: ['library-note', variables.project, variables.notebook, variables.slug],
       });
     },
+  });
+}
+
+/** A save refused because the note changed after editing began. Carries the
+ *  note as it is now, so the editor can offer "keep mine / take theirs". */
+export class NoteConflictError extends Error {
+  current: { meta: Record<string, unknown>; content: string };
+
+  constructor(message: string, current: { meta: Record<string, unknown>; content: string }) {
+    super(message);
+    this.name = 'NoteConflictError';
+    this.current = current;
+  }
+}
+
+async function saveNote(url: string, data: Record<string, unknown>): Promise<unknown> {
+  const response = await fetch(`${API_BASE}${url}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (response.status === 409 && body?.current) {
+    throw new NoteConflictError(body.error || 'The note changed since you opened it.', body.current);
+  }
+  if (!response.ok) {
+    throw new Error(body.error || body.detail || `Request failed: ${response.status}`);
+  }
+  return body;
+}
+
+export interface NoteVersion {
+  commit: string;
+  date: string;
+  author: string;
+  message: string;
+}
+
+const notePath = (p: string, n: string, s: string) =>
+  `/library/notes/${encodeURIComponent(p)}/${encodeURIComponent(n)}/${encodeURIComponent(s)}`;
+
+/** Versions of a note: a commit per save, newest first. */
+export function useNoteHistory(project: string, notebook: string, slug: string, enabled = true) {
+  return useQuery({
+    queryKey: ['library-note-history', project, notebook, slug],
+    queryFn: () => fetchJson<{ versions: NoteVersion[] }>(`${notePath(project, notebook, slug)}/history`),
+    enabled: enabled && !!slug,
+  });
+}
+
+export function useNoteVersion(project: string, notebook: string, slug: string, commit: string | null) {
+  return useQuery({
+    queryKey: ['library-note-version', project, notebook, slug, commit],
+    queryFn: () => fetchJson<{ commit: string; content: string; diff: string }>(
+      `${notePath(project, notebook, slug)}/history/${encodeURIComponent(commit!)}`),
+    enabled: !!commit,
+  });
+}
+
+export function useRestoreNoteVersion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, notebook, slug, commit }: { project: string; notebook: string; slug: string; commit: string }) =>
+      fetchJson(`${notePath(project, notebook, slug)}/history/${encodeURIComponent(commit)}/restore`, { method: 'POST' }),
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ['library-note', v.project, v.notebook, v.slug] });
+      queryClient.invalidateQueries({ queryKey: ['library-note-history', v.project, v.notebook, v.slug] });
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+    },
+  });
+}
+
+export interface TrashItem {
+  id: string;
+  kind: 'note' | 'notebook' | 'space' | 'file';
+  label: string;
+  original: string;
+  deleted_at: string;
+  deleted_by: string;
+}
+
+export function useLibraryTrash(enabled = true) {
+  return useQuery({
+    queryKey: ['library-trash'],
+    queryFn: () => fetchJson<{ items: TrashItem[] }>('/library/trash'),
+    enabled,
+  });
+}
+
+export function useRestoreTrashItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/library/trash/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['library-trash'] });
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+    },
+  });
+}
+
+export function usePurgeTrashItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/library/trash/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['library-trash'] }),
   });
 }
 
