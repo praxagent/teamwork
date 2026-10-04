@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/praxagent/teamwork/compare/v0.25.0...v0.25.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* paste into the desktop what you copied on your computer, and pass browser shortcuts through in full screen ([#83](https://github.com/praxagent/teamwork/issues/83)) ([6871a3d](https://github.com/praxagent/teamwork/commit/6871a3d72daff34e7d88124299aaf4dd5e0ef9e0))
+
 ## [0.25.0](https://github.com/praxagent/teamwork/compare/v0.24.0...v0.25.0) (2026-10-03)
 
 
