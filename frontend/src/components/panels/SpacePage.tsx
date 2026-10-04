@@ -604,6 +604,7 @@ export function SpacePage({ spaceSlug, onBack }: Props) {
                 onDelete={handleDelete}
                 onUpdateTheme={(hue) => updateSpace.mutate({ project: spaceSlug, task_id: '', theme_hue: hue } as any)}
                 onUpdateName={(name) => updateSpace.mutate({ project: spaceSlug, task_id: '', name } as any)}
+                onUpdateDescription={(description) => updateSpace.mutate({ project: spaceSlug, description })}
                 uploadCover={uploadCover}
                 generateCover={generateCover}
                 deleteCover={deleteCover}
@@ -1541,8 +1542,8 @@ function FlashcardStudy({
 // Settings tab (inline, not a modal)
 // ---------------------------------------------------------------------------
 
-function SpaceSettings({
-  space, dark, spaceSlug, onDelete, onUpdateTheme, onUpdateName,
+export function SpaceSettings({
+  space, dark, spaceSlug, onDelete, onUpdateTheme, onUpdateName, onUpdateDescription,
   uploadCover, generateCover, deleteCover, coverSrc, onUploadClick,
 }: {
   space: LibrarySpace;
@@ -1551,6 +1552,7 @@ function SpaceSettings({
   onDelete: () => void;
   onUpdateTheme: (hue: number) => void;
   onUpdateName: (name: string) => void;
+  onUpdateDescription: (description: string) => void;
   uploadCover: { mutate: (v: any) => void; isPending: boolean };
   generateCover: { mutate: (v: any) => void; isPending: boolean };
   deleteCover: { mutate: (v: any) => void };
@@ -1558,6 +1560,9 @@ function SpaceSettings({
   onUploadClick: () => void;
 }) {
   const [draftName, setDraftName] = useState(space.name);
+  const [draftDescription, setDraftDescription] = useState(space.description ?? '');
+  // Saving an empty description clears it: the Spaces page then shows none.
+  const descriptionChanged = draftDescription.trim() !== (space.description ?? '').trim();
   const t2 = dark ? 'text-slate-400' : 'text-slate-500';
   const t3 = dark ? 'text-slate-500' : 'text-slate-400';
   const border = dark ? 'border-slate-700' : 'border-gray-200';
@@ -1588,6 +1593,28 @@ function SpaceSettings({
             style={{ backgroundColor: accentColor(space.theme_hue, dark) }}
           >Save</button>
         </div>
+      </div>
+
+      {/* Description — the line under the name on the Spaces page */}
+      <div>
+        <label htmlFor="space-description" className={clsx('text-xs font-semibold block mb-1.5', t3)}>DESCRIPTION</label>
+        <div className="flex gap-2 items-start">
+          <textarea
+            id="space-description"
+            value={draftDescription}
+            onChange={(e) => setDraftDescription(e.target.value)}
+            rows={2}
+            placeholder="What this space is for"
+            className={clsx(inputBase, 'resize-y')}
+          />
+          <button
+            onClick={() => { if (descriptionChanged) onUpdateDescription(draftDescription.trim()); }}
+            disabled={!descriptionChanged}
+            className="px-3 py-2 rounded text-sm font-medium text-white disabled:opacity-40"
+            style={{ backgroundColor: accentColor(space.theme_hue, dark) }}
+          >Save</button>
+        </div>
+        <p className={clsx('text-xs mt-1.5', t3)}>Shown under the name on the Spaces page. Leave it empty to show none.</p>
       </div>
 
       {/* Model */}
