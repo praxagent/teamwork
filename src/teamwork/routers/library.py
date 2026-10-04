@@ -142,6 +142,18 @@ async def get_note(project: str, notebook: str, slug: str):
     return result
 
 
+@router.get("/search")
+async def search_notes(q: str = "", space: str | None = None, limit: int = 20):
+    """Search note titles, tags and text (Prax does the searching)."""
+    params = {"q": q, "limit": max(1, min(limit, 50))}
+    if space:
+        params["space"] = space
+    result = await _proxy("GET", "/search", params=params)
+    if result is None:
+        raise HTTPException(status_code=502, detail="Prax backend unavailable")
+    return result
+
+
 @router.patch("/notes/{project}/{notebook}/{slug}")
 async def update_note(project: str, notebook: str, slug: str, data: dict = Body(...)):
     """Update a note's content, title, or tags. With ``expected_updated_at``

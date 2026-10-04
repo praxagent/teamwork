@@ -68,6 +68,7 @@ export function ProjectWorkspace() {
   const [showMemoryPanel, setShowMemoryPanel] = useState(savedView === 'memory');
   // Track which project the Library should open to when we jump from Home.
   const [libraryFocusProject, setLibraryFocusProject] = useState<string | null>(null);
+  const [libraryFocusNote, setLibraryFocusNote] = useState<{ project: string; notebook: string; slug: string } | null>(null);
   const [showScheduler, setShowScheduler] = useState(savedView === 'scheduler');
   // Track if panels have ever been opened (for persistent mounting)
   const [claudePanelMounted, setClaudePanelMounted] = useState(savedView === 'claude');
@@ -599,6 +600,8 @@ export function ProjectWorkspace() {
             onGoHome={() => switchTo('spaces')}
             focusProject={libraryFocusProject}
             onFocusProjectConsumed={() => setLibraryFocusProject(null)}
+            focusNote={libraryFocusNote}
+            onFocusNoteConsumed={() => setLibraryFocusNote(null)}
           />
         )}
 
@@ -799,6 +802,10 @@ export function ProjectWorkspace() {
         onChannelSelect={handleChannelSelect}
         onDMSelect={handleDMSelect}
         onSwitchView={switchTo}
+        onOpenNote={(space, notebook, slug) => {
+          setLibraryFocusNote({ project: space, notebook, slug });
+          switchTo('library');
+        }}
       />
 
       {/* ── Mobile Bottom Tab Bar ── */}

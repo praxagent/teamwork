@@ -102,7 +102,8 @@ Think of TeamWork as a dumb terminal: it displays messages, tracks tasks, and re
 - [ ] **Eval / benchmark dashboard** (pass rates, regression trends, per-suite drilldown) proxied from Prax
 - [ ] Browser / OS **push notifications** via a service worker (new messages, task & schedule events)
 - [ ] **Multi-user (human) presence** — who's viewing a project/channel, live cursors / read receipts
-- [ ] **Cross-surface global search** (notes/library, files, tasks) beyond message FTS in the palette
+- [x] Library note search — a search box in the Library and a Notes section in the command palette (Prax searches titles, tags and text)
+- [ ] **Cross-surface global search** for files and tasks, beyond messages and notes in the palette
 - [ ] **Notification preferences** — per-channel mute + digest settings
 
 ## Embedded Terminal & Browser
