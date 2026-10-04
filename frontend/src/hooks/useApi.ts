@@ -3034,6 +3034,40 @@ export function useDeleteSpaceFile(spaceSlug: string) {
 
 // Timezone
 
+export interface RuntimeSetting {
+  key: string;
+  label: string;
+  help: string;
+  category: string;
+  value: boolean;
+  /** "teamwork" when changed here, "env" when it comes from Prax's .env. */
+  source: 'env' | 'teamwork';
+  env_value: boolean;
+}
+
+/** Prax settings an admin may change from TeamWork, without a restart. Prax
+ *  decides which; everything else stays in its .env. */
+export function useRuntimeSettings() {
+  return useQuery({
+    queryKey: ['prax-runtime-settings'],
+    queryFn: () => fetchJson<{ settings: RuntimeSetting[] }>('/prax/runtime-settings'),
+    retry: false,
+  });
+}
+
+export function useSetRuntimeSetting() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, value }: { key: string; value: boolean | null }) =>
+      value === null
+        ? fetchJson<RuntimeSetting>(`/prax/runtime-settings/${encodeURIComponent(key)}`, { method: 'DELETE' })
+        : fetchJson<RuntimeSetting>(`/prax/runtime-settings/${encodeURIComponent(key)}`, {
+          method: 'PUT', body: JSON.stringify({ value }),
+        }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prax-runtime-settings'] }),
+  });
+}
+
 export function useUserTimezone() {
   return useQuery({
     queryKey: ['user-timezone'],
