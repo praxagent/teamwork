@@ -65,6 +65,7 @@ import {
 } from '@/hooks/useApi';
 import { LibrarySpaceView } from './LibrarySpaceView';
 import { LibraryTrash } from './LibraryTrash';
+import { LibrarySearch } from './LibrarySearch';
 import { NoteConflictBanner, NoteHistoryPanel } from '@/components/common/NoteSafety';
 import { NoteConflictError } from '@/hooks/useApi';
 import type {
@@ -84,6 +85,9 @@ interface Props {
   /** Optional project slug to open the project view for on mount (used
    *  when jumping from the Home dashboard to a specific project). */
   focusProject?: string | null;
+  /** Open this note (e.g. picked in the command palette's search). */
+  focusNote?: { project: string; notebook: string; slug: string } | null;
+  onFocusNoteConsumed?: () => void;
   /** Called after the focus has been consumed so the caller can clear
    *  its state. */
   onFocusProjectConsumed?: () => void;
@@ -104,7 +108,7 @@ type MainView =
   | { kind: 'health' }
   | { kind: 'trash' };
 
-export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFocusProjectConsumed }: Props) {
+export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFocusProjectConsumed, focusNote, onFocusNoteConsumed }: Props) {
   const dark = useUIStore((s) => s.darkMode);
   // Disable native HTML5 drag on mobile — it doesn't fire on touch and swallows
   // touch-scroll, so a note/block "moves" instead of scrolling.
@@ -213,6 +217,15 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusProject]);
+
+  useEffect(() => {
+    if (focusNote) {
+      setMainView({ kind: 'note', ...focusNote });
+      setExpandedProjects((prev) => new Set([...prev, focusNote.project]));
+      onFocusNoteConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNote]);
 
   // Selected note
   const selection = mainView.kind === 'note' ? mainView : null;
@@ -470,6 +483,14 @@ export function LibraryPanel({ isVisible, onClose, onGoHome, focusProject, onFoc
             </button>
           </div>
         </div>
+
+        <LibrarySearch
+          dark={dark}
+          onOpen={(project, notebook, slug) => {
+            setMainView({ kind: 'note', project, notebook, slug });
+            setExpandedProjects((prev) => new Set([...prev, project]));
+          }}
+        />
 
         {/* Primary nav — the views you actually browse */}
         <div className={clsx('py-1 border-b', border)}>

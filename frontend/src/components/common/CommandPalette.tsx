@@ -2,17 +2,17 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { clsx } from 'clsx';
 import {
   Search, Hash, MessageSquare, User, Moon, Sun, Settings, ListTodo,
-  Code, TerminalSquare, Globe, Activity, ArrowRight, FileText, Loader2,
+  Code, TerminalSquare, Globe, Activity, ArrowRight, FileText, Loader2, StickyNote,
 } from 'lucide-react';
 import { useUIStore, useProjectStore } from '@/stores';
-import { searchMessages, type SearchResult } from '@/hooks/useApi';
+import { searchLibrary, searchMessages, type LibrarySearchHit, type SearchResult } from '@/hooks/useApi';
 
 interface CommandItem {
   id: string;
   label: string;
   description?: string;
   icon: React.ComponentType<{ className?: string }>;
-  category: 'channel' | 'agent' | 'action' | 'message';
+  category: 'channel' | 'agent' | 'action' | 'message' | 'note';
   action: () => void;
 }
 
@@ -20,13 +20,16 @@ interface CommandPaletteProps {
   onChannelSelect?: (channelId: string) => void;
   onDMSelect?: (agentId: string) => void;
   onSwitchView?: (view: string) => void;
+  /** Open a Library note (space, notebook, slug). */
+  onOpenNote?: (space: string, notebook: string, slug: string) => void;
 }
 
-export function CommandPalette({ onChannelSelect, onDMSelect, onSwitchView }: CommandPaletteProps) {
+export function CommandPalette({ onChannelSelect, onDMSelect, onSwitchView, onOpenNote }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [messageResults, setMessageResults] = useState<SearchResult[]>([]);
+  const [noteResults, setNoteResults] = useState<LibrarySearchHit[]>([]);
   const [messageTotal, setMessageTotal] = useState(0);
   const [searching, setSearching] = useState(false);
   const [searchLimit, setSearchLimit] = useState(15);
@@ -73,31 +76,38 @@ export function CommandPalette({ onChannelSelect, onDMSelect, onSwitchView }: Co
   }, [open]);
 
   // Debounced message search
+  // Only whether notes can be opened matters here, not the callback's identity.
+  const searchNotes = !!onOpenNote;
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
 
     if (!query.trim() || query.trim().length < 2 || !currentProject?.id) {
       setMessageResults([]);
       setMessageTotal(0);
+      setNoteResults([]);
       setSearching(false);
       return;
     }
 
     setSearching(true);
     searchTimer.current = setTimeout(async () => {
-      try {
-        const { results, total } = await searchMessages(currentProject.id, query.trim(), searchLimit);
-        setMessageResults(results);
-        setMessageTotal(total);
-      } catch {
+      const [messages, notes] = await Promise.allSettled([
+        searchMessages(currentProject.id, query.trim(), searchLimit),
+        searchNotes ? searchLibrary(query.trim(), 8) : Promise.resolve([]),
+      ]);
+      if (messages.status === 'fulfilled') {
+        setMessageResults(messages.value.results);
+        setMessageTotal(messages.value.total);
+      } else {
         setMessageResults([]);
         setMessageTotal(0);
       }
+      setNoteResults(notes.status === 'fulfilled' ? notes.value : []);
       setSearching(false);
     }, 300);
 
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
-  }, [query, currentProject?.id, searchLimit]);
+  }, [query, currentProject?.id, searchLimit, searchNotes]);
 
   const localItems = useMemo<CommandItem[]>(() => {
     const result: CommandItem[] = [];
@@ -162,8 +172,18 @@ export function CommandPalette({ onChannelSelect, onDMSelect, onSwitchView }: Co
       action: () => { onChannelSelect?.(r.channel_id); setOpen(false); },
     }));
 
-    return [...filtered, ...msgItems];
-  }, [localItems, messageResults, query, onChannelSelect]);
+    // Library notes (Prax searches titles, tags and text)
+    const noteItems: CommandItem[] = noteResults.map((n) => ({
+      id: `note-${n.space}-${n.notebook}-${n.slug}`,
+      label: n.title,
+      description: n.snippet || `${n.space} / ${n.notebook}`,
+      icon: StickyNote,
+      category: 'note' as const,
+      action: () => { onOpenNote?.(n.space, n.notebook, n.slug); setOpen(false); },
+    }));
+
+    return [...filtered, ...noteItems, ...msgItems];
+  }, [localItems, messageResults, noteResults, query, onChannelSelect, onOpenNote]);
 
   // Reset selection when results change
   useEffect(() => { setSelectedIndex(0); }, [allItems.length, query]);
@@ -194,14 +214,14 @@ export function CommandPalette({ onChannelSelect, onDMSelect, onSwitchView }: Co
   const messageLabel = messageTotal > messageResults.length
     ? `Messages (showing ${messageResults.length} of ${messageTotal})`
     : 'Messages';
-  const categoryLabels: Record<string, string> = { channel: 'Channels', agent: 'People', action: 'Actions', message: messageLabel };
+  const categoryLabels: Record<string, string> = { channel: 'Channels', agent: 'People', action: 'Actions', message: messageLabel, note: 'Notes' };
   let globalIdx = 0;
   const byCategory: Record<string, (CommandItem & { globalIndex: number })[]> = {};
   for (const item of allItems) {
     if (!byCategory[item.category]) byCategory[item.category] = [];
     byCategory[item.category].push({ ...item, globalIndex: globalIdx++ });
   }
-  for (const cat of ['channel', 'agent', 'message', 'action']) {
+  for (const cat of ['channel', 'agent', 'note', 'message', 'action']) {
     if (byCategory[cat]?.length) {
       grouped.push({ label: categoryLabels[cat], items: byCategory[cat] });
     }

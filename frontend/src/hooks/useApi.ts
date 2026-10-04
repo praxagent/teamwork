@@ -1816,6 +1816,33 @@ export function useLibraryNote(project: string | null, notebook: string | null, 
   });
 }
 
+export interface LibrarySearchHit {
+  space: string;
+  notebook: string;
+  slug: string;
+  title: string;
+  tags: string[];
+  snippet: string;
+  updated_at: string;
+}
+
+/** Search note titles, tags and text. Every word must match. */
+export async function searchLibrary(query: string, limit = 20): Promise<LibrarySearchHit[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const body = await fetchJson<{ results: LibrarySearchHit[] }>(`/library/search?${params}`);
+  return body.results ?? [];
+}
+
+export function useLibrarySearch(query: string) {
+  const q = query.trim();
+  return useQuery({
+    queryKey: ['library-search', q],
+    queryFn: () => searchLibrary(q),
+    enabled: q.length >= 2,
+    staleTime: 10_000,
+  });
+}
+
 export function useUpdateLibraryNote() {
   const queryClient = useQueryClient();
   return useMutation({
