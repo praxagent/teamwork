@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.26.0](https://github.com/praxagent/teamwork/compare/v0.25.1...v0.26.0) (2026-10-04)
+
+
+### Features
+
+* change Prax's live settings from the Settings page ([#89](https://github.com/praxagent/teamwork/issues/89)) ([3f35a89](https://github.com/praxagent/teamwork/commit/3f35a89da91f835c53cd56c46a25af5334463b3e))
+* comment on a passage of a note, and ask Prax with [@prax](https://github.com/prax) ([#93](https://github.com/praxagent/teamwork/issues/93)) ([cec8cfb](https://github.com/praxagent/teamwork/commit/cec8cfb8f6f09a008d18303aff8444cd72a70f75))
+* note history, a trash, and no silent overwrites in the Library ([#90](https://github.com/praxagent/teamwork/issues/90)) ([19cb1c8](https://github.com/praxagent/teamwork/commit/19cb1c82049319ed69d3957a4396d0b8d2e44ab2))
+* restart the sandbox from the desktop toolbar ([#88](https://github.com/praxagent/teamwork/issues/88)) ([e0449d9](https://github.com/praxagent/teamwork/commit/e0449d9adbfb296cb795a1744c194ff7118509ae))
+* search your notes — in the Library and the command palette ([#91](https://github.com/praxagent/teamwork/issues/91)) ([917e41c](https://github.com/praxagent/teamwork/commit/917e41c91997898dc51ad206cdfecf37f7a389df))
+
+
+### Bug Fixes
+
+* a space's description can be edited in its settings ([#85](https://github.com/praxagent/teamwork/issues/85)) ([bb884a2](https://github.com/praxagent/teamwork/commit/bb884a289b9e87cc54dd7ec3b52a315898019572))
+* cover uploads reach Prax, and the Quiz and Presentation buttons do something ([#92](https://github.com/praxagent/teamwork/issues/92)) ([66443a0](https://github.com/praxagent/teamwork/commit/66443a07d96e95f6318d01133a13a76d2b1ed2cb))
+* typing in the desktop no longer comes out as á, ÿ, ä ([#87](https://github.com/praxagent/teamwork/issues/87)) ([a7c03f7](https://github.com/praxagent/teamwork/commit/a7c03f76671ae883ca06461c02a80a2795fa3575))
+
 ## [0.25.1](https://github.com/praxagent/teamwork/compare/v0.25.0...v0.25.1) (2026-10-04)
 
 
