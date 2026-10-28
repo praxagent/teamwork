@@ -1021,4 +1021,4 @@ Full API docs with request/response schemas are auto-generated at **`http://loca
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[Apache-2.0](LICENSE)
