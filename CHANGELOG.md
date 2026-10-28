@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/praxagent/teamwork/compare/v0.26.0...v0.26.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* images from other sites in messages and notes load on a click ([#94](https://github.com/praxagent/teamwork/issues/94)) ([e6e7fcb](https://github.com/praxagent/teamwork/commit/e6e7fcbed831abe1dd97e4e8c09f1ac775b48029))
+
 ## [0.26.0](https://github.com/praxagent/teamwork/compare/v0.25.1...v0.26.0) (2026-10-04)
 
 
